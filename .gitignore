@@ -1,0 +1,27 @@
+# OmniExporter AI Git Ignore
+
+# Config with secrets - never commit!
+config.js
+
+# Node modules (for Cloudflare Worker)
+node_modules/
+
+# Build artifacts
+dist/
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Temporary files
+repos.txt

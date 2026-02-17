@@ -1,0 +1,137 @@
+{
+    "manifest_version": 3,
+    "name": "OmniExporter AI - Enterprise Edition",
+    "version": "5.1.0",
+    "description": "Enterprise-level bulk export for Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek to Markdown, JSON, HTML, PDF & Notion. Full dashboard with auto-sync, failure tracking, and audit logging.",
+    "commands": {
+        "_execute_action": {
+            "suggested_key": {
+                "default": "Alt+Shift+E"
+            },
+            "description": "Open OmniExporter popup"
+        },
+        "open_dashboard": {
+            "suggested_key": {
+                "default": "Alt+Shift+D"
+            },
+            "description": "Open OmniExporter Dashboard"
+        }
+    },
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src https://api.notion.com https://www.perplexity.ai https://chatgpt.com https://claude.ai https://chat.openai.com https://*.openai.com https://gemini.google.com https://grok.com https://chat.deepseek.com https://*.workers.dev;"
+    },
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage",
+        "tabs",
+        "alarms",
+        "contextMenus",
+        "identity"
+    ],
+    "minimum_chrome_version": "88",
+    "optional_permissions": [
+        "downloads"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "options_page": "options.html",
+    "host_permissions": [
+        "https://www.perplexity.ai/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://api.notion.com/*",
+        "https://gemini.google.com/*",
+        "https://grok.com/*",
+        "https://x.com/*",
+        "https://chat.deepseek.com/*"
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "128": "icons/icon128.png"
+        }
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://www.perplexity.ai/*",
+                "https://chatgpt.com/*",
+                "https://chat.openai.com/*",
+                "https://claude.ai/*"
+            ],
+            "js": [
+                "logger.js",
+                "network-interceptor.js",
+                "platform-config.js",
+                "content.js"
+            ]
+        },
+        {
+            "matches": [
+                "https://gemini.google.com/*"
+            ],
+            "js": [
+                "logger.js",
+                "network-interceptor.js",
+                "platform-config.js",
+                "gemini-inject.js",
+                "gemini-adapter.js",
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://grok.com/*",
+                "https://x.com/i/grok/*"
+            ],
+            "js": [
+                "logger.js",
+                "network-interceptor.js",
+                "platform-config.js",
+                "grok-adapter.js",
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://chat.deepseek.com/*"
+            ],
+            "js": [
+                "logger.js",
+                "network-interceptor.js",
+                "platform-config.js",
+                "deepseek-adapter.js",
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "gemini-page-interceptor.js"
+            ],
+            "matches": [
+                "https://gemini.google.com/*"
+            ]
+        },
+        {
+            "resources": [
+                "auth/callback.html",
+                "auth/notion-oauth.js",
+                "icons/logos/*.svg"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "icons": {
+        "128": "icons/icon128.png"
+    }
+}

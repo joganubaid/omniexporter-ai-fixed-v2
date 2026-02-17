@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniExporter AI</title>
+    <link rel="stylesheet" href="popup.css">
+    <link rel="stylesheet" href="toast.css">
+    <link rel="stylesheet" href="notion-picker.css">
+</head>
+
+<body>
+    <div class="popup">
+        <!-- Toast Container -->
+        <div id="omni-toast-container" class="toast-container"></div>
+
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor"
+                        d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,6V12L16,15L16.8,13.7L12.5,11.2V6H11Z" />
+                </svg>
+                <span>OmniExporter AI</span>
+            </div>
+            <div class="header-status">
+                <div id="connection-status" class="connection-status">
+                    <span class="status-dot"></span>
+                </div>
+                <div id="platform-status" class="platform-badge">Detecting...</div>
+            </div>
+        </header>
+
+        <!-- Platform Navigation Bar -->
+        <nav class="platform-nav">
+            <button class="nav-btn tooltip-wrapper" data-platform="perplexity" title="Perplexity">
+                <span class="connection-dot" id="dot-perplexity"></span>
+                <img src="icons/logos/perplexity.svg" alt="Perplexity" class="nav-logo" />
+                <span class="tooltip">Perplexity</span>
+            </button>
+            <button class="nav-btn tooltip-wrapper" data-platform="chatgpt" title="ChatGPT">
+                <span class="connection-dot" id="dot-chatgpt"></span>
+                <img src="icons/logos/chatgpt.svg" alt="ChatGPT" class="nav-logo" />
+                <span class="tooltip">ChatGPT</span>
+            </button>
+            <button class="nav-btn tooltip-wrapper" data-platform="claude" title="Claude">
+                <span class="connection-dot" id="dot-claude"></span>
+                <img src="icons/logos/claude.svg" alt="Claude" class="nav-logo" />
+                <span class="tooltip">Claude</span>
+            </button>
+            <button class="nav-btn tooltip-wrapper" data-platform="gemini" title="Gemini">
+                <span class="connection-dot" id="dot-gemini"></span>
+                <span class="feature-badge new">NEW</span>
+                <img src="icons/logos/gemini.svg" alt="Gemini" class="nav-logo" />
+                <span class="tooltip">Gemini (100+ messages!)</span>
+            </button>
+            <button class="nav-btn tooltip-wrapper" data-platform="grok" title="Grok">
+                <span class="connection-dot" id="dot-grok"></span>
+                <img src="icons/logos/grok.svg" alt="Grok" class="nav-logo" />
+                <span class="tooltip">Grok</span>
+            </button>
+            <button class="nav-btn tooltip-wrapper" data-platform="deepseek" title="DeepSeek">
+                <span class="connection-dot" id="dot-deepseek"></span>
+                <span class="feature-badge hot">HOT</span>
+                <img src="icons/logos/deepseek.svg" alt="DeepSeek" class="nav-logo" />
+                <span class="tooltip">DeepSeek</span>
+            </button>
+        </nav>
+
+        <!-- Quick Actions -->
+        <main>
+            <div class="quick-actions">
+                <!-- Export Dropdown -->
+                <div class="export-dropdown btn-with-badge">
+                    <button id="exportBtn" class="primary-btn premium">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" x2="12" y1="15" y2="3"></line>
+                        </svg>
+                        <span>Export</span>
+                        <svg class="dropdown-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="dropdown-menu" id="exportMenu">
+                        <button data-format="markdown" class="dropdown-item">
+                            <span class="icon">📝</span> Markdown (.md)
+                        </button>
+                        <button data-format="json" class="dropdown-item">
+                            <span class="icon">📊</span> JSON (.json)
+                        </button>
+                        <button data-format="html" class="dropdown-item">
+                            <span class="icon">🌐</span> HTML (.html)
+                        </button>
+                        <button data-format="txt" class="dropdown-item">
+                            <span class="icon">📄</span> Plain Text (.txt)
+                        </button>
+                        <button data-format="pdf" class="dropdown-item">
+                            <span class="icon">📕</span> PDF (Print)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="btn-with-badge">
+                    <button id="saveToNotionBtn" class="primary-btn notion-btn">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z">
+                            </path>
+                            <path d="M8 2v4"></path>
+                            <path d="M16 2v4"></path>
+                            <path d="M12 11v6"></path>
+                            <path d="M9 14h6"></path>
+                        </svg>
+                        <span>Save to Notion</span>
+                    </button>
+                </div>
+
+                <div class="btn-with-badge">
+                    <span class="feature-badge recommended">★</span>
+                    <button id="openDashboard" class="secondary-btn">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                        <span>Open Dashboard</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Use Dashboard hint -->
+            <div class="dashboard-hint">
+                <span>💡 Use Dashboard for batch exports</span>
+            </div>
+
+            <!-- Auto-Sync Status -->
+            <div class="sync-status">
+                <div class="sync-info">
+                    <span class="label">Auto-Sync:</span>
+                    <span id="syncStatus" class="status off">OFF</span>
+                </div>
+                <button id="toggleSync" class="toggle-btn">Toggle</button>
+            </div>
+
+            <!-- Status Message -->
+            <div id="status" class="status-message"></div>
+        </main>
+
+        <!-- Footer -->
+        <footer>
+            <span class="version">v5.0.0</span>
+            <span class="separator">•</span>
+            <span class="enterprise">Enterprise Edition</span>
+        </footer>
+    </div>
+
+    <script src="toast.js"></script>
+    <script src="export-manager.js"></script>
+    <script src="notion-picker.js"></script>
+    <script src="config.js"></script>
+    <script src="auth/notion-oauth.js"></script>
+    <script src="popup.js"></script>
+</body>
+
+</html>
