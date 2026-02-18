@@ -2,36 +2,32 @@
 // content.js - Unified Platform Adapter
 
 // ── RE-INJECTION GUARD ────────────────────────────────────────────────────────
-// Chrome reloads content scripts on extension update without reloading the tab.
-// `const` at top level throws "already declared" on second injection.
-// Guard with a window flag so the body only runs once per page lifetime.
-if (window.__omniExporterLoaded) {
-    // Already loaded — just re-register the message listener so the
-    // updated background script can still reach us.
-    (function reRegister() {
-        try {
-            if (window.__omniExporterManager) {
-                window.__omniExporterManager.initialize();
-                console.log('[OmniExporter] Re-registered message listener after reload');
-            }
-        } catch (e) { /* ignore */ }
-    })();
+// On extension reload, Chrome re-injects scripts into active tabs.
+// We need to re-register listeners but avoid "const already declared" errors.
+
+// If already loaded, just re-register the message listener
+if (window.__omniExporterLoaded && window.__omniExporterManager) {
+    window.__omniExporterManager.initialize();
+    console.log('[OmniExporter] Re-registered message listener after reload');
+    // Don't execute the rest of the file
 } else {
-window.__omniExporterLoaded = true;
+    // Mark as loaded
+    window.__omniExporterLoaded = true;
 
-// Initialize Logger for content script
-if (typeof Logger !== 'undefined') {
-    Logger.init().then(() => {
-        Logger.info('Content', 'Content script active', { url: window.location.hostname });
-    }).catch(() => { });
-}
+    // Initialize Logger for content script
+    if (typeof Logger !== 'undefined') {
+        Logger.init().then(() => {
+            Logger.info('Content', 'Content script active', { url: window.location.hostname });
+        }).catch(() => { });
+    }
 
-console.log("OmniExporter AI Content Script Active");
+    console.log("OmniExporter AI Content Script Active");
 
-// ============================================
-// SECURITY UTILITIES (Audit Fix)
-// ============================================
-const SecurityUtils = {
+    // ============================================
+    // SECURITY UTILITIES (window property to prevent re-declaration)
+    // ============================================
+    if (!window.SecurityUtils) {
+        window.SecurityUtils = {
     // Validate UUID format to prevent injection
     isValidUuid: (uuid) => {
         if (!uuid || typeof uuid !== 'string') return false;
@@ -67,13 +63,21 @@ const SecurityUtils = {
         }
     },
 
-    // Validate API response structure
-    isValidApiResponse: (data) => {
-        return data && typeof data === 'object';
+            // Validate API response structure
+            isValidApiResponse: (data) => {
+                return data && typeof data === 'object';
+            }
+        };
     }
-};
 
-class ContentScriptManager {
+    // Reference SecurityUtils
+    const SecurityUtils = window.SecurityUtils;
+
+    // ============================================
+    // CONTENT SCRIPT MANAGER
+    // ============================================
+    if (!window.ContentScriptManager) {
+        window.ContentScriptManager = class ContentScriptManager {
     constructor() {
         this.messageHandler = null;
         this.cleanupFunctions = [];
@@ -176,16 +180,19 @@ class ContentScriptManager {
                 sendResponse({ success: true, platform: adapter.name });
             }
         } catch (error) {
-            sendResponse({ success: false, error: error.message });
+                sendResponse({ success: false, error: error.message });
+            }
         }
+    };
     }
-}
 
-const manager = new ContentScriptManager();
-manager.initialize();
+    // Create manager instance
+    const manager = new window.ContentScriptManager();
+    manager.initialize();
+    window.__omniExporterManager = manager;
 
-// Ensure cleanup on page unload
-window.addEventListener('beforeunload', () => manager.cleanup());
+    // Ensure cleanup on page unload
+    window.addEventListener('beforeunload', () => manager.cleanup());
 
 
 /**
