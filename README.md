@@ -265,7 +265,7 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for de
 
 ## 📄 License
 
-[Add your license here]
+MIT License — see [LICENSE](LICENSE)
 
 ## 🙏 Acknowledgments
 

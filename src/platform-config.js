@@ -16,18 +16,18 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             },
             endpoints: {
                 listThreads: {
-                    primary: '/rest/thread/list_ask_threads',
-                    fallback: '/api/threads/list',
+                    primary: '/rest/thread/list_ask_threads', // VERIFIED: 2026-02-19
+                    fallback: '/api/threads/list', // FALLBACK
                     params: (version) => `?version=${version}&source=default`
                 },
                 threadDetail: {
-                    primary: '/rest/thread/{uuid}',
-                    fallback: '/api/threads/{uuid}',
+                    primary: '/rest/thread/{uuid}', // VERIFIED: 2026-02-19
+                    fallback: '/api/threads/{uuid}', // FALLBACK
                     params: (version) => `?with_parent_info=true&with_schematized_response=true&version=${version}&source=default`
                 },
                 spaces: {
-                    primary: '/rest/collections/list',
-                    fallback: '/api/collections'
+                    primary: '/rest/collections/list', // VERIFIED: 2026-02-19
+                    fallback: '/api/collections' // FALLBACK
                 }
             },
             patterns: {
@@ -55,16 +55,16 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             },
             endpoints: {
                 organizations: {
-                    primary: '/api/organizations',
-                    fallback: '/api/v1/organizations'
+                    primary: '/api/organizations', // VERIFIED: 2026-02-19
+                    fallback: '/api/v1/organizations' // FALLBACK
                 },
                 conversations: {
-                    primary: '/api/organizations/{org}/chat_conversations',
-                    fallback: '/api/v1/organizations/{org}/conversations'
+                    primary: '/api/organizations/{org}/chat_conversations', // VERIFIED: 2026-02-19
+                    fallback: '/api/v1/organizations/{org}/conversations' // FALLBACK
                 },
                 conversationDetail: {
-                    primary: '/api/organizations/{org}/chat_conversations/{uuid}?tree=True&rendering_mode=messages&render_all_tools=true',
-                    fallback: '/api/v1/organizations/{org}/conversations/{uuid}'
+                    primary: '/api/organizations/{org}/chat_conversations/{uuid}?tree=True&rendering_mode=messages&render_all_tools=true', // VERIFIED: 2026-02-19
+                    fallback: '/api/v1/organizations/{org}/conversations/{uuid}' // FALLBACK
                 }
             },
             patterns: {
@@ -90,12 +90,12 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             },
             endpoints: {
                 conversations: {
-                    primary: '/backend-api/conversations', // Verified by HAR (200 OK)
-                    fallback: '/api/conversations'
+                    primary: '/backend-api/conversations', // VERIFIED: 2026-02-19 by HAR (200 OK)
+                    fallback: '/api/conversations' // FALLBACK
                 },
                 conversationDetail: {
-                    primary: '/backend-api/conversation/{uuid}', // Verified by HAR (Singular)
-                    fallback: '/api/conversation/{uuid}'
+                    primary: '/backend-api/conversation/{uuid}', // VERIFIED: 2026-02-19 by HAR (Singular)
+                    fallback: '/api/conversation/{uuid}' // FALLBACK
                 }
             },
             patterns: {
@@ -126,8 +126,8 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             endpoints: {
                 // HAR-verified: batchexecute is the single endpoint for all Gemini API calls
                 conversations: {
-                    primary: '/_/BardChatUi/data/batchexecute',
-                    fallback: '/app'
+                    primary: '/_/BardChatUi/data/batchexecute', // VERIFIED: 2026-02-19
+                    fallback: '/app' // FALLBACK
                 }
             },
             // HAR-verified RPC IDs (2026-02-16)
@@ -179,25 +179,25 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             endpoints: {
                 // HAR-verified: real Grok API is under /rest/app-chat/
                 conversations: {
-                    primary: '/rest/app-chat/conversations',
-                    fallback: '/rest/app-chat/conversations',
+                    primary: '/rest/app-chat/conversations', // VERIFIED: 2026-02-19
+                    fallback: '/rest/app-chat/conversations', // FALLBACK
                     params: () => '?pageSize=60'
                 },
                 // HAR-verified: step 1 of detail fetch
                 responseNode: {
-                    primary: '/rest/app-chat/conversations/{uuid}/response-node',
-                    fallback: '/rest/app-chat/conversations/{uuid}/response-node',
+                    primary: '/rest/app-chat/conversations/{uuid}/response-node', // VERIFIED: 2026-02-19
+                    fallback: '/rest/app-chat/conversations/{uuid}/response-node', // FALLBACK
                     params: () => '?includeThreads=true'
                 },
                 // HAR-verified: step 2 of detail fetch (POST)
                 loadResponses: {
-                    primary: '/rest/app-chat/conversations/{uuid}/load-responses',
-                    fallback: '/rest/app-chat/conversations/{uuid}/load-responses'
+                    primary: '/rest/app-chat/conversations/{uuid}/load-responses', // VERIFIED: 2026-02-19
+                    fallback: '/rest/app-chat/conversations/{uuid}/load-responses' // FALLBACK
                 },
                 // Optional: metadata (returns {} for some convos but has title when available)
                 conversationMeta: {
-                    primary: '/rest/app-chat/conversations_v2/{uuid}',
-                    fallback: '/rest/app-chat/conversations_v2/{uuid}',
+                    primary: '/rest/app-chat/conversations_v2/{uuid}', // VERIFIED: 2026-02-19
+                    fallback: '/rest/app-chat/conversations_v2/{uuid}', // FALLBACK
                     params: () => '?includeWorkspaces=true'
                 }
             },
@@ -229,19 +229,19 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             },
             endpoints: {
                 conversations: {
-                    primary: '/api/v0/chat_session/fetch_page',
-                    fallback: '/api/v0/chat/list',
+                    primary: '/api/v0/chat_session/fetch_page', // VERIFIED: 2026-02-19
+                    fallback: '/api/v0/chat/list', // FALLBACK
                     params: () => '?lte_cursor.pinned=false'
                 },
                 // HAR-verified: correct endpoint is flat with chat_session_id param + cache_version=2
                 conversationDetail: {
-                    primary: '/api/v0/chat/history_messages',
-                    fallback: '/api/v0/chat/history_messages',
+                    primary: '/api/v0/chat/history_messages', // VERIFIED: 2026-02-19
+                    fallback: '/api/v0/chat/history_messages', // FALLBACK
                     params: (uuid) => `?chat_session_id=${uuid}&cache_version=2`
                 },
                 chatSession: {
-                    primary: '/api/v0/chat_session/{uuid}',
-                    fallback: '/api/chat/{uuid}'
+                    primary: '/api/v0/chat_session/{uuid}', // VERIFIED: 2026-02-19
+                    fallback: '/api/chat/{uuid}' // FALLBACK
                 }
             },
             patterns: {

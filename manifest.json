@@ -18,7 +18,7 @@
         }
     },
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src https://api.notion.com https://www.perplexity.ai https://chatgpt.com https://claude.ai https://chat.openai.com https://*.openai.com https://gemini.google.com https://grok.com https://chat.deepseek.com https://*.workers.dev;"
+        "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src https://api.notion.com https://www.perplexity.ai https://chatgpt.com https://claude.ai https://chat.openai.com https://*.openai.com https://gemini.google.com https://grok.com https://chat.deepseek.com https://omniexporter-oauth.jonub250383.workers.dev;"
     },
     "permissions": [
         "activeTab",
@@ -51,6 +51,9 @@
     "action": {
         "default_popup": "src/ui/popup.html",
         "default_icon": {
+            "16": "icons/icon16.png",
+            "32": "icons/icon32.png",
+            "48": "icons/icon48.png",
             "128": "icons/icon128.png"
         }
     },
@@ -168,6 +171,9 @@
         }
     ],
     "icons": {
+        "16": "icons/icon16.png",
+        "32": "icons/icon32.png",
+        "48": "icons/icon48.png",
         "128": "icons/icon128.png"
     }
 }

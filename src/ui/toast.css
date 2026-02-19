@@ -1,7 +1,7 @@
 /* OmniExporter AI - Toast Notification Styles */
 
 /* Container */
-.toast-container {
+.omni-toast-container {
     position: fixed;
     top: 16px;
     right: 16px;
@@ -14,7 +14,7 @@
 }
 
 /* Base Toast */
-.toast {
+.omni-toast {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -35,44 +35,44 @@
     backdrop-filter: blur(10px);
 }
 
-.toast-visible {
+.omni-toast-visible {
     transform: translateX(0);
     opacity: 1;
 }
 
-.toast-hiding {
+.omni-toast-hiding {
     transform: translateX(120%);
     opacity: 0;
 }
 
 /* Toast Types */
-.toast-success {
+.omni-toast-success {
     background: linear-gradient(135deg, #059669 0%, #10b981 100%);
     border-left: 4px solid #34d399;
 }
 
-.toast-error {
+.omni-toast-error {
     background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
     border-left: 4px solid #f87171;
 }
 
-.toast-info {
+.omni-toast-info {
     background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
     border-left: 4px solid #60a5fa;
 }
 
-.toast-warning {
+.omni-toast-warning {
     background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
     border-left: 4px solid #fbbf24;
 }
 
-.toast-loading {
+.omni-toast-loading {
     background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
     border-left: 4px solid #9ca3af;
 }
 
 /* Icon */
-.toast-icon {
+.omni-toast-icon {
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -80,16 +80,16 @@
     opacity: 0.9;
 }
 
-.toast-icon svg {
+.omni-toast-icon svg {
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
 /* Spinner Animation */
-.toast-spinner {
-    animation: toast-spin 1s linear infinite;
+.omni-toast-spinner {
+    animation: omni-toast-spin 1s linear infinite;
 }
 
-@keyframes toast-spin {
+@keyframes omni-toast-spin {
     from {
         transform: rotate(0deg);
     }
@@ -100,7 +100,7 @@
 }
 
 /* Message */
-.toast-message {
+.omni-toast-message {
     flex: 1;
     line-height: 1.4;
     font-weight: 500;
@@ -108,7 +108,7 @@
 }
 
 /* Close Button */
-.toast-close {
+.omni-toast-close {
     flex-shrink: 0;
     background: rgba(255, 255, 255, 0.2);
     border: none;
@@ -122,24 +122,24 @@
     line-height: 1;
 }
 
-.toast-close:hover {
+.omni-toast-close:hover {
     opacity: 1;
     background: rgba(255, 255, 255, 0.3);
 }
 
 /* Progress Bar */
-.toast-progress {
+.omni-toast-progress {
     position: absolute;
     bottom: 0;
     left: 0;
     height: 3px;
     background: rgba(255, 255, 255, 0.4);
     width: 100%;
-    animation: toast-progress linear forwards;
+    animation: omni-toast-progress linear forwards;
     transform-origin: left;
 }
 
-@keyframes toast-progress {
+@keyframes omni-toast-progress {
     from {
         transform: scaleX(1);
     }
@@ -151,65 +151,65 @@
 
 /* Dark Mode Support */
 @media (prefers-color-scheme: light) {
-    .toast {
+    .omni-toast {
         background: #ffffff;
         color: #1f2937;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 2px 10px rgba(0, 0, 0, 0.1);
     }
 
-    .toast-success {
+    .omni-toast-success {
         background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
         color: #065f46;
         border-left-color: #10b981;
     }
 
-    .toast-error {
+    .omni-toast-error {
         background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
         color: #991b1b;
         border-left-color: #ef4444;
     }
 
-    .toast-info {
+    .omni-toast-info {
         background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
         color: #1e40af;
         border-left-color: #3b82f6;
     }
 
-    .toast-warning {
+    .omni-toast-warning {
         background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
         color: #92400e;
         border-left-color: #f59e0b;
     }
 
-    .toast-loading {
+    .omni-toast-loading {
         background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
         color: #374151;
         border-left-color: #9ca3af;
     }
 
-    .toast-close {
+    .omni-toast-close {
         background: rgba(0, 0, 0, 0.1);
     }
 
-    .toast-close:hover {
+    .omni-toast-close:hover {
         background: rgba(0, 0, 0, 0.2);
     }
 
-    .toast-progress {
+    .omni-toast-progress {
         background: rgba(0, 0, 0, 0.2);
     }
 }
 
 /* Responsive */
 @media (max-width: 400px) {
-    .toast-container {
+    .omni-toast-container {
         top: 8px;
         right: 8px;
         left: 8px;
         max-width: none;
     }
 
-    .toast {
+    .omni-toast {
         min-width: auto;
     }
 }

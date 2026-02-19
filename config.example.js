@@ -18,6 +18,8 @@
 const NOTION_CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
 
 // ─── OAuth Server ────────────────────────────────────────────────
-// Your deployed Cloudflare Worker URL (see cloudflare-worker/DEPLOY.md for deployment guide)
+// REQUIRED: Your deployed Cloudflare Worker URL (see cloudflare-worker/DEPLOY.md for deployment guide)
+// If not set, the extension falls back to the project's shared default worker.
+// For production use, deploy your own worker and set this value.
 // Default: https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev
 const OAUTH_SERVER_URL = 'https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev';

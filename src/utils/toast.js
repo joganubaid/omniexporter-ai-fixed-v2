@@ -11,7 +11,7 @@ class Toast {
 
         this.container = document.createElement('div');
         this.container.id = 'omni-toast-container';
-        this.container.className = 'toast-container';
+        this.container.className = 'omni-toast-container';
         document.body.appendChild(this.container);
     }
 
@@ -20,7 +20,7 @@ class Toast {
 
         const id = ++this.counter;
         const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
+        toast.className = `omni-toast omni-toast-${type}`;
         toast.setAttribute('data-toast-id', id);
 
         // Icon based on type
@@ -39,7 +39,7 @@ class Toast {
                 <line x1="12" y1="16" x2="12" y2="12"></line>
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>`,
-            loading: `<svg class="toast-spinner" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            loading: `<svg class="omni-toast-spinner" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>`,
             warning: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
@@ -50,14 +50,14 @@ class Toast {
         };
 
         toast.innerHTML = `
-            <div class="toast-icon">${icons[type] || icons.info}</div>
-            <div class="toast-message">${this.escapeHtml(message)}</div>
-            ${type !== 'loading' ? '<button class="toast-close" aria-label="Close">×</button>' : ''}
-            ${duration > 0 && type !== 'loading' ? '<div class="toast-progress"></div>' : ''}
+            <div class="omni-toast-icon">${icons[type] || icons.info}</div>
+            <div class="omni-toast-message">${this.escapeHtml(message)}</div>
+            ${type !== 'loading' ? '<button class="omni-toast-close" aria-label="Close">×</button>' : ''}
+            ${duration > 0 && type !== 'loading' ? '<div class="omni-toast-progress"></div>' : ''}
         `;
 
         // Close button handler
-        const closeBtn = toast.querySelector('.toast-close');
+        const closeBtn = toast.querySelector('.omni-toast-close');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => this.dismiss(id));
         }
@@ -68,11 +68,11 @@ class Toast {
 
         // Trigger animation
         requestAnimationFrame(() => {
-            toast.classList.add('toast-visible');
+            toast.classList.add('omni-toast-visible');
         });
 
         // Progress bar animation
-        const progressBar = toast.querySelector('.toast-progress');
+        const progressBar = toast.querySelector('.omni-toast-progress');
         if (progressBar && duration > 0) {
             progressBar.style.animationDuration = `${duration}ms`;
         }
@@ -89,8 +89,8 @@ class Toast {
         const toast = this.toasts.get(id);
         if (!toast) return;
 
-        toast.element.classList.remove('toast-visible');
-        toast.element.classList.add('toast-hiding');
+        toast.element.classList.remove('omni-toast-visible');
+        toast.element.classList.add('omni-toast-hiding');
 
         setTimeout(() => {
             toast.element.remove();
