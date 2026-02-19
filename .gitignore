@@ -25,3 +25,17 @@ Thumbs.db
 
 # Temporary files
 repos.txt
+
+# Debug/HAR response dumps — never commit user data
+*_response.json
+*_pretty.json
+*_debug.json
+*.har
+
+# Sensitive API data
+claude_*.json
+chatgpt_*.json
+perplexity_*.json
+gemini_*.json
+grok_*.json
+deepseek_*.json
