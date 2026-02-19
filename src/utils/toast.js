@@ -1,5 +1,6 @@
 // OmniExporter AI - Toast Notification System
 // Lightweight toast notifications for user feedback
+"use strict";
 
 class Toast {
     static container = null;

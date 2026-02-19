@@ -1,5 +1,6 @@
 // OmniExporter AI - Platform Configuration Layer
 // Provides resilience against API changes with auto-fallback support
+"use strict";
 
 // ============================================
 // PLATFORM CONFIGURATIONS

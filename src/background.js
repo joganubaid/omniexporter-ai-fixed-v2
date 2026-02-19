@@ -1,5 +1,6 @@
 // OmniExporter AI - Enterprise Edition v5.0
 // background.js - Enterprise Background Service Worker (Phase 10-12)
+"use strict";
 
 try {
     importScripts('logger.js');

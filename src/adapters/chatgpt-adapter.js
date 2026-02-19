@@ -1,5 +1,6 @@
 // OmniExporter AI - ChatGPT Platform Adapter
 // Extracted from content.js for maintainability
+"use strict";
 
 // Dependencies (loaded before this file via manifest content_scripts):
 // - platformConfig (from platform-config.js)

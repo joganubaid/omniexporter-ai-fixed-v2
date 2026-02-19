@@ -3,6 +3,7 @@
 // Enterprise-level implementation matching Perplexity quality
 // VERIFIED API: /api/v0/chat_session/fetch_page (discovered 2026-01-10)
 // NOW USES: platformConfig for centralized configuration
+"use strict";
 
 const DeepSeekAdapter = {
     name: "DeepSeek",
@@ -27,10 +28,12 @@ const DeepSeekAdapter = {
     _cacheTimestamp: 0,
     _cacheTTL: 60000, // 1 minute cache
 
+    /**
+     * Extract conversation UUID from the current page URL.
+     * @param {string} url - The full page URL
+     * @returns {string|null} The extracted UUID, or null if not found
+     */
     extractUuid: (url) => {
-        // Try platformConfig patterns first
-        if (typeof platformConfig !== 'undefined') {
-            const uuid = platformConfig.extractUuid('DeepSeek', url);
             if (uuid) return uuid;
         }
 
@@ -311,6 +314,12 @@ const DeepSeekAdapter = {
     // ============================================
     // ENTERPRISE: Offset-based fetching (for options.js)
     // ============================================
+    /**
+     * Fetch threads using offset-based pagination with cursor caching.
+     * @param {number} offset - Number of threads to skip
+     * @param {number} limit - Maximum number of threads to return
+     * @returns {Promise<{threads: Array, offset: number, hasMore: boolean, total: number}>}
+     */
     getThreadsWithOffset: async (offset = 0, limit = 50) => {
         // Check cache validity
         const cacheValid = DeepSeekAdapter._cacheTimestamp > Date.now() - DeepSeekAdapter._cacheTTL;
@@ -385,6 +394,14 @@ const DeepSeekAdapter = {
     // ============================================
     // Standard getThreads (page-based, backwards compatible)
     // ============================================
+    /**
+     * Fetch a page of conversation threads (page-based, backwards compatible).
+     * @param {number} page - One-based page number
+     * @param {number} limit - Maximum threads per page
+     * @param {string|null} spaceId - Optional space/workspace filter
+     * @returns {Promise<{threads: Array, hasMore: boolean, page: number}>}
+     * @throws {Error} If the API request fails
+     */
     getThreads: async (page = 1, limit = 50, spaceId = null) => {
         // Check NetworkInterceptor first
         if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
@@ -413,6 +430,12 @@ const DeepSeekAdapter = {
     // Messages are in data.biz_data.chat_messages
     // Role is 'USER' or 'ASSISTANT' (uppercase)
     // ============================================
+    /**
+     * Fetch full message detail for a conversation by UUID.
+     * @param {string} uuid - The chat session UUID
+     * @returns {Promise<object>} Structured conversation data with entries array
+     * @throws {Error} If the conversation cannot be fetched or has no content
+     */
     getThreadDetail: async (uuid) => {
         console.log(`[DeepSeek] Fetching thread detail for UUID: ${uuid}`);
 

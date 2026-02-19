@@ -6,6 +6,7 @@
  *   Logger.info('ModuleName', 'Message', { optional: 'data' });
  *   Logger.error('ModuleName', 'Error occurred', { error: e.message });
  */
+"use strict";
 
 const Logger = {
     // Configuration

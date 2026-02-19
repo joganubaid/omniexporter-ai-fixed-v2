@@ -1,5 +1,6 @@
 // OmniExporter AI - Export Manager
 // Multi-format export support: Markdown, JSON, HTML, PDF, Plain Text
+"use strict";
 
 class ExportManager {
     static formats = {
