@@ -34,9 +34,9 @@
         "downloads"
     ],
     "background": {
-        "service_worker": "background.js"
+        "service_worker": "src/background.js"
     },
-    "options_page": "options.html",
+    "options_page": "src/ui/options.html",
     "host_permissions": [
         "https://www.perplexity.ai/*",
         "https://chatgpt.com/*",
@@ -49,7 +49,7 @@
         "https://chat.deepseek.com/*"
     ],
     "action": {
-        "default_popup": "popup.html",
+        "default_popup": "src/ui/popup.html",
         "default_icon": {
             "128": "icons/icon128.png"
         }
@@ -63,10 +63,10 @@
                 "https://claude.ai/*"
             ],
             "js": [
-                "logger.js",
-                "network-interceptor.js",
-                "platform-config.js",
-                "content.js"
+                "src/utils/logger.js",
+                "src/utils/network-interceptor.js",
+                "src/platform-config.js",
+                "src/content.js"
             ]
         },
         {
@@ -74,12 +74,12 @@
                 "https://gemini.google.com/*"
             ],
             "js": [
-                "logger.js",
-                "network-interceptor.js",
-                "platform-config.js",
-                "gemini-inject.js",
-                "gemini-adapter.js",
-                "content.js"
+                "src/utils/logger.js",
+                "src/utils/network-interceptor.js",
+                "src/platform-config.js",
+                "src/adapters/gemini-inject.js",
+                "src/adapters/gemini-adapter.js",
+                "src/content.js"
             ],
             "run_at": "document_idle"
         },
@@ -89,11 +89,11 @@
                 "https://x.com/i/grok/*"
             ],
             "js": [
-                "logger.js",
-                "network-interceptor.js",
-                "platform-config.js",
-                "grok-adapter.js",
-                "content.js"
+                "src/utils/logger.js",
+                "src/utils/network-interceptor.js",
+                "src/platform-config.js",
+                "src/adapters/grok-adapter.js",
+                "src/content.js"
             ],
             "run_at": "document_idle"
         },
@@ -102,11 +102,11 @@
                 "https://chat.deepseek.com/*"
             ],
             "js": [
-                "logger.js",
-                "network-interceptor.js",
-                "platform-config.js",
-                "deepseek-adapter.js",
-                "content.js"
+                "src/utils/logger.js",
+                "src/utils/network-interceptor.js",
+                "src/platform-config.js",
+                "src/adapters/deepseek-adapter.js",
+                "src/content.js"
             ],
             "run_at": "document_idle"
         }
@@ -114,7 +114,7 @@
     "web_accessible_resources": [
         {
             "resources": [
-                "gemini-page-interceptor.js"
+                "src/adapters/gemini-page-interceptor.js"
             ],
             "matches": [
                 "https://gemini.google.com/*"
