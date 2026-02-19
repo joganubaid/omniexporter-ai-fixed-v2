@@ -57,15 +57,38 @@
     "content_scripts": [
         {
             "matches": [
-                "https://www.perplexity.ai/*",
+                "https://www.perplexity.ai/*"
+            ],
+            "js": [
+                "src/utils/logger.js",
+                "src/utils/network-interceptor.js",
+                "src/platform-config.js",
+                "src/adapters/perplexity-adapter.js",
+                "src/content.js"
+            ]
+        },
+        {
+            "matches": [
                 "https://chatgpt.com/*",
-                "https://chat.openai.com/*",
+                "https://chat.openai.com/*"
+            ],
+            "js": [
+                "src/utils/logger.js",
+                "src/utils/network-interceptor.js",
+                "src/platform-config.js",
+                "src/adapters/chatgpt-adapter.js",
+                "src/content.js"
+            ]
+        },
+        {
+            "matches": [
                 "https://claude.ai/*"
             ],
             "js": [
                 "src/utils/logger.js",
                 "src/utils/network-interceptor.js",
                 "src/platform-config.js",
+                "src/adapters/claude-adapter.js",
                 "src/content.js"
             ]
         },
