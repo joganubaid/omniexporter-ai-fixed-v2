@@ -32,6 +32,9 @@ const GrokAdapter = {
      * @returns {string|null} The extracted UUID, or null if not found
      */
     extractUuid: (url) => {
+        // Try platformConfig patterns first
+        if (typeof platformConfig !== 'undefined') {
+            const uuid = platformConfig.extractUuid('Grok', url);
             if (uuid) return uuid;
         }
 
@@ -194,7 +197,11 @@ const GrokAdapter = {
                 page
             };
         } catch (e) {
-            console.error('[Grok] API fetch failed:', e);
+            const message = e?.message || 'Unknown error';
+            console.error('[Grok] getThreads failed:', message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GrokAdapter', 'getThreads failed', { error: message });
+            }
             throw e;
         }
     },
@@ -320,14 +327,18 @@ const GrokAdapter = {
             return { uuid, title, platform: 'Grok', entries };
 
         } catch (error) {
-            console.error(`[Grok] getThreadDetail failed for ${uuid}:`, error.message);
+            const message = error?.message || 'Unknown error';
+            console.error(`[Grok] getThreadDetail failed for ${uuid}:`, message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GrokAdapter', 'getThreadDetail failed', { error: message, uuid });
+            }
             // Return empty rather than throwing so bulk export can continue
             return {
                 uuid,
                 title: `Grok Conversation (${uuid.slice(0, 8)})`,
                 platform: 'Grok',
                 entries: [],
-                error: error.message
+                error: message
             };
         }
     },

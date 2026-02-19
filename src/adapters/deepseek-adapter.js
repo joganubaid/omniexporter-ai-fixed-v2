@@ -34,6 +34,9 @@ const DeepSeekAdapter = {
      * @returns {string|null} The extracted UUID, or null if not found
      */
     extractUuid: (url) => {
+        // Try platformConfig patterns first
+        if (typeof platformConfig !== 'undefined') {
+            const uuid = platformConfig.extractUuid('DeepSeek', url);
             if (uuid) return uuid;
         }
 
@@ -557,8 +560,12 @@ const DeepSeekAdapter = {
         }
 
         // All endpoints failed
+        const message = 'DeepSeek API unreachable - Check login or try refreshing';
         console.error(`[DeepSeek] All API endpoints failed`);
-        throw new Error('DeepSeek API unreachable - Check login or try refreshing');
+        if (typeof Logger !== 'undefined') {
+            Logger.error('DeepSeekAdapter', 'getThreadDetail failed', { error: message, uuid });
+        }
+        throw new Error(message);
     },
 
 

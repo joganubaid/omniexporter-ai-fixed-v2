@@ -201,6 +201,9 @@ const GeminiAdapter = {
      * @returns {string} The extracted UUID, or a timestamp-based fallback
      */
     extractUuid: (url) => {
+        // Try platformConfig patterns first
+        if (typeof platformConfig !== 'undefined') {
+            const uuid = platformConfig.extractUuid('Gemini', url);
             if (uuid) return uuid;
         }
 
@@ -520,7 +523,11 @@ const GeminiAdapter = {
                 }
             }
         } catch (e) {
-            console.warn('[GeminiAdapter] MaZiqc API failed:', e.message);
+            const message = e?.message || 'Unknown error';
+            console.warn('[GeminiAdapter] MaZiqc API failed:', message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GeminiAdapter', 'getThreads failed', { error: message });
+            }
         }
 
         return { threads, hasMore: false, page };
@@ -658,7 +665,11 @@ const GeminiAdapter = {
             throw new Error('Could not parse message pairs from hNvQHb response');
 
         } catch (error) {
-            console.error(`[Gemini] hNvQHb failed for ${chatId}:`, error.message);
+            const message = error?.message || 'Unknown error';
+            console.error(`[Gemini] hNvQHb failed for ${chatId}:`, message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GeminiAdapter', 'getThreadDetail failed', { error: message, uuid });
+            }
 
             // Fallback: try with WqGlee and Mklfhc as alternate RPC IDs
             const fallbackRpcs = ['WqGlee', 'Mklfhc'];
@@ -689,7 +700,7 @@ const GeminiAdapter = {
                 }
             }
 
-            throw new Error(`Gemini message fetch failed for ${chatId}: ${error.message}`);
+            throw new Error(`Gemini message fetch failed for ${chatId}: ${message}`);
         }
     },
 
