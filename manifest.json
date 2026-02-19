@@ -122,12 +122,25 @@
         },
         {
             "resources": [
-                "auth/callback.html",
-                "auth/notion-oauth.js",
+                "auth/callback.html"
+            ],
+            "matches": [
+                "https://api.notion.com/*"
+            ]
+        },
+        {
+            "resources": [
                 "icons/logos/*.svg"
             ],
             "matches": [
-                "<all_urls>"
+                "https://www.perplexity.ai/*",
+                "https://chatgpt.com/*",
+                "https://chat.openai.com/*",
+                "https://claude.ai/*",
+                "https://gemini.google.com/*",
+                "https://grok.com/*",
+                "https://x.com/*",
+                "https://chat.deepseek.com/*"
             ]
         }
     ],

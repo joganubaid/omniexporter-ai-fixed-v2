@@ -311,15 +311,16 @@ var NotionOAuth = {
      */
     async refreshAccessToken(refreshToken) {
         if (!refreshToken) {
-            throw new Error('No refresh token available');
+            throw new Error('No refresh token available. Please re-authorize.');
         }
 
-        _logOAuth('debug', 'Refreshing access token...');
+        _logOAuth('info', 'Refreshing access token via server...');
 
-        const response = await fetch(this.config.tokenEndpoint, {
+        // Route through Cloudflare Worker — same as exchangeCodeForToken
+        // The server holds the client secret; we never expose it client-side
+        const response = await fetch(this.config.tokenServerEndpoint, {
             method: 'POST',
             headers: {
-                'Authorization': 'Basic ' + btoa(`${this.config.clientId}:${this.config.clientSecret}`),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -329,13 +330,17 @@ var NotionOAuth = {
         });
 
         if (!response.ok) {
-            throw new Error('Token refresh failed');
+            const errorData = await response.json().catch(() => ({}));
+            _logOAuth('error', 'Token refresh failed', { status: response.status });
+            // If refresh fails, user needs to re-authorize
+            await this.disconnect();
+            throw new Error('Session expired. Please reconnect to Notion.');
         }
 
         const tokens = await response.json();
         await this.storeTokens(tokens);
 
-        console.log('[NotionOAuth] ✓ Token refreshed successfully');
+        _logOAuth('info', 'Token refreshed successfully via server');
         return tokens.access_token;
     },
 

@@ -290,6 +290,10 @@ async function handleExtraction(adapter, sendResponse) {
     try {
         const uuid = adapter.extractUuid(window.location.href);
         if (!uuid) throw new Error(`Open a ${adapter.name} chat first.`);
+        // Security: Validate UUID format before using in API calls
+        if (!SecurityUtils.isValidUuid(uuid)) {
+            throw new Error(`Invalid conversation ID format.`);
+        }
 
         const detail = await adapter.getThreadDetail(uuid);
 
@@ -321,6 +325,11 @@ async function handleExtraction(adapter, sendResponse) {
  */
 async function handleExtractionByUuid(adapter, uuid, sendResponse) {
     try {
+        // Security: Validate UUID format before using in API calls
+        if (!uuid || !SecurityUtils.isValidUuid(uuid)) {
+            sendResponse({ success: false, error: 'Invalid conversation ID format.' });
+            return;
+        }
         const detail = await adapter.getThreadDetail(uuid);
 
         // Normalize entries to expected format

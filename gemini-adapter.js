@@ -50,6 +50,8 @@ const GeminiBridge = {
     init() {
         window.addEventListener('message', (event) => {
             if (event.source !== window) return;
+            // Security: Only accept messages from Gemini origin
+            if (event.origin !== 'https://gemini.google.com') return;
             if (!event.data || event.data.type !== 'OMNIEXPORTER_GEMINI') return;
             if (event.data.direction !== 'to-content') return;
 
