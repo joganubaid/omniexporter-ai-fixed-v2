@@ -16,7 +16,7 @@
         targetUrl: '/_/BardChatUi/data/batchexecute',
         targetAction: 'hNvQHb',
         newLimit: 100,
-        debug: true
+        debug: false
     };
 
     function log(...args) {
