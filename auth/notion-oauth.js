@@ -66,7 +66,13 @@ var NotionOAuth = {
         }
 
         const state = crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        await chrome.storage.local.set({ notion_oauth_state: state });
+        const codeVerifier = this._generateCodeVerifier();
+        const codeChallenge = await this._generateCodeChallenge(codeVerifier);
+        await chrome.storage.local.set({
+            notion_oauth_state: state,
+            notion_oauth_state_created: Date.now(),
+            notion_oauth_code_verifier: codeVerifier
+        });
 
         // Build authorization URL
         const authUrl = new URL(this.config.authorizationEndpoint);
@@ -76,6 +82,8 @@ var NotionOAuth = {
         authUrl.searchParams.set('owner', 'user');
         authUrl.searchParams.set('state', state);
         authUrl.searchParams.set('scope', this.config.scopes.join(' '));
+        authUrl.searchParams.set('code_challenge', codeChallenge);
+        authUrl.searchParams.set('code_challenge_method', 'S256');
 
         _logOAuth('info', 'Starting authorization flow');
 
@@ -110,9 +118,15 @@ var NotionOAuth = {
                             return;
                         }
 
-                        const stored = await chrome.storage.local.get(['notion_oauth_state']);
+                        const stored = await chrome.storage.local.get(['notion_oauth_state', 'notion_oauth_state_created']);
                         if (stored.notion_oauth_state && returnedState !== stored.notion_oauth_state) {
                             reject(new Error('OAuth state mismatch. Please try again.'));
+                            return;
+                        }
+
+                        const stateCreated = stored.notion_oauth_state_created || 0;
+                        if (Date.now() - stateCreated > 10 * 60 * 1000) {
+                            reject(new Error('OAuth state expired. Please try again.'));
                             return;
                         }
 
@@ -120,7 +134,7 @@ var NotionOAuth = {
 
                         // Exchange code for access token
                         const tokens = await this.exchangeCodeForToken(code);
-                        await chrome.storage.local.remove(['notion_oauth_state']);
+                        await chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                         resolve(tokens);
                     } catch (error) {
                         reject(error);
@@ -130,12 +144,31 @@ var NotionOAuth = {
         });
     },
 
+    // PKCE helpers
+    _generateCodeVerifier() {
+        const array = new Uint8Array(32);
+        crypto.getRandomValues(array);
+        return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+    },
+
+    async _generateCodeChallenge(verifier) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(verifier);
+        const digest = await crypto.subtle.digest('SHA-256', data);
+        return btoa(String.fromCharCode(...new Uint8Array(digest)))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+    },
+
     /**
      * Exchange authorization code for access token
      * Sends code to our Cloudflare Worker which has the client secret
      */
     async exchangeCodeForToken(code) {
         _logOAuth('debug', 'Exchanging code for token via server...');
+
+        const stored = await chrome.storage.local.get(['notion_oauth_code_verifier']);
 
         // Send code to our server which has the client secret
         const response = await fetch(this.config.tokenServerEndpoint, {
@@ -145,7 +178,8 @@ var NotionOAuth = {
             },
             body: JSON.stringify({
                 code: code,
-                redirect_uri: this.config.redirectUri
+                redirect_uri: this.config.redirectUri,
+                code_verifier: stored.notion_oauth_code_verifier || undefined
             })
         });
 
@@ -257,8 +291,20 @@ var NotionOAuth = {
             'notion_oauth_workspace_name'
         ]);
 
+        // Access token in session storage (ephemeral — cleared on browser close)
+        if (chrome.storage.session) {
+            await chrome.storage.session.set({
+                notion_oauth_access_token: tokens.access_token
+            });
+        } else {
+            // Fallback for older Chrome versions
+            await chrome.storage.local.set({
+                notion_oauth_access_token: tokens.access_token
+            });
+        }
+
+        // Refresh token + metadata in local storage (persistent)
         await chrome.storage.local.set({
-            notion_oauth_access_token: tokens.access_token,
             notion_oauth_refresh_token: tokens.refresh_token,
             notion_oauth_token_expires: expiresAt,
             notion_oauth_workspace_id: tokens.workspace_id || existing.notion_oauth_workspace_id,
@@ -266,7 +312,11 @@ var NotionOAuth = {
             notion_auth_method: 'oauth' // Track which auth method is active
         });
 
-        _logOAuth('info', 'Tokens stored successfully');
+        _logOAuth('info', 'Tokens stored securely', {
+            hasAccessToken: !!tokens.access_token,
+            hasRefreshToken: !!tokens.refresh_token,
+            sessionStorage: !!chrome.storage.session
+        });
 
         // Auto-create export database if not exists
         const { notionDbId } = await chrome.storage.local.get('notionDbId');
@@ -286,6 +336,22 @@ var NotionOAuth = {
      * Get current access token (refreshing if needed)
      */
     async getAccessToken() {
+        // Try session storage first (preferred — ephemeral)
+        if (chrome.storage.session) {
+            const sessionData = await chrome.storage.session.get('notion_oauth_access_token');
+            if (sessionData.notion_oauth_access_token) {
+                // Check if token is expired
+                const { notion_oauth_token_expires, notion_oauth_refresh_token } =
+                    await chrome.storage.local.get(['notion_oauth_token_expires', 'notion_oauth_refresh_token']);
+                if (notion_oauth_token_expires && Date.now() >= notion_oauth_token_expires) {
+                    _logOAuth('info', 'Token expired, refreshing...');
+                    return await this.refreshAccessToken(notion_oauth_refresh_token);
+                }
+                return sessionData.notion_oauth_access_token;
+            }
+        }
+
+        // Fallback to local storage
         const stored = await chrome.storage.local.get([
             'notion_oauth_access_token',
             'notion_oauth_refresh_token',
@@ -348,6 +414,12 @@ var NotionOAuth = {
      * Revoke OAuth access and clear tokens
      */
     async disconnect() {
+        // Clear session storage
+        if (chrome.storage.session) {
+            await chrome.storage.session.remove(['notion_oauth_access_token']);
+        }
+
+        // Clear local storage
         await chrome.storage.local.remove([
             'notion_oauth_access_token',
             'notion_oauth_refresh_token',
@@ -365,14 +437,24 @@ var NotionOAuth = {
      */
     async getStatus() {
         const stored = await chrome.storage.local.get([
-            'notion_oauth_access_token',
             'notion_oauth_token_expires',
             'notion_oauth_workspace_name',
             'notion_auth_method'
         ]);
 
+        // Check session storage for access token first
+        let hasAccessToken = false;
+        if (chrome.storage.session) {
+            const sessionData = await chrome.storage.session.get('notion_oauth_access_token');
+            hasAccessToken = !!sessionData.notion_oauth_access_token;
+        }
+        if (!hasAccessToken) {
+            const localData = await chrome.storage.local.get('notion_oauth_access_token');
+            hasAccessToken = !!localData.notion_oauth_access_token;
+        }
+
         return {
-            connected: !!stored.notion_oauth_access_token,
+            connected: hasAccessToken,
             method: stored.notion_auth_method || 'token',
             workspace: stored.notion_oauth_workspace_name || null,
             expires: stored.notion_oauth_token_expires ? new Date(stored.notion_oauth_token_expires) : null

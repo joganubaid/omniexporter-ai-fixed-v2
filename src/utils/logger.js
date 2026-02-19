@@ -126,6 +126,7 @@ const Logger = {
 
         // Clear all log-related storage
         await chrome.storage.local.remove([
+            this.config?.storageKey || 'omniExporterLogs',
             'omniLogs',
             'logEntries',
             'testHistory',
@@ -224,7 +225,8 @@ const Logger = {
             // Limit object depth and size
             const sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
                 // Remove sensitive keys
-                if (['password', 'token', 'secret', 'apiKey', 'access_token'].includes(key.toLowerCase())) {
+                const sensitiveKeys = ['password', 'token', 'secret', 'key', 'authorization', 'cookie', 'session', 'credential', 'bearer'];
+                if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
                     return '[REDACTED]';
                 }
                 // Truncate long strings

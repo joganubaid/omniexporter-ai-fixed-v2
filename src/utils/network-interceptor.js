@@ -2,6 +2,21 @@
 // Auto-discovers API endpoints for chat lists
 // SAFE VERSION: All modifications are wrapped in try-catch to prevent page crashes
 
+// Secure namespace — non-configurable to resist tampering
+if (!window.__omniExporterInternal) {
+    Object.defineProperty(window, '__omniExporterInternal', {
+        value: {
+            chatList: [],
+            fetchIntercepted: false,
+            xhrIntercepted: false,
+            // Simple integrity token — not cryptographic, just deters casual tampering
+            _token: Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('')
+        },
+        writable: false,
+        configurable: false
+    });
+}
+
 const NetworkInterceptor = {
     capturedEndpoints: {},
     chatListData: null,
@@ -62,8 +77,8 @@ const NetworkInterceptor = {
     // Intercept Fetch API - SAFE version
     interceptFetch() {
         // Only intercept if not already intercepted
-        if (window._omniFetchIntercepted) return;
-        window._omniFetchIntercepted = true;
+        if (window.__omniExporterInternal.fetchIntercepted) return;
+        window.__omniExporterInternal.fetchIntercepted = true;
 
         const originalFetch = window.fetch;
         const self = this;
@@ -111,7 +126,7 @@ const NetworkInterceptor = {
                 this.chatListData = this.extractChatList(data);
 
                 // Store for popup access
-                window.__omniChatList = this.chatListData;
+                window.__omniExporterInternal.chatList = this.chatListData;
                 window.__omniEndpoints = this.capturedEndpoints;
 
                 console.log('[NetworkInterceptor] Captured chat list for', platform, ':', this.chatListData.length, 'items');
@@ -178,7 +193,7 @@ const NetworkInterceptor = {
 
     // Get captured chat list
     getChatList() {
-        return window.__omniChatList || [];
+        return window.__omniExporterInternal.chatList || [];
     },
 
     // Get discovered endpoints
