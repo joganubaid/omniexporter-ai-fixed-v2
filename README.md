@@ -1,274 +1,267 @@
 # 🚀 OmniExporter AI - Enterprise Edition
 
-**Version 5.0.0** - Export AI conversations from Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek to Markdown, JSON, HTML, PDF & Notion.
+![Version](https://img.shields.io/badge/version-5.1.0-blue) ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green) ![Platforms](https://img.shields.io/badge/platforms-6-orange) ![Formats](https://img.shields.io/badge/export%20formats-5-purple)
+
+Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek** to Markdown, JSON, HTML, PDF, Plain Text, and Notion — with a full dashboard, auto-sync, and OAuth2 Notion integration.
 
 ## 📋 Table of Contents
 
-- [Features](#features)
-- [Supported Platforms](#supported-platforms)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Recent Improvements](#recent-improvements)
-- [Project Structure](#project-structure)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
+- [Features](#-features)
+- [Supported Platforms](#-supported-platforms)
+- [Installation](#-installation)
+- [Configuration](#️-configuration)
+- [Usage](#-usage)
+- [Project Structure](#-project-structure)
+- [Security](#-security)
+- [Development](#️-development)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ## ✨ Features
 
 ### Multi-Platform Support
-- ✅ **Perplexity** - Full API integration
-- ✅ **ChatGPT** - Enhanced with multiple endpoint fallbacks
-- ✅ **Claude** - Complete conversation export
-- ✅ **Gemini** - Improved RPC ID handling
-- ✅ **Grok** - Full support with retries
-- ✅ **DeepSeek** - Enhanced auth token detection
+- ✅ **Perplexity** — API-based, full pagination
+- ✅ **ChatGPT** — Multiple endpoint fallbacks, DOM fallback
+- ✅ **Claude** — Organization-based access
+- ✅ **Gemini** — Multiple RPC IDs, enhanced parsing
+- ✅ **Grok** — Rate limit handling with retries
+- ✅ **DeepSeek** — Multiple auth token sources, cursor pagination
 
 ### Export Formats
-- 📝 **Markdown** (.md) - With frontmatter metadata
-- 📊 **JSON** - Structured data export
-- 🌐 **HTML** - Beautiful styled exports with platform logos
-- 📄 **Plain Text** (.txt) - Simple text format
-- 📕 **PDF** - Print-ready format
+- 📝 **Markdown** (.md) — With YAML frontmatter metadata
+- 📊 **JSON** — Structured data export
+- 🌐 **HTML** — Styled exports with platform logos
+- 📄 **Plain Text** (.txt) — Simple text format
+- 📕 **PDF** — Print-ready format (via browser print dialog)
 
 ### Enterprise Features
-- 🔄 **Auto-Sync** - Automatic Notion synchronization
-- 📊 **Dashboard** - Comprehensive export management
-- 🔍 **Bulk Export** - Export all conversations at once
-- 📈 **Analytics** - Export history and failure tracking
-- 🔐 **OAuth2** - Secure Notion integration (NEW!)
-- 🎨 **Platform Logos** - Visual branding in exports (NEW!)
+- 🔄 **Auto-Sync** — Automatic Notion synchronization on a configurable schedule
+- 📊 **Dashboard** — Bulk export management with history and failure tracking
+- 🔍 **Bulk Export** — Export all conversations at once with pagination
+- 📈 **Analytics** — Export history and audit logging
+- 🔐 **OAuth2** — Secure Notion integration with automatic token refresh
+- 🎨 **Platform Logos** — SVG branding in HTML/Markdown exports
+- 🔧 **Dev Tools** — Built-in log viewer with filtering and export
 
 ## 🌐 Supported Platforms
 
-| Platform | Status | Features |
-|----------|--------|----------|
-| Perplexity | ✅ Working | API-based, full pagination |
-| ChatGPT | ✅ **Fixed** | Multiple endpoints, DOM fallback |
-| Claude | ✅ Working | Organization-based access |
-| Gemini | ✅ **Fixed** | Multiple RPC IDs, enhanced parsing |
-| Grok | ✅ Working | Rate limit handling |
-| DeepSeek | ✅ **Fixed** | Multiple token sources, cursor pagination |
+| Platform | URL | Status | Extraction Method |
+|----------|-----|--------|-------------------|
+| Perplexity | perplexity.ai | ✅ Working | API-first + DOM fallback |
+| ChatGPT | chatgpt.com | ✅ Working | API-first + DOM fallback |
+| Claude | claude.ai | ✅ Working | API-first + DOM fallback |
+| Gemini | gemini.google.com | ✅ Working | API-first (RPC) + DOM fallback |
+| Grok | grok.com / x.com | ✅ Working | API-first + DOM fallback |
+| DeepSeek | chat.deepseek.com | ✅ Working | API-first + DOM fallback |
 
 ## 🔧 Installation
 
 ### From Chrome Web Store
-1. Visit the [Chrome Web Store](#) (link to be added)
+1. Visit the [Chrome Web Store](#) *(link coming soon)*
 2. Click "Add to Chrome"
-3. Grant necessary permissions
+3. Grant the requested permissions
 
-### Manual Installation (Development)
-1. Clone this repository
-```bash
-git clone <repository-url>
-cd chats-export-to-notion
-```
-
-2. Open Chrome and navigate to `chrome://extensions/`
-3. Enable "Developer mode" (top right)
-4. Click "Load unpacked"
-5. Select the extension directory
+### Manual Installation (Developer Mode)
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/joganubaid/omniexporter-ai-fixed-v2.git
+   cd omniexporter-ai-fixed-v2
+   ```
+2. Copy and configure `config.js` (see [Configuration](#️-configuration) below)
+3. Open Chrome and navigate to `chrome://extensions/`
+4. Enable **Developer mode** (toggle in the top-right corner)
+5. Click **Load unpacked** and select the repository root directory
 
 ## ⚙️ Configuration
 
-### Notion Setup
+### 1. Create `config.js`
 
-#### Option 1: OAuth2 (Recommended)
-1. Create a Notion integration at [https://www.notion.so/my-integrations](https://www.notion.so/my-integrations)
-2. Load the extension in Chrome, then open DevTools console and run:
-   - `chrome.identity.getRedirectURL('notion')`
-3. Copy the returned URL (looks like `https://<extension-id>.chromiumapp.org/notion`)
-4. Add it to your Notion integration **OAuth Redirect URLs**
-5. Copy Client ID and Client Secret into the extension settings
-6. Click "Connect OAuth2" and authorize
+```bash
+cp config.example.js config.js
+```
 
-#### Option 2: Integration Token (Fallback)
-1. Create a Notion integration
-2. Copy the Internal Integration Token
-3. In extension options, paste the token
-4. Select or create a database for exports
+Edit `config.js` with your values. The file is listed in `.gitignore` and will **not** be committed.
 
-### Platform Authentication
-- All platforms require you to be logged in through your browser
-- The extension uses your existing session cookies
-- No additional authentication needed
+### 2. Notion OAuth2 Setup (Recommended)
+
+> **Security note:** The Notion Client **Secret** is stored on the Cloudflare Worker — it is **never** placed in the extension or `config.js`. Only the Client **ID** (a public value) goes in `config.js`.
+
+1. Go to [https://www.notion.so/my-integrations](https://www.notion.so/my-integrations) and create an integration
+2. After loading the extension, open DevTools console and run:
+   ```javascript
+   chrome.identity.getRedirectURL('notion')
+   ```
+3. Copy the returned URL (e.g. `https://<extension-id>.chromiumapp.org/notion`) and add it to your Notion integration's **OAuth Redirect URLs**
+4. Copy the **Client ID** into `config.js` as `NOTION_CLIENT_ID`
+5. Deploy the Cloudflare Worker (see `cloudflare-worker/DEPLOY.md`) and set your **Client Secret** there as an environment variable
+6. Set `OAUTH_SERVER_URL` in `config.js` to your Worker URL
+7. In the extension options, click **Connect to Notion** and complete the OAuth flow
+
+### 3. Notion Integration Token (Fallback)
+1. Create a Notion internal integration and copy the token
+2. In extension options, paste the token in the **Integration Token** field
+3. Select or create a database for exports
+
+### 4. Platform Authentication
+No extra configuration needed. The extension uses your existing browser session cookies — just make sure you are logged in to each AI platform in Chrome.
+
+### 5. Cloudflare Worker Deployment
+See [`cloudflare-worker/DEPLOY.md`](cloudflare-worker/DEPLOY.md) for step-by-step instructions on deploying the OAuth proxy worker.
 
 ## 📖 Usage
 
-### Quick Export (Current Conversation)
-1. Navigate to any supported AI platform
-2. Open a conversation
-3. Click the extension icon
-4. Choose export format or "Save to Notion"
+### Keyboard Shortcuts
+| Shortcut | Action |
+|----------|--------|
+| `Alt+Shift+E` | Open extension popup |
+| `Alt+Shift+D` | Open dashboard |
 
-### Bulk Export (Dashboard)
-1. Click "Open Dashboard" in popup
-2. Click "Load All Threads"
-3. Select conversations to export
-4. Choose destination (Notion or file export)
-5. Click "Export Selected"
+### Quick Export (Current Conversation)
+1. Navigate to any supported AI platform and open a conversation
+2. Click the OmniExporter AI icon in the toolbar (or press `Alt+Shift+E`)
+3. Choose an export format or click **Save to Notion**
+
+### Bulk Export via Dashboard
+1. Open the dashboard (`Alt+Shift+D` or click **Open Dashboard** in the popup)
+2. Click **Load All Threads** to paginate through all conversations
+3. Select the conversations you want to export
+4. Choose a destination (Notion or local file export)
+5. Click **Export Selected**
 
 ### Auto-Sync
-1. Open extension options
-2. Enable "Auto-Sync to Notion"
-3. Set sync interval (default: 60 minutes)
-4. Conversations are automatically synced
-
-## 🆕 Recent Improvements (v5.0)
-
-### Platform Adapter Fixes
-- **ChatGPT Adapter**
-  - ✅ Multiple endpoint fallbacks (`/backend-api/conversation`, `/api/conversation`)
-  - ✅ Enhanced OAI-Device-Id header handling
-  - ✅ Improved DOM extraction with updated selectors for 2024 UI
-  - ✅ Better error messages for debugging
-
-- **Gemini Adapter**
-  - ✅ Multiple RPC ID attempts (`hNvQHb`, `WqGlee`, `Mklfhc`)
-  - ✅ Enhanced response parsing with multiple strategies
-  - ✅ Improved error handling and logging
-  - ✅ Updated DOM selectors for latest UI
-
-- **DeepSeek Adapter**
-  - ✅ Multiple auth token source detection
-  - ✅ Enhanced API endpoint fallbacks
-  - ✅ Better role detection (USER/ASSISTANT)
-  - ✅ Improved response path validation
-
-### New Features
-- ✅ **Notion OAuth2 Integration** - Secure authentication with automatic token refresh
-- ✅ **Platform Logos** - SVG logos in exported HTML/Markdown files
-- ✅ **Enterprise Logging System** - Comprehensive debugging with storage
-- ✅ **Dev Tools Tab** - Built-in log viewer in Options page
-- ✅ **Better Error Messages** - User-friendly error descriptions
-
-### Developer Tools (v5.1)
-New debugging features for troubleshooting:
-
-- 🔧 **Debug Mode Toggle** - Enable/disable detailed logging
-- 📊 **Log Viewer** - View logs directly in Options → Dev Tools tab
-- 🔍 **Filtering** - Filter by level (Error/Warn/Info/Debug) and module
-- 📥 **Export Logs** - Download as JSON or text file
-- 🤖 **Copy for AI** - Generate AI-friendly debug reports
-- ⏰ **Auto-Refresh** - Real-time log updates (every 3 seconds)
-
-### Code Quality
-- ✅ Comprehensive error handling across all adapters
-- ✅ Multiple fallback strategies for robustness
-- ✅ Enterprise logging with 30+ instrumentation points
-- ✅ Service worker keep-alive for MV3 compatibility
+1. Open **Extension Options**
+2. Enable **Auto-Sync to Notion**
+3. Set the sync interval (default: 60 minutes)
+4. The extension will automatically sync new conversations in the background
 
 ## 📁 Project Structure
 
-```
-chats-export-to-notion/
-├── auth/                   # Authentication modules
-│   ├── notion-oauth.js    # OAuth2 implementation
-│   └── callback.html      # OAuth callback page (chromiumapp redirect)
-├── icons/                  # Extension icons
-│   └── logos/             # Platform logo SVGs
-│       ├── perplexity.svg
-│       ├── chatgpt.svg
-│       ├── claude.svg
-│       ├── gemini.svg
-│       ├── grok.svg
-│       └── deepseek.svg
+PR #2 reorganized all source files from a flat root into the `src/` directory:
 
-├── background.js           # Service worker
-├── content.js              # Content script (contains adapters)
-├── manifest.json           # Extension manifest
-├── platform-config.js      # Platform configuration
-├── export-manager.js       # Export logic
-├── *-adapter.js           # Platform-specific adapters
-├── popup.html/js/css      # Extension popup
-├── options.html/js/css    # Settings page
-└── README.md              # This file
 ```
+omniexporter-ai-fixed-v2/
+├── manifest.json                  # Extension manifest (MV3, v5.1.0)
+├── config.example.js              # Configuration template (copy to config.js)
+├── src/
+│   ├── background.js              # Service worker (alarms, context menus, messaging)
+│   ├── content.js                 # Content script (Perplexity, ChatGPT, Claude adapters + re-injection guard)
+│   ├── platform-config.js         # Endpoint configs, DataExtractor, VersionDetector
+│   ├── adapters/
+│   │   ├── gemini-adapter.js      # Gemini conversation adapter
+│   │   ├── gemini-inject.js       # Injected script for Gemini RPC interception
+│   │   ├── gemini-page-interceptor.js  # Page-level interceptor (web_accessible_resource)
+│   │   ├── grok-adapter.js        # Grok conversation adapter
+│   │   └── deepseek-adapter.js    # DeepSeek conversation adapter
+│   ├── utils/
+│   │   ├── logger.js              # Enterprise logging with storage
+│   │   ├── network-interceptor.js # XHR/fetch interception utility
+│   │   ├── export-manager.js      # Format conversion and file export
+│   │   └── toast.js               # In-page notification toasts
+│   └── ui/
+│       ├── popup.html / popup.js / popup.css      # Extension popup
+│       ├── options.html / options.js / options.css # Settings & dashboard
+│       ├── notion-picker.js / notion-picker.css   # Notion database picker
+│       └── toast.css              # Toast notification styles
+├── auth/
+│   ├── notion-oauth.js            # OAuth2 implementation (loaded via importScripts)
+│   └── callback.html              # OAuth redirect handler
+├── cloudflare-worker/
+│   ├── worker.js                  # OAuth proxy worker (handles client secret server-side)
+│   ├── wrangler.toml              # Cloudflare deployment config
+│   └── DEPLOY.md                  # Deployment guide
+└── icons/
+    ├── icon128.png                # Extension icon
+    └── logos/                     # Platform SVG logos
+        ├── perplexity.svg
+        ├── chatgpt.svg
+        ├── claude.svg
+        ├── gemini.svg
+        ├── grok.svg
+        └── deepseek.svg
+```
+
+## 🔐 Security
+
+OmniExporter AI v5.1.0 includes several security hardening measures:
+
+- **Server-side OAuth secret** — The Notion Client Secret lives only on the Cloudflare Worker; it is never bundled in the extension
+- **Content Security Policy** — `script-src 'self'` prevents remote script execution; `connect-src` is limited to known API domains
+- **Scoped `web_accessible_resources`** — Resources are accessible only from the specific platform origins that need them (not `<all_urls>`)
+- **`postMessage` origin validation** — Listeners in `gemini-adapter.js` and `gemini-inject.js` validate `event.origin` against the expected platform domain
+- **UUID validation** — `SecurityUtils.isValidUuid()` is called at `content.js` entry points before any API calls
+- **HTML sanitization** — `SecurityUtils.sanitizeHtml()` prevents XSS in exported content
+- **OAuth tokens in `chrome.storage.local`** — Encrypted at rest by Chrome; never written to disk by the extension
+
+See [SECURITY.md](SECURITY.md) for the full security policy and vulnerability reporting process.
 
 ## 🛠️ Development
 
 ### Prerequisites
-- Node.js 16+ (for development tools)
-- Chrome/Edge browser
-- Basic knowledge of Chrome Extensions
+- Chrome or Edge browser
+- A deployed Cloudflare Worker (optional, only needed for Notion OAuth)
 
-### Running in Development
-1. Make changes to source files
-2. Reload extension in `chrome://extensions/`
-3. Test functionality
-4. Check console logs for debugging
+### Running Locally
+1. Clone and configure as described in [Installation](#-installation)
+2. Make your source changes under `src/`
+3. Reload the extension at `chrome://extensions/`
+4. Use the **Dev Tools** tab in Options to view real-time logs
 
-### Adding a New Platform
-1. Create adapter file: `newplatform-adapter.js`
-2. Implement required methods:
-   - `extractUuid(url)`
-   - `getThreads(page, limit)`
-   - `getThreadDetail(uuid)`
-   - `extractFromDOM(uuid)`
-3. Add configuration in `platform-config.js`
-4. Update `content.js` to include new adapter
-5. Add logo SVG in `icons/logos/`
-6. Test thoroughly
+### Adding a New Platform Adapter
+1. Create `src/adapters/newplatform-adapter.js` implementing:
+   - `name` — platform identifier string
+   - `extractUuid(url)` — parse the conversation UUID from the page URL
+   - `getThreads(page, limit)` — paginated list of conversations
+   - `getThreadDetail(uuid)` — full conversation content
+2. Add endpoint configuration in `src/platform-config.js`
+3. Register the adapter in `manifest.json` content scripts and in `src/content.js`
+4. Add a logo SVG to `icons/logos/`
+5. Test API extraction **and** DOM fallback paths
 
-### Code Style
-- Use clear, descriptive variable names
-- Add comments for complex logic
-- Follow existing error handling patterns
-- Include console.log statements for debugging
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ## 🐛 Troubleshooting
 
 ### "API Access Failed" Errors
+
 **ChatGPT:**
-- Open the conversation in your browser first
-- Check if you're logged in
-- Try using DOM extraction (works for current conversation only)
+- Make sure you are logged in and have the conversation open in your browser
+- The extension tries three API endpoints automatically; check the Dev Tools logs for which one failed
 
 **Gemini:**
-- Verify you're on gemini.google.com
-- Check browser console for detailed errors
-- RPC IDs may have changed - check logs for alternative IDs
+- Verify you are on `gemini.google.com`
+- Gemini uses internal RPC IDs that may change — check logs for which RPC ID succeeded
 
 **DeepSeek:**
-- Ensure you're logged in
-- Check localStorage for auth token
-- Try refreshing the page
+- Make sure you are logged in
+- The extension tries multiple auth token sources from `localStorage`; refresh the page and try again
+
+**Perplexity / Claude / Grok:**
+- Confirm you are on the correct domain and logged in
+- Re-enable the extension or clear extension storage if authentication state is stale
 
 ### Notion Sync Issues
+
 **OAuth2:**
-- Verify Client ID and Secret are correct
-- Check redirect URI matches extension ID
-- Re-authorize if tokens expired
+- Verify `NOTION_CLIENT_ID` in `config.js` matches your Notion integration
+- Ensure the redirect URI registered in Notion matches `chrome.identity.getRedirectURL('notion')`
+- The Client Secret must be set as an environment variable in the Cloudflare Worker, not in `config.js`
+- Re-authorize via Options if tokens have expired
 
-**Token Auth:**
-- Verify token has correct permissions
-- Ensure database is shared with integration
-- Check database ID is correct
+**Integration Token:**
+- Verify the token has the correct capabilities (read/write content)
+- Ensure the target database is shared with your integration
+- Check that the database ID is correct
 
-### Extension Not Working
-1. Check extension is enabled in `chrome://extensions/`
-2. Reload the extension
-3. Clear extension storage and reconfigure
-4. Check browser console (F12) for errors
-5. Report issue with console logs
+### Extension Not Loading
+1. Confirm the extension is enabled at `chrome://extensions/`
+2. Click **Reload** on the extension card
+3. Check the service worker console for errors (click the "Service worker" link on the extensions page)
+4. Clear extension storage via Options → Advanced → Reset, then reconfigure
 
 ## 📝 Contributing
 
-We welcome contributions! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request with detailed description
-
-### Areas for Contribution
-- 🌐 Add support for new AI platforms
-- 🎨 Improve UI/UX
-- 🐛 Fix bugs and improve error handling
-- 📖 Improve documentation
-- ✅ Add automated tests
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code guidelines, and the pull request process.
 
 ## 📄 License
 
@@ -276,15 +269,9 @@ We welcome contributions! Please:
 
 ## 🙏 Acknowledgments
 
-- All AI platforms for their amazing services
-- Notion for the powerful API
-- Chrome Extension community for resources and support
-
-## 📞 Support
-
-- **Issues:** [GitHub Issues](#)
-- **Email:** [Add email]
-- **Discord:** [Add Discord server]
+- The teams behind Perplexity, ChatGPT, Claude, Gemini, Grok, and DeepSeek for their platforms
+- Notion for their powerful API
+- The Chrome Extensions developer community
 
 ---
 

@@ -5,6 +5,45 @@ All notable changes to OmniExporter AI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-02-19
+
+### 🔐 Security Hardening
+
+#### Sensitive Data Removal
+- Deleted committed user data files (claude_chat_detail_pretty.json, etc.)
+- Added comprehensive .gitignore patterns for response dumps, HAR files, and platform-specific JSON
+
+#### Token Refresh Fix (auth/notion-oauth.js)
+- Fixed broken `refreshAccessToken()` that referenced non-existent `this.config.tokenEndpoint` and `this.config.clientSecret`
+- Now routes through Cloudflare Worker (`tokenServerEndpoint`) — client secret stays server-side
+- Added `this.disconnect()` on refresh failure with user-actionable error
+
+#### Manifest Permissions Tightened
+- Replaced `<all_urls>` in `web_accessible_resources` with minimal-scope blocks
+- Removed `auth/notion-oauth.js` from `web_accessible_resources` (loaded via `importScripts`, not web-accessible)
+- `auth/callback.html` scoped to `https://api.notion.com/*` only
+- `icons/logos/*.svg` scoped to 8 supported platform origins only
+
+#### Input Validation
+- Added `event.origin` guard on `postMessage` listeners in `gemini-adapter.js` and `gemini-inject.js`
+- Changed `postMessage` target from `'*'` to `window.location.origin`
+- Added `SecurityUtils.isValidUuid()` checks at `content.js` entry points before API calls
+
+### 🏗️ Architecture Restructure
+- Reorganized flat root into `src/` folder structure
+- New folders: `src/adapters/`, `src/utils/`, `src/ui/`
+- Updated all `manifest.json`, HTML, and cross-reference paths
+- Zero functional changes — pure organizational improvement
+
+### 📝 Documentation
+- Complete README.md rewrite with accurate project structure, security practices, and configuration guide
+- Updated CHANGELOG.md with v5.1.0 security and architecture changes
+- Enhanced config.example.js with inline documentation
+- Added SECURITY.md with vulnerability reporting policy
+- Added CONTRIBUTING.md with development setup and code guidelines
+
+---
+
 ## [5.0.0] - 2024-01-16
 
 ### 🎉 Major Release - Platform Fixes & OAuth2
@@ -202,7 +241,8 @@ This release focuses on fixing the three non-working platforms (ChatGPT, Gemini,
 
 ## Version History
 
-- **5.0.0** - Platform fixes, OAuth2, logos (Current)
+- **5.1.0** - Security hardening, architecture restructure, documentation overhaul (Current)
+- **5.0.0** - Platform fixes, OAuth2, logos
 - **4.2.0** - Multi-platform support, dashboard
 - **4.0.0** - Enterprise features, auto-sync
 - **3.0.0** - Multiple export formats
