@@ -2,9 +2,23 @@
 // background.js - Enterprise Background Service Worker (Phase 10-12)
 
 try {
-    importScripts('logger.js', 'config.js', 'auth/notion-oauth.js');
+    importScripts('logger.js');
 } catch (e) {
-    console.error("Failed to load dependencies:", e);
+    console.error("[OmniExporter] Failed to load logger.js:", e);
+}
+
+// config.js is gitignored — may not exist on fresh clone
+// Extension uses defaults from auth/notion-oauth.js if config.js is missing
+try {
+    importScripts('config.js');
+} catch (e) {
+    console.warn("[OmniExporter] config.js not found — using default configuration. Copy config.example.js to config.js to customize.");
+}
+
+try {
+    importScripts('auth/notion-oauth.js');
+} catch (e) {
+    console.error("[OmniExporter] Failed to load auth/notion-oauth.js:", e);
 }
 
 // Initialize logger for background script
