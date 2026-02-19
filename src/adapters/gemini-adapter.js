@@ -20,7 +20,7 @@
     try {
         const script = document.createElement('script');
         script.id = 'omni-gemini-interceptor';
-        script.src = chrome.runtime.getURL('gemini-page-interceptor.js');
+        script.src = chrome.runtime.getURL('src/adapters/gemini-page-interceptor.js');
         script.onload = function () {
             console.log('[GeminiAdapter] Page interceptor injected successfully');
             this.remove(); // Clean up script tag after execution
