@@ -39,3 +39,16 @@ perplexity_*.json
 gemini_*.json
 grok_*.json
 deepseek_*.json
+
+# Development/test scripts — not part of the extension
+analyze_*.js
+browser-e2e-tests.js
+tests.js
+*_tests.js
+*_test.js
+
+# Internal dev notes (keep in branches, not master)
+*_ANALYSIS.md
+*_FINDINGS.md
+*_SUMMARY.md
+*_AUDIT.md

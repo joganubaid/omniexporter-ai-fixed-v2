@@ -28,40 +28,40 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
     // ============================================
     if (!window.SecurityUtils) {
         window.SecurityUtils = {
-    // Validate UUID format to prevent injection
-    isValidUuid: (uuid) => {
-        if (!uuid || typeof uuid !== 'string') return false;
-        // Allow alphanumeric, underscore, hyphen, 8-128 chars
-        return /^[a-zA-Z0-9_-]{8,128}$/.test(uuid);
-    },
+            // Validate UUID format to prevent injection
+            isValidUuid: (uuid) => {
+                if (!uuid || typeof uuid !== 'string') return false;
+                // Allow alphanumeric, underscore, hyphen, 8-128 chars
+                return /^[a-zA-Z0-9_-]{8,128}$/.test(uuid);
+            },
 
-    // Sanitize HTML to prevent XSS
-    sanitizeHtml: (str) => {
-        if (typeof str !== 'string') return '';
-        return str.replace(/[&<>"']/g, (m) => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;'
-        })[m]);
-    },
+            // Sanitize HTML to prevent XSS
+            sanitizeHtml: (str) => {
+                if (typeof str !== 'string') return '';
+                return str.replace(/[&<>"']/g, (m) => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                })[m]);
+            },
 
-    // Fetch with timeout to prevent hanging
-    fetchWithTimeout: async (url, options = {}, timeoutMs = 30000) => {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+            // Fetch with timeout to prevent hanging
+            fetchWithTimeout: async (url, options = {}, timeoutMs = 30000) => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-        try {
-            const response = await fetch(url, {
-                ...options,
-                signal: controller.signal
-            });
-            return response;
-        } finally {
-            clearTimeout(timeout);
-        }
-    },
+                try {
+                    const response = await fetch(url, {
+                        ...options,
+                        signal: controller.signal
+                    });
+                    return response;
+                } finally {
+                    clearTimeout(timeout);
+                }
+            },
 
             // Validate API response structure
             isValidApiResponse: (data) => {
@@ -78,112 +78,112 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
     // ============================================
     if (!window.ContentScriptManager) {
         window.ContentScriptManager = class ContentScriptManager {
-    constructor() {
-        this.messageHandler = null;
-        this.cleanupFunctions = [];
-    }
+            constructor() {
+                this.messageHandler = null;
+                this.cleanupFunctions = [];
+            }
 
-    initialize() {
-        // Remove existing listener if any (safety against multiple injections)
-        this.cleanup();
+            initialize() {
+                // Remove existing listener if any (safety against multiple injections)
+                this.cleanup();
 
-        this.messageHandler = (request, sender, sendResponse) => {
-            this.handleMessage(request, sendResponse);
-            return true; // Keep message channel open for async response
-        };
+                this.messageHandler = (request, sender, sendResponse) => {
+                    this.handleMessage(request, sendResponse);
+                    return true; // Keep message channel open for async response
+                };
 
-        chrome.runtime.onMessage.addListener(this.messageHandler);
+                chrome.runtime.onMessage.addListener(this.messageHandler);
 
-        // Cleanup on visibility change (optional optimization)
-        const visibilityHandler = () => {
-            if (document.hidden) {
-                // We could pause things here if needed
+                // Cleanup on visibility change (optional optimization)
+                const visibilityHandler = () => {
+                    if (document.hidden) {
+                        // We could pause things here if needed
+                    }
+                };
+                document.addEventListener('visibilitychange', visibilityHandler);
+                this.cleanupFunctions.push(() => {
+                    document.removeEventListener('visibilitychange', visibilityHandler);
+                });
+
+                // Fix 16: SPA Navigation Handling
+                const navigationHandler = () => {
+                    const adapter = getPlatformAdapter();
+                    if (adapter) {
+                        const newUuid = adapter.extractUuid(window.location.href);
+                        console.log('[OmniExporter] SPA navigation detected, new conversation:', newUuid);
+                    }
+                };
+
+                // Handle browser back/forward
+                window.addEventListener('popstate', navigationHandler);
+                this.cleanupFunctions.push(() => {
+                    window.removeEventListener('popstate', navigationHandler);
+                });
+
+                // Intercept pushState/replaceState for SPA routing
+                const originalPushState = history.pushState;
+                const originalReplaceState = history.replaceState;
+
+                history.pushState = function (...args) {
+                    originalPushState.apply(this, args);
+                    navigationHandler();
+                };
+
+                history.replaceState = function (...args) {
+                    originalReplaceState.apply(this, args);
+                    navigationHandler();
+                };
+
+                this.cleanupFunctions.push(() => {
+                    history.pushState = originalPushState;
+                    history.replaceState = originalReplaceState;
+                });
+
+                console.log("OmniExporter AI Content Script Initialized");
+            }
+
+            cleanup() {
+                if (this.messageHandler) {
+                    chrome.runtime.onMessage.removeListener(this.messageHandler);
+                    this.messageHandler = null;
+                }
+                this.cleanupFunctions.forEach(fn => fn());
+                this.cleanupFunctions = [];
+                console.log("OmniExporter AI Content Script Cleaned Up");
+            }
+
+            async handleMessage(request, sendResponse) {
+                // Phase 4: Health check handler
+                if (request.type === 'HEALTH_CHECK') {
+                    sendResponse({ healthy: true, timestamp: Date.now() });
+                    return;
+                }
+
+                const adapter = getPlatformAdapter();
+                if (!adapter) {
+                    sendResponse({ success: false, error: "Unsupported platform." });
+                    return;
+                }
+
+                try {
+                    if (request.type === "EXTRACT_CONTENT") {
+                        await handleExtraction(adapter, sendResponse);
+                    } else if (request.type === "EXTRACT_CONTENT_BY_UUID") {
+                        await handleExtractionByUuid(adapter, request.payload.uuid, sendResponse);
+                    } else if (request.type === "GET_THREAD_LIST") {
+                        await handleGetThreadList(adapter, request.payload, sendResponse);
+                    } else if (request.type === "GET_THREAD_LIST_OFFSET") {
+                        await handleGetThreadListOffset(adapter, request.payload, sendResponse);
+                    } else if (request.type === "GET_SPACES") {
+                        await handleGetSpaces(adapter, sendResponse);
+                    } else if (request.type === "GET_PLATFORM_INFO") {
+                        sendResponse({ success: true, platform: adapter.name });
+                    }
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
             }
         };
-        document.addEventListener('visibilitychange', visibilityHandler);
-        this.cleanupFunctions.push(() => {
-            document.removeEventListener('visibilitychange', visibilityHandler);
-        });
-
-        // Fix 16: SPA Navigation Handling
-        const navigationHandler = () => {
-            const adapter = getPlatformAdapter();
-            if (adapter) {
-                const newUuid = adapter.extractUuid(window.location.href);
-                console.log('[OmniExporter] SPA navigation detected, new conversation:', newUuid);
-            }
-        };
-
-        // Handle browser back/forward
-        window.addEventListener('popstate', navigationHandler);
-        this.cleanupFunctions.push(() => {
-            window.removeEventListener('popstate', navigationHandler);
-        });
-
-        // Intercept pushState/replaceState for SPA routing
-        const originalPushState = history.pushState;
-        const originalReplaceState = history.replaceState;
-
-        history.pushState = function (...args) {
-            originalPushState.apply(this, args);
-            navigationHandler();
-        };
-
-        history.replaceState = function (...args) {
-            originalReplaceState.apply(this, args);
-            navigationHandler();
-        };
-
-        this.cleanupFunctions.push(() => {
-            history.pushState = originalPushState;
-            history.replaceState = originalReplaceState;
-        });
-
-        console.log("OmniExporter AI Content Script Initialized");
-    }
-
-    cleanup() {
-        if (this.messageHandler) {
-            chrome.runtime.onMessage.removeListener(this.messageHandler);
-            this.messageHandler = null;
-        }
-        this.cleanupFunctions.forEach(fn => fn());
-        this.cleanupFunctions = [];
-        console.log("OmniExporter AI Content Script Cleaned Up");
-    }
-
-    async handleMessage(request, sendResponse) {
-        // Phase 4: Health check handler
-        if (request.type === 'HEALTH_CHECK') {
-            sendResponse({ healthy: true, timestamp: Date.now() });
-            return;
-        }
-
-        const adapter = getPlatformAdapter();
-        if (!adapter) {
-            sendResponse({ success: false, error: "Unsupported platform." });
-            return;
-        }
-
-        try {
-            if (request.type === "EXTRACT_CONTENT") {
-                await handleExtraction(adapter, sendResponse);
-            } else if (request.type === "EXTRACT_CONTENT_BY_UUID") {
-                await handleExtractionByUuid(adapter, request.payload.uuid, sendResponse);
-            } else if (request.type === "GET_THREAD_LIST") {
-                await handleGetThreadList(adapter, request.payload, sendResponse);
-            } else if (request.type === "GET_THREAD_LIST_OFFSET") {
-                await handleGetThreadListOffset(adapter, request.payload, sendResponse);
-            } else if (request.type === "GET_SPACES") {
-                await handleGetSpaces(adapter, sendResponse);
-            } else if (request.type === "GET_PLATFORM_INFO") {
-                sendResponse({ success: true, platform: adapter.name });
-            }
-        } catch (error) {
-                sendResponse({ success: false, error: error.message });
-            }
-        }
-    };
     }
 
     // Create manager instance
@@ -588,8 +588,6 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         sendResponse({ success: false, error: error.message });
     }
 }
-
-
 
 async function handleGetSpaces(adapter, sendResponse) {
     try {
@@ -1090,8 +1088,6 @@ const ChatGPTAdapter = {
         }
     },
 
-
-
     // ============================================
     // ENTERPRISE: Resilient thread detail fetching
     // FIXED: Added multiple endpoint fallbacks and better error handling
@@ -1141,8 +1137,6 @@ const ChatGPTAdapter = {
             error: 'All API endpoints failed. Please check your login status.'
         };
     },
-
-
 
     getSpaces: async () => []
 };
@@ -1337,8 +1331,6 @@ const ClaudeAdapter = {
             };
         }
     },
-
-
 
     getSpaces: async () => []
 };
@@ -1634,8 +1626,6 @@ function extractAnswerResilient(entry, platform) {
     // Final fallback: direct properties
     return entry.answer || entry.text || entry.content || '';
 }
-
-
 
 // ============================================
 // AUTO-VERSION DETECTION ON LOAD
