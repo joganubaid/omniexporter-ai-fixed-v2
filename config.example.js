@@ -1,12 +1,23 @@
 /**
- * OmniExporter AI Configuration
- * 
- * Create a copy of this file called 'config.js' and fill in your values.
- * The config.js file is gitignored and won't be pushed to GitHub.
+ * OmniExporter AI — Configuration
+ *
+ * SETUP:
+ * 1. Copy this file to 'config.js' (which is gitignored)
+ * 2. Fill in the values below
+ * 3. Reload the extension in chrome://extensions/
+ *
+ * SECURITY:
+ * - config.js is listed in .gitignore — it will NOT be committed
+ * - The Notion Client Secret is stored on the Cloudflare Worker, NOT here
+ * - Only the Client ID (public) is needed in this file
  */
 
-// Notion OAuth Client ID (from your Notion integration)
+// ─── Notion OAuth ────────────────────────────────────────────────
+// Get your Client ID from: https://www.notion.so/my-integrations
+// The Client Secret goes in your Cloudflare Worker environment variables (see cloudflare-worker/DEPLOY.md)
 const NOTION_CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
 
-// OAuth Server URL (your deployed Cloudflare Worker)
+// ─── OAuth Server ────────────────────────────────────────────────
+// Your deployed Cloudflare Worker URL (see cloudflare-worker/DEPLOY.md for deployment guide)
+// Default: https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev
 const OAUTH_SERVER_URL = 'https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev';
