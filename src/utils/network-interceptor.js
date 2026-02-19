@@ -83,28 +83,28 @@ const NetworkInterceptor = {
         const originalFetch = window.fetch;
         const self = this;
 
-        window.fetch = async function (url, options = {}) {
-            let response;
-            try {
-                response = await originalFetch.apply(this, arguments);
-            } catch (e) {
-                // Let errors pass through naturally
-                throw e;
-            }
+        window.fetch = new Proxy(originalFetch, {
+            apply(target, thisArg, args) {
+                const [url, options = {}] = args;
+                let response;
+                const result = Reflect.apply(target, thisArg, args);
 
-            // Clone response to read it WITHOUT blocking the original
-            try {
-                const clone = response.clone();
-                // Read in background, don't await
-                clone.text().then(text => {
+                result.then(resp => {
+                    // Clone response to read it WITHOUT blocking the original
                     try {
-                        self.processResponse(url.toString(), text, options.method || 'GET');
+                        const clone = resp.clone();
+                        // Read in background, don't await
+                        clone.text().then(text => {
+                            try {
+                                self.processResponse(url.toString(), text, (options && options.method) || 'GET');
+                            } catch (e) { }
+                        }).catch(() => { });
                     } catch (e) { }
                 }).catch(() => { });
-            } catch (e) { }
 
-            return response;
-        };
+                return result;
+            }
+        });
     },
 
     // Process and identify chat list responses

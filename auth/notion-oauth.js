@@ -22,15 +22,21 @@ var NotionOAuth = {
 
         // Server endpoint for secure token exchange
         // Your deployed Cloudflare Worker
+        // Set OAUTH_SERVER_URL in config.js to use your own worker.
+        // The fallback below is the project's default OAuth server (public, shared instance).
         tokenServerEndpoint: typeof OAUTH_SERVER_URL !== 'undefined'
             ? `${OAUTH_SERVER_URL}/api/notion/token`
-            : 'https://omniexporter-oauth.jonub250383.workers.dev/api/notion/token',
+            : 'https://omniexporter-oauth.jonub250383.workers.dev/api/notion/token', // Project default — set OAUTH_SERVER_URL in config.js for custom deployment
 
         // Standard Notion endpoints
         redirectUri: null, // Set dynamically
         authorizationEndpoint: 'https://api.notion.com/v1/oauth/authorize',
         scopes: ['read_content', 'insert_content']
     },
+
+    // Rate limiting for token requests
+    _lastTokenRequest: 0,
+    _TOKEN_COOLDOWN_MS: 5000,
 
     /**
      * Initialize OAuth configuration
@@ -166,6 +172,12 @@ var NotionOAuth = {
      * Sends code to our Cloudflare Worker which has the client secret
      */
     async exchangeCodeForToken(code) {
+        const now = Date.now();
+        if (now - this._lastTokenRequest < this._TOKEN_COOLDOWN_MS) {
+            throw new Error('Token request rate limited. Please wait a few seconds.');
+        }
+        this._lastTokenRequest = now;
+
         _logOAuth('debug', 'Exchanging code for token via server...');
 
         const stored = await chrome.storage.local.get(['notion_oauth_code_verifier']);
@@ -379,6 +391,12 @@ var NotionOAuth = {
         if (!refreshToken) {
             throw new Error('No refresh token available. Please re-authorize.');
         }
+
+        const now = Date.now();
+        if (now - this._lastTokenRequest < this._TOKEN_COOLDOWN_MS) {
+            throw new Error('Token request rate limited. Please wait a few seconds.');
+        }
+        this._lastTokenRequest = now;
 
         _logOAuth('info', 'Refreshing access token via server...');
 

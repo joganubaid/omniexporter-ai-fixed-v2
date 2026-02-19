@@ -17,7 +17,8 @@
 
 ### Content Security Policy
 - `script-src 'self'` — no remote script execution
-- `connect-src` limited to known API domains only
+- `style-src 'self' 'unsafe-inline'` — `'unsafe-inline'` is required because `src/ui/options.html` uses inline `style=""` attributes (dev tools section). Migrating all inline styles to CSS classes is tracked as a future improvement.
+- `connect-src` limited to known API domains only (including the specific OAuth worker URL, not a wildcard)
 - `object-src 'self'` — no plugin-based content
 
 ### Input Validation

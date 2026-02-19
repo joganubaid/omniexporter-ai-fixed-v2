@@ -1,9 +1,9 @@
 // OmniExporter AI - Options Page JavaScript
 // Enterprise Dashboard v5.0 - Phase 10-12
 
-// ============================================
-// STATE MANAGEMENT
-// ============================================
+// ============================================================================
+// SECTION: STATE MANAGEMENT
+// ============================================================================
 let currentPlatform = "Unknown";
 let aiPlatformTabId = null; // Store the AI platform tab ID
 let selectedThreads = new Set();
@@ -16,9 +16,9 @@ let exportHistory = [];
 let syncStatusMap = {};
 let exportStartTime = null;
 
-// ============================================
-// PERFORMANCE & SECURITY UTILITIES (Phase 2)
-// ============================================
+// ============================================================================
+// SECTION: PERFORMANCE & SECURITY UTILITIES (Phase 2)
+// ============================================================================
 
 /**
  * Manages loading states across the application
@@ -103,9 +103,9 @@ const SCHEMA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 let notionSchemaCache = null;
 let schemaCacheTime = 0;
 
-// ============================================
-// FIX 11: RETRY LOGIC WITH EXPONENTIAL BACKOFF
-// ============================================
+// ============================================================================
+// SECTION: FIX 11: RETRY LOGIC WITH EXPONENTIAL BACKOFF
+// ============================================================================
 async function withRetry(fn, maxRetries = 3, baseDelayMs = 2000) {
     let lastError;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -127,9 +127,9 @@ async function withRetry(fn, maxRetries = 3, baseDelayMs = 2000) {
     throw lastError;
 }
 
-// ============================================
-// FIX 12: NOTION ERROR MAPPER
-// ============================================
+// ============================================================================
+// SECTION: FIX 12: NOTION ERROR MAPPER
+// ============================================================================
 const NotionErrorMapper = {
     map(error) {
         const code = error?.code || '';
@@ -152,9 +152,9 @@ const NotionErrorMapper = {
     }
 };
 
-// ============================================
-// FIX 15: ENHANCED RATE LIMITER
-// ============================================
+// ============================================================================
+// SECTION: FIX 15: ENHANCED RATE LIMITER
+// ============================================================================
 class RateLimiter {
     constructor(requestsPerMinute = 30) {
         this.requestsPerMinute = requestsPerMinute;
@@ -215,9 +215,9 @@ class RateLimiter {
 
 const notionRateLimiter = new RateLimiter(30);
 
-// ============================================
-// FIX 17: EXPORT PROGRESS MANAGER
-// ============================================
+// ============================================================================
+// SECTION: FIX 17: EXPORT PROGRESS MANAGER
+// ============================================================================
 class ExportProgressManager {
     static async saveProgress(jobId, progress) {
         await chrome.storage.local.set({
@@ -253,9 +253,9 @@ class ExportProgressManager {
     }
 }
 
-// ============================================
-// PHASE 4: DATA VALIDATOR
-// ============================================
+// ============================================================================
+// SECTION: PHASE 4: DATA VALIDATOR
+// ============================================================================
 class DataValidator {
     /**
      * Validate thread data structure and completeness
@@ -399,9 +399,9 @@ class DataValidator {
     }
 }
 
-// ============================================
-// PHASE 7: RESILIENT DATA EXTRACTOR (for options.js)
-// ============================================
+// ============================================================================
+// SECTION: PHASE 7: RESILIENT DATA EXTRACTOR (for options.js)
+// ============================================================================
 class ResilientDataExtractor {
     /**
      * Extract answer from entry with multiple fallback strategies
@@ -474,9 +474,9 @@ class ResilientDataExtractor {
     }
 }
 
-// ============================================
-// PHASE 4: DUPLICATE DETECTOR
-// ============================================
+// ============================================================================
+// SECTION: PHASE 4: DUPLICATE DETECTOR
+// ============================================================================
 class DuplicateDetector {
     /**
      * Generate fingerprint for a thread
@@ -526,9 +526,9 @@ class DuplicateDetector {
     }
 }
 
-// ============================================
-// PHASE 4: ERROR RECOVERY
-// ============================================
+// ============================================================================
+// SECTION: PHASE 4: ERROR RECOVERY
+// ============================================================================
 class ErrorRecovery {
     static async handleExportError(error, context) {
         const errorType = this.classifyError(error);
@@ -562,9 +562,9 @@ class ErrorRecovery {
     }
 }
 
-// ============================================
-// PHASE 4: CONTENT SCRIPT HEALTH CHECKER
-// ============================================
+// ============================================================================
+// SECTION: PHASE 4: CONTENT SCRIPT HEALTH CHECKER
+// ============================================================================
 class ContentScriptHealthChecker {
     constructor() {
         this.retryAttempts = 3;
@@ -704,9 +704,9 @@ class ContentScriptHealthChecker {
 // Global health checker instance
 const healthChecker = new ContentScriptHealthChecker();
 
-// ============================================
-// AI PLATFORM TAB FINDER (Multi-Platform Support)
-// ============================================
+// ============================================================================
+// SECTION: AI PLATFORM TAB FINDER (Multi-Platform Support)
+// ============================================================================
 let allAITabs = []; // Store all found AI platform tabs
 
 async function findAllAIPlatformTabs() {
@@ -900,9 +900,9 @@ async function sendMessageWithTimeout(tabId, message, timeoutMs = 20000) {
     });
 }
 
-// ============================================
-// PHASE 5 FIX 5: CONNECTION STATUS MONITORING
-// ============================================
+// ============================================================================
+// SECTION: PHASE 5 FIX 5: CONNECTION STATUS MONITORING
+// ============================================================================
 async function monitorConnectionStatus() {
     try {
         const statusEl = document.getElementById('connectionStatus');
@@ -934,9 +934,9 @@ async function monitorConnectionStatus() {
         // console.log('[Monitor] Connection check failed:', e.message);
     }
 }
-// ============================================
-// NOTION OAUTH HELPERS
-// ============================================
+// ============================================================================
+// SECTION: NOTION OAUTH HELPERS
+// ============================================================================
 function toggleNotionAuthSections(method) {
     const oauthSection = document.getElementById('notionOauthSection');
     const tokenSection = document.getElementById('notionTokenSection');
@@ -1001,9 +1001,9 @@ async function handleOauthDisconnect() {
     log('OAuth disconnected', 'info');
 }
 
-// ============================================
-// INITIALIZATION
-// ============================================
+// ============================================================================
+// SECTION: INITIALIZATION
+// ============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
     initNavigation();
     initSubtabs();
@@ -1124,9 +1124,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 
-// ============================================
-// NAVIGATION
-// ============================================
+// ============================================================================
+// SECTION: NAVIGATION
+// ============================================================================
 function initNavigation() {
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -1167,9 +1167,9 @@ function initSubtabs() {
     });
 }
 
-// ============================================
-// DATA SOURCE & DATE FILTER
-// ============================================
+// ============================================================================
+// SECTION: DATA SOURCE & DATE FILTER
+// ============================================================================
 function initDataSourceRadio() {
     document.querySelectorAll('input[name="dataSource"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
@@ -1194,9 +1194,9 @@ function initDateFilter() {
     });
 }
 
-// ============================================
-// STORAGE & SETTINGS PERSISTENCE
-// ============================================
+// ============================================================================
+// SECTION: STORAGE & SETTINGS PERSISTENCE
+// ============================================================================
 async function loadSettings() {
     const data = await chrome.storage.local.get([
         'notionApiKey',
@@ -1505,9 +1505,9 @@ async function loadSpaces() {
 }
 
 
-// ============================================
-// THREAD HISTORY
-// ============================================
+// ============================================================================
+// SECTION: THREAD HISTORY
+// ============================================================================
 async function fetchHistory(page = 1) {
     const listEl = document.getElementById('threadList');
     const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
@@ -1786,9 +1786,9 @@ function updateSelection(uuid, checked) {
     document.getElementById('bulkMdBtn').disabled = count === 0;
 }
 
-// ============================================
-// EXPORT OPERATIONS
-// ============================================
+// ============================================================================
+// SECTION: EXPORT OPERATIONS
+// ============================================================================
 
 // Validate export operation (can be extended for subscription limits)
 function validateExportOperation(type, count, isPremium = false) {
@@ -1986,9 +1986,9 @@ async function bulkSyncToNotion() {
     }
 }
 
-// ============================================
-// NOTION SYNC - Full API Integration
-// ============================================
+// ============================================================================
+// SECTION: NOTION SYNC - Full API Integration
+// ============================================================================
 async function syncToNotion(data) {
     // Load credentials from storage
     const storage = await chrome.storage.local.get(['notionDbId']);
@@ -2273,9 +2273,9 @@ async function exportAllThreads() {
     await bulkSyncToNotion();
 }
 
-// ============================================
-// EXPORT HISTORY TRACKING  
-// ============================================
+// ============================================================================
+// SECTION: EXPORT HISTORY TRACKING
+// ============================================================================
 function recordExportJob(total, success, failed, isAuto = false) {
     const endTime = Date.now();
     const duration = exportStartTime ? Math.round((endTime - exportStartTime) / 1000) : 0;
@@ -2337,9 +2337,9 @@ function renderExportHistory() {
     });
 }
 
-// ============================================
-// UTILITIES
-// ============================================
+// ============================================================================
+// SECTION: UTILITIES
+// ============================================================================
 
 /**
  * Fetches Notion database schema and caches it
@@ -2479,9 +2479,9 @@ function log(message, type = 'info') {
     }
 }
 
-// ============================================
-// RESTORED STABILIZATION FUNCTIONS (Phase 2.5)
-// ============================================
+// ============================================================================
+// SECTION: RESTORED STABILIZATION FUNCTIONS (Phase 2.5)
+// ============================================================================
 
 async function toggleAutoSync() {
     const toggle = document.getElementById('autoSyncToggle');
@@ -2614,9 +2614,9 @@ function downloadFile(content, name) {
     URL.revokeObjectURL(url);
 }
 
-// ============================================
-// DEVELOPER TOOLS - LOG VIEWER
-// ============================================
+// ============================================================================
+// SECTION: DEVELOPER TOOLS - LOG VIEWER
+// ============================================================================
 
 /**
  * Initialize Developer Tools tab
@@ -2866,9 +2866,9 @@ async function clearAllLogs() {
     }
 }
 
-// ============================================
-// AUTO-REFRESH LOG VIEWER
-// ============================================
+// ============================================================================
+// SECTION: AUTO-REFRESH LOG VIEWER
+// ============================================================================
 let logAutoRefreshInterval = null;
 let isDevToolsTabActive = false;
 
@@ -2920,9 +2920,9 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// ============================================
-// TEST RUNNER - INTEGRATED TEST SUITE
-// ============================================
+// ============================================================================
+// SECTION: TEST RUNNER - INTEGRATED TEST SUITE
+// ============================================================================
 const TestRunner = {
     results: [],
     passed: 0,
