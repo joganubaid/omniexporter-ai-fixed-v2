@@ -1,5 +1,6 @@
 // OmniExporter AI - Enterprise Edition
 // content.js - Unified Platform Adapter
+"use strict";
 
 // ── RE-INJECTION GUARD ────────────────────────────────────────────────────────
 // On extension reload, Chrome re-injects scripts into active tabs.

@@ -3,6 +3,7 @@
  * Uses server-side token exchange for security
  * Client secret is stored on Cloudflare Worker, never exposed to extension
  */
+"use strict";
 
 // Helper to safely call Logger (use var to allow redeclaration in service worker context)
 var _logOAuth = _logOAuth || function (level, message, data) {
@@ -196,6 +197,11 @@ var NotionOAuth = {
         });
 
         if (!response.ok) {
+            if (response.status === 429) {
+                const retryAfter = response.headers.get('Retry-After') || '60';
+                _logOAuth('warn', 'Rate limited by token server', { retryAfter });
+                throw new Error(`Rate limited. Please try again in ${retryAfter} seconds.`);
+            }
             const error = await response.json();
             throw new Error(`Token exchange failed: ${error.error || response.statusText}`);
         }
@@ -414,6 +420,11 @@ var NotionOAuth = {
         });
 
         if (!response.ok) {
+            if (response.status === 429) {
+                const retryAfter = response.headers.get('Retry-After') || '60';
+                _logOAuth('warn', 'Rate limited by token server', { retryAfter });
+                throw new Error(`Rate limited. Please try again in ${retryAfter} seconds.`);
+            }
             const errorData = await response.json().catch(() => ({}));
             _logOAuth('error', 'Token refresh failed', { status: response.status });
             // If refresh fails, user needs to re-authorize

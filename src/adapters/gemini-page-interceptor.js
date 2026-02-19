@@ -1,6 +1,7 @@
 // OmniExporter AI - Gemini Page Context Interceptor
 // This script MUST run in the PAGE context (not content script)
 // It intercepts XHR requests to increase message fetch limit from 20 to 100
+"use strict";
 
 (function () {
     'use strict';

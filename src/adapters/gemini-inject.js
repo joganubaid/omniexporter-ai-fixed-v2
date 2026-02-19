@@ -1,5 +1,6 @@
 // OmniExporter AI - Gemini Page Context Injection
 // This script runs in the page context to access window.WIZ_global_data
+"use strict";
 
 (function () {
     'use strict';

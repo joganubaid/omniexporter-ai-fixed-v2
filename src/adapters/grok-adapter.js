@@ -2,6 +2,7 @@
 // Support for xAI Grok (grok.com and x.com/i/grok)
 // Enterprise-level matching Perplexity quality
 // NOW USES: platformConfig for centralized configuration
+"use strict";
 
 const GrokAdapter = {
     name: "Grok",
@@ -25,6 +26,11 @@ const GrokAdapter = {
     _cacheTimestamp: 0,
     _cacheTTL: 60000, // 1 minute
 
+    /**
+     * Extract conversation UUID from the current page URL.
+     * @param {string} url - The full page URL
+     * @returns {string|null} The extracted UUID, or null if not found
+     */
     extractUuid: (url) => {
         // Try platformConfig patterns first
         if (typeof platformConfig !== 'undefined') {
@@ -141,6 +147,12 @@ const GrokAdapter = {
     // ============================================
     // ENTERPRISE: Offset-based fetching
     // ============================================
+    /**
+     * Fetch threads using offset-based pagination.
+     * @param {number} offset - Number of threads to skip
+     * @param {number} limit - Maximum number of threads to return
+     * @returns {Promise<{threads: Array, offset: number, hasMore: boolean, total: number}>}
+     */
     getThreadsWithOffset: async (offset = 0, limit = 50) => {
         // Check cache validity
         const cacheValid = GrokAdapter._cacheTimestamp > Date.now() - GrokAdapter._cacheTTL;
@@ -158,7 +170,13 @@ const GrokAdapter = {
         };
     },
 
-    // Standard page-based (backwards compatible)
+    /**
+     * Fetch a page of conversation threads (page-based, backwards compatible).
+     * @param {number} page - Zero-based page number
+     * @param {number} limit - Maximum threads per page
+     * @returns {Promise<{threads: Array, hasMore: boolean, page: number}>}
+     * @throws {Error} If the API request fails
+     */
     getThreads: async (page = 0, limit = 50) => {
         // Check NetworkInterceptor first
         if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
@@ -179,7 +197,11 @@ const GrokAdapter = {
                 page
             };
         } catch (e) {
-            console.error('[Grok] API fetch failed:', e);
+            const message = e?.message || 'Unknown error';
+            console.error('[Grok] getThreads failed:', message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GrokAdapter', 'getThreads failed', { error: message });
+            }
             throw e;
         }
     },
@@ -191,6 +213,12 @@ const GrokAdapter = {
     //   2. POST /conversations/{uuid}/load-responses {responseIds:[...]} → gets messages
     //   Messages use sender:"human"/"assistant" and message:"..." fields
     // ============================================
+    /**
+     * Fetch full message detail for a conversation by UUID.
+     * @param {string} uuid - The conversation UUID
+     * @returns {Promise<object>} Structured conversation data with entries array
+     * @throws {Error} If the conversation cannot be fetched or has no content
+     */
     getThreadDetail: async (uuid) => {
         console.log(`[Grok] Fetching thread detail for: ${uuid}`);
 
@@ -299,14 +327,18 @@ const GrokAdapter = {
             return { uuid, title, platform: 'Grok', entries };
 
         } catch (error) {
-            console.error(`[Grok] getThreadDetail failed for ${uuid}:`, error.message);
+            const message = error?.message || 'Unknown error';
+            console.error(`[Grok] getThreadDetail failed for ${uuid}:`, message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GrokAdapter', 'getThreadDetail failed', { error: message, uuid });
+            }
             // Return empty rather than throwing so bulk export can continue
             return {
                 uuid,
                 title: `Grok Conversation (${uuid.slice(0, 8)})`,
                 platform: 'Grok',
                 entries: [],
-                error: error.message
+                error: message
             };
         }
     },

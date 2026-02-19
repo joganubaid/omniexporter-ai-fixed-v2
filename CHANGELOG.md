@@ -5,6 +5,25 @@ All notable changes to OmniExporter AI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-02-19
+
+### ⚡ Performance
+- Extracted `TestRunner` test suite into lazy-loaded `src/ui/test-framework.js` (reduces initial options.js parse by ~40KB)
+- Added `debounce()` utility to dashboard history search/filter input (300ms delay)
+- Cached DOM element references at initialization in `popup.js` (`DOM.saveToNotionBtn`, `DOM.openDashboard`, `DOM.toggleSync`, `DOM.platformStatus`, `DOM.syncStatus`, `DOM.status`)
+
+### 🔐 Security
+- Added `X-Content-Type-Options: nosniff` meta tag to `popup.html`, `options.html`, and `auth/callback.html`
+- Verified thread title DOM insertion uses `InputSanitizer.clean()` before `innerHTML` (already in place)
+- Added HTTP 429 rate-limit handling for Cloudflare Worker OAuth calls in `exchangeCodeForToken()` and `refreshAccessToken()` — reads `Retry-After` header and surfaces user-friendly error message
+
+### 📝 Code Quality
+- Added JSDoc `@param`, `@returns`, `@throws` annotations to all public adapter methods: `extractUuid()`, `getThreads()`, `getThreadsWithOffset()`, `getThreadDetail()` in `gemini-adapter.js`, `grok-adapter.js`, and `deepseek-adapter.js`
+- Added `"use strict"` directive to all JS files in `src/` and `auth/`
+- Version bumped to 5.2.0
+
+---
+
 ## [5.1.0] - 2026-02-19
 
 ### 🔐 Security Hardening

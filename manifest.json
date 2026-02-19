@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "OmniExporter AI - Enterprise Edition",
-    "version": "5.1.0",
+    "version": "5.2.0",
     "description": "Enterprise-level bulk export for Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek to Markdown, JSON, HTML, PDF & Notion. Full dashboard with auto-sync, failure tracking, and audit logging.",
     "commands": {
         "_execute_action": {

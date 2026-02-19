@@ -1,5 +1,6 @@
 // OmniExporter AI - Popup JavaScript
 // Phase 9: Multi-Platform Export v5.0
+"use strict";
 
 // ============================================
 // LOGGER HELPER (popup context)
@@ -271,7 +272,18 @@ const reqDeduplication = new RequestDeduplicator();
 // ============================================
 // INITIALIZATION
 // ============================================
+// Module-level DOM cache — populated in DOMContentLoaded
+const DOM = {};
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Cache frequently used DOM elements at initialization
+    DOM.saveToNotionBtn = document.getElementById('saveToNotionBtn');
+    DOM.openDashboard = document.getElementById('openDashboard');
+    DOM.toggleSync = document.getElementById('toggleSync');
+    DOM.platformStatus = document.getElementById('platform-status');
+    DOM.syncStatus = document.getElementById('syncStatus');
+    DOM.status = document.getElementById('status');
+
     initConnectionDots(); // Initialize connection dots first
     detectPlatform();
     loadSyncStatus();
@@ -279,9 +291,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavigationBar();
 
     // Event Listeners
-    document.getElementById('saveToNotionBtn').addEventListener('click', saveToNotion);
-    document.getElementById('openDashboard').addEventListener('click', openDashboard);
-    document.getElementById('toggleSync').addEventListener('click', toggleAutoSync);
+    DOM.saveToNotionBtn.addEventListener('click', saveToNotion);
+    DOM.openDashboard.addEventListener('click', openDashboard);
+    DOM.toggleSync.addEventListener('click', toggleAutoSync);
 
     // Phase 2: Offline Detection
     window.addEventListener('online', () => {
@@ -439,7 +451,7 @@ async function detectPlatform() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab || !tab.url) {
-            document.getElementById('platform-status').textContent = "No Tab";
+            if (DOM.platformStatus) DOM.platformStatus.textContent = "No Tab";
             return;
         }
 
@@ -447,7 +459,7 @@ async function detectPlatform() {
         const isSupported = supportedUrls.some(domain => tab.url.includes(domain));
 
         if (!isSupported) {
-            document.getElementById('platform-status').textContent = "Unsupported";
+            if (DOM.platformStatus) DOM.platformStatus.textContent = "Unsupported";
             return;
         }
 
@@ -466,13 +478,13 @@ async function detectPlatform() {
                     chrome.tabs.sendMessage(tab.id, { type: 'GET_PLATFORM_INFO' }, (retryResponse) => {
                         if (retryResponse && retryResponse.success) {
                             currentPlatform = retryResponse.platform;
-                            document.getElementById('platform-status').textContent = currentPlatform;
+                            if (DOM.platformStatus) DOM.platformStatus.textContent = currentPlatform;
                         } else {
-                            document.getElementById('platform-status').textContent = "Refresh Page";
+                            if (DOM.platformStatus) DOM.platformStatus.textContent = "Refresh Page";
                         }
                     });
                 } else {
-                    document.getElementById('platform-status').textContent = "Refresh Page";
+                    if (DOM.platformStatus) DOM.platformStatus.textContent = "Refresh Page";
                 }
                 return;
             }
@@ -480,7 +492,7 @@ async function detectPlatform() {
             if (response && response.success) {
                 currentPlatform = response.platform;
                 logPopup('info', 'Platform detected', { platform: currentPlatform });
-                document.getElementById('platform-status').textContent = currentPlatform;
+                if (DOM.platformStatus) DOM.platformStatus.textContent = currentPlatform;
                 updateNavBarActive(currentPlatform);
             }
         });
@@ -837,7 +849,7 @@ async function toggleAutoSync() {
 }
 
 function updateSyncUI(isEnabled) {
-    const statusEl = document.getElementById('syncStatus');
+    const statusEl = DOM.syncStatus || document.getElementById('syncStatus');
     if (!statusEl) return;
     if (isEnabled) {
         statusEl.textContent = 'ON';
@@ -901,7 +913,7 @@ function downloadFile(content, name) {
 }
 
 function setStatus(message, type) {
-    const el = document.getElementById('status');
+    const el = DOM.status || document.getElementById('status');
     if (!el) return;
     el.textContent = message;
     el.className = `status-message ${type}`;

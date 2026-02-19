@@ -1,5 +1,6 @@
 // OmniExporter AI - Notion Workspace Picker
 // Visual workspace/database selector for Notion integration
+"use strict";
 
 class NotionPicker {
     static modal = null;

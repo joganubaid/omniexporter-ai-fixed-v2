@@ -3,6 +3,7 @@
 // VERIFIED API: batchexecute with rpcids MaZiqc (list) and snvDe/hNvQHb (messages)
 // HAR-verified: 2026-02-16 — Headers, query params, payload structure confirmed
 // FIXED: Session params (bl, f.sid, at), headers (X-Same-Domain), response parsing
+"use strict";
 
 // =============================================
 // PAGE CONTEXT SCRIPT INJECTOR
@@ -194,6 +195,11 @@ const GeminiAdapter = {
     _cacheTimestamp: 0,
     _cacheTTL: 60000,
 
+    /**
+     * Extract conversation UUID from the current page URL.
+     * @param {string} url - The full page URL
+     * @returns {string} The extracted UUID, or a timestamp-based fallback
+     */
     extractUuid: (url) => {
         // Try platformConfig patterns first
         if (typeof platformConfig !== 'undefined') {
@@ -254,6 +260,12 @@ const GeminiAdapter = {
     // ============================================
     // ENTERPRISE: Offset-based fetching
     // ============================================
+    /**
+     * Fetch threads using offset-based pagination with in-memory cache.
+     * @param {number} offset - Number of threads to skip
+     * @param {number} limit - Maximum number of threads to return
+     * @returns {Promise<{threads: Array, offset: number, hasMore: boolean, total: number}>}
+     */
     getThreadsWithOffset: async function (offset = 0, limit = 50) {
         // Check cache validity
         const cacheValid = GeminiAdapter._cacheTimestamp > Date.now() - GeminiAdapter._cacheTTL;
@@ -413,6 +425,14 @@ const GeminiAdapter = {
     // Payload: [13, null, [0, null, 1]]  (13 = category for conversations)
     // Response: [null, null, [[id, title, null, null, null, [secs, nanos], ...], ...]]
     // ============================================
+    /**
+     * Fetch a page of conversation threads via the MaZiqc batchexecute RPC.
+     * @param {number} page - One-based page number
+     * @param {number} limit - Maximum threads per page
+     * @param {string|null} cursor - Pagination cursor from a previous response
+     * @returns {Promise<{threads: Array, hasMore: boolean, page: number}>}
+     * @throws {Error} If no threads can be retrieved from the API or DOM
+     */
     getThreads: async function (page = 1, limit = 20, cursor = null) {
         // Check NetworkInterceptor first
         if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
@@ -503,7 +523,11 @@ const GeminiAdapter = {
                 }
             }
         } catch (e) {
-            console.warn('[GeminiAdapter] MaZiqc API failed:', e.message);
+            const message = e?.message || 'Unknown error';
+            console.warn('[GeminiAdapter] MaZiqc API failed:', message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GeminiAdapter', 'getThreads failed', { error: message });
+            }
         }
 
         return { threads, hasMore: false, page };
@@ -520,6 +544,12 @@ const GeminiAdapter = {
     //   Timestamp: last element [unixSeconds, nanos]
     // Verified: 2026-02-17 with chat c_ec00ff04a46f7fa6
     // ============================================
+    /**
+     * Fetch full message detail for a conversation by UUID via the hNvQHb batchexecute RPC.
+     * @param {string} uuid - The Gemini conversation UUID (with or without 'c_' prefix)
+     * @returns {Promise<object>} Structured conversation data with entries array
+     * @throws {Error} If the conversation cannot be fetched or has no content
+     */
     getThreadDetail: async function (uuid) {
         console.log(`[GeminiAdapter] Fetching thread detail for: ${uuid}`);
 
@@ -635,7 +665,11 @@ const GeminiAdapter = {
             throw new Error('Could not parse message pairs from hNvQHb response');
 
         } catch (error) {
-            console.error(`[Gemini] hNvQHb failed for ${chatId}:`, error.message);
+            const message = error?.message || 'Unknown error';
+            console.error(`[Gemini] hNvQHb failed for ${chatId}:`, message);
+            if (typeof Logger !== 'undefined') {
+                Logger.error('GeminiAdapter', 'getThreadDetail failed', { error: message, uuid });
+            }
 
             // Fallback: try with WqGlee and Mklfhc as alternate RPC IDs
             const fallbackRpcs = ['WqGlee', 'Mklfhc'];
@@ -666,7 +700,7 @@ const GeminiAdapter = {
                 }
             }
 
-            throw new Error(`Gemini message fetch failed for ${chatId}: ${error.message}`);
+            throw new Error(`Gemini message fetch failed for ${chatId}: ${message}`);
         }
     },
 

@@ -1,6 +1,7 @@
 // OmniExporter AI - Network Interceptor
 // Auto-discovers API endpoints for chat lists
 // SAFE VERSION: All modifications are wrapped in try-catch to prevent page crashes
+"use strict";
 
 // Secure namespace — non-configurable to resist tampering
 if (!window.__omniExporterInternal) {
