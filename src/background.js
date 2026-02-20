@@ -3,7 +3,7 @@
 "use strict";
 
 try {
-    importScripts('logger.js');
+    importScripts('src/utils/logger.js');
 } catch (e) {
     console.error("[OmniExporter] Failed to load logger.js:", e);
 }
@@ -684,7 +684,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // ============================================
 chrome.commands.onCommand.addListener((command) => {
     if (command === 'open_dashboard') {
-        chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+        chrome.tabs.create({ url: chrome.runtime.getURL('src/ui/options.html') });
         Logger.info('System', 'Dashboard opened via keyboard shortcut');
     }
 });
