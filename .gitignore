@@ -32,13 +32,7 @@ repos.txt
 *_debug.json
 *.har
 
-# Sensitive API data
-claude_*.json
-chatgpt_*.json
-perplexity_*.json
-gemini_*.json
-grok_*.json
-deepseek_*.json
+
 
 # Development/test scripts — not part of the extension
 analyze_*.js
