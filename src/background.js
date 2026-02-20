@@ -3,7 +3,7 @@
 "use strict";
 
 try {
-    importScripts('src/utils/logger.js');
+    importScripts('utils/logger.js');
 } catch (e) {
     console.error("[OmniExporter] Failed to load logger.js:", e);
 }
@@ -28,13 +28,13 @@ if (typeof Logger === 'undefined') {
 // config.js is gitignored — may not exist on fresh clone
 // Extension uses defaults from auth/notion-oauth.js if config.js is missing
 try {
-    importScripts('config.js');
+    importScripts('../config.js');
 } catch (e) {
     console.warn("[OmniExporter] config.js not found — using default configuration. Copy config.example.js to config.js to customize.");
 }
 
 try {
-    importScripts('auth/notion-oauth.js');
+    importScripts('../auth/notion-oauth.js');
 } catch (e) {
     console.error("[OmniExporter] Failed to load auth/notion-oauth.js:", e);
 }
