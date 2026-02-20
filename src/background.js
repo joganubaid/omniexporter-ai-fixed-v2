@@ -8,6 +8,23 @@ try {
     console.error("[OmniExporter] Failed to load logger.js:", e);
 }
 
+// Logger fallback stub — if logger.js failed to load, define a no-op Logger
+// so the rest of the service worker doesn't crash with "Logger is not defined"
+if (typeof Logger === 'undefined') {
+    console.warn("[OmniExporter] Logger not available, using fallback stub");
+    var Logger = {
+        _stub: true,
+        config: { enabled: false },
+        init() { return Promise.resolve(); },
+        info() {},
+        warn() {},
+        error(mod, msg, data) { console.error(`[${mod}]`, msg, data || ''); },
+        debug() {},
+        receiveLog() {},
+        time() { return { end() { return 0; } }; }
+    };
+}
+
 // config.js is gitignored — may not exist on fresh clone
 // Extension uses defaults from auth/notion-oauth.js if config.js is missing
 try {
@@ -220,10 +237,7 @@ chrome.alarms.create('storageCleanup', { periodInMinutes: 5 });
 // AUTO-SYNC IMPLEMENTATION (Incremental with Checkpoints)
 // ============================================
 
-// Load OAuth module in service worker context
-if (typeof importScripts === 'function') {
-    importScripts('auth/notion-oauth.js');
-}
+// Note: auth/notion-oauth.js is already loaded via importScripts at the top of this file.
 
 
 /**

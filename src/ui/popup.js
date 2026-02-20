@@ -821,8 +821,7 @@ function splitTextForNotion(text, maxLength = 1900) {
 // OPEN DASHBOARD
 // ============================================
 function openDashboard() {
-    const optionsUrl = chrome.runtime.getURL('options.html');
-    chrome.tabs.create({ url: optionsUrl });
+    chrome.runtime.openOptionsPage();
 }
 
 // ============================================
