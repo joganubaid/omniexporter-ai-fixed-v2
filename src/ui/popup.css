@@ -61,6 +61,7 @@ header::before {
     height: 100%;
     background: var(--gradient-shine);
     animation: header-shine 3s ease-in-out infinite;
+    pointer-events: none;
 }
 
 @keyframes header-shine {

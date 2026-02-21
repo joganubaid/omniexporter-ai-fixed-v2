@@ -1595,7 +1595,9 @@ function renderThreadList(threads) {
                 const isExported = exportedUuids.has(t.uuid);
                 const status = syncStatusMap[t.uuid];
                 const item = document.createElement('div');
-                item.className = `thread-item ${isExported ? 'exported' : ''}`;
+                const isSelected = selectedThreads.has(t.uuid);
+                item.className = `thread-item ${isExported ? 'exported' : ''} ${isSelected ? 'selected' : ''}`.trim();
+                item.dataset.uuid = t.uuid;
 
                 const date = t.last_query_datetime ? new Date(t.last_query_datetime).toLocaleDateString() : 'Unknown';
 
@@ -1610,7 +1612,7 @@ function renderThreadList(threads) {
                 const safeTitle = InputSanitizer.clean(t.title || 'Untitled');
                 const safeUuid = InputSanitizer.clean(t.uuid);
                 item.innerHTML = `
-                    <input type="checkbox" data-uuid="${safeUuid}" ${selectedThreads.has(t.uuid) ? 'checked' : ''} ${isExported ? 'disabled' : ''}>
+                    <input type="checkbox" data-uuid="${safeUuid}" ${isSelected ? 'checked' : ''} ${isExported ? 'disabled' : ''}>
                     <div class="thread-info">
                         <div class="thread-title">${safeTitle}</div>
                         <div class="thread-date">${date}</div>
@@ -1619,8 +1621,18 @@ function renderThreadList(threads) {
                 `;
 
                 if (!isExported) {
-                    item.querySelector('input').addEventListener('change', (e) => {
-                        updateSelection(t.uuid, e.target.checked);
+                    const checkbox = item.querySelector('input');
+                    checkbox.addEventListener('change', (e) => {
+                        const checked = e.target.checked;
+                        item.classList.toggle('selected', checked);
+                        updateSelection(t.uuid, checked);
+                    });
+                    item.addEventListener('click', (e) => {
+                        if (e.target === checkbox) return;
+                        const checked = !checkbox.checked;
+                        checkbox.checked = checked;
+                        item.classList.toggle('selected', checked);
+                        updateSelection(t.uuid, checked);
                     });
                 }
 
@@ -2947,11 +2959,17 @@ document.addEventListener('visibilitychange', () => {
 async function loadTestFramework() {
     if (window.TestRunner) return window.TestRunner;
     return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'test-framework.js'; // relative to options.html in src/ui/
-        script.onload = () => resolve(window.TestRunner);
-        script.onerror = () => reject(new Error('Failed to load test framework'));
-        document.head.appendChild(script);
+        const loadScript = (src) => new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = () => res();
+            s.onerror = () => rej(new Error(`Failed to load ${src}`));
+            document.head.appendChild(s);
+        });
+        const chain = window.TestFixtures
+            ? loadScript('test-framework.js')
+            : loadScript('test-fixtures.js').then(() => loadScript('test-framework.js'));
+        chain.then(() => resolve(window.TestRunner)).catch(reject);
     });
 }
 

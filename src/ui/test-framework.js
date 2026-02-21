@@ -325,7 +325,7 @@ window.TestRunner = {
     async testExport() {
         this.appendResult('<b>📤 EXPORT MANAGER TESTS</b>');
 
-        const testData = {
+        const fallbackData = {
             title: 'Test Conversation',
             uuid: 'test-uuid-123',
             detail: {
@@ -335,6 +335,8 @@ window.TestRunner = {
                 ]
             }
         };
+        const fixtureData = window.TestFixtures?.conversation || fallbackData;
+        const fixtureExport = window.TestFixtures?.exports || {};
 
         // Module
         await this.test('ExportManager exists', () => this.assert(typeof ExportManager !== 'undefined'));
@@ -347,18 +349,50 @@ window.TestRunner = {
         await this.test('formats.pdf exists', () => this.assert(ExportManager.formats.pdf));
 
         // Markdown
-        await this.test('toMarkdown works', () => { const md = ExportManager.toMarkdown(testData, 'Test'); this.assert(md.includes('Test Conversation')); });
-        await this.test('Markdown has frontmatter', () => { const md = ExportManager.toMarkdown(testData, 'Test'); this.assert(md.includes('---')); });
+        await this.test('toMarkdown works', () => { const md = ExportManager.toMarkdown(fixtureData, 'Test'); this.assert(md.includes(fixtureData.title)); });
+        await this.test('Markdown has frontmatter', () => { const md = ExportManager.toMarkdown(fixtureData, 'Test'); this.assert(md.includes('---')); });
+        if (fixtureExport.markdownIncludes) {
+            for (const snippet of fixtureExport.markdownIncludes) {
+                await this.test(`Markdown includes "${snippet}"`, () => {
+                    const md = ExportManager.toMarkdown(fixtureData, 'Test');
+                    this.assert(md.includes(snippet));
+                });
+            }
+        }
 
         // JSON
-        await this.test('toJSON works', () => { const j = ExportManager.toJSON(testData, 'Test'); JSON.parse(j); });
-        await this.test('JSON has meta', () => { const j = JSON.parse(ExportManager.toJSON(testData, 'Test')); this.assert(j.meta.tool === 'OmniExporter AI'); });
+        await this.test('toJSON works', () => { const j = ExportManager.toJSON(fixtureData, 'Test'); JSON.parse(j); });
+        await this.test('JSON has meta', () => { const j = JSON.parse(ExportManager.toJSON(fixtureData, 'Test')); this.assert(j.meta.tool === 'OmniExporter AI'); });
+        if (fixtureExport.jsonKeys) {
+            for (const key of fixtureExport.jsonKeys) {
+                await this.test(`JSON has key "${key}"`, () => {
+                    const j = JSON.parse(ExportManager.toJSON(fixtureData, 'Test'));
+                    this.assert(j[key] !== undefined);
+                });
+            }
+        }
 
         // HTML
-        await this.test('toHTML works', () => { const h = ExportManager.toHTML(testData, 'Test'); this.assert(h.includes('<!DOCTYPE html>')); });
+        await this.test('toHTML works', () => { const h = ExportManager.toHTML(fixtureData, 'Test'); this.assert(h.includes('<!DOCTYPE html>')); });
+        if (fixtureExport.htmlIncludes) {
+            for (const snippet of fixtureExport.htmlIncludes) {
+                await this.test(`HTML includes "${snippet}"`, () => {
+                    const h = ExportManager.toHTML(fixtureData, 'Test');
+                    this.assert(h.includes(snippet));
+                });
+            }
+        }
 
         // Plain Text
-        await this.test('toPlainText works', () => { const t = ExportManager.toPlainText(testData, 'Test'); this.assert(t.includes('QUESTION')); });
+        await this.test('toPlainText works', () => { const t = ExportManager.toPlainText(fixtureData, 'Test'); this.assert(t.includes('QUESTION')); });
+        if (fixtureExport.textIncludes) {
+            for (const snippet of fixtureExport.textIncludes) {
+                await this.test(`Text includes "${snippet}"`, () => {
+                    const t = ExportManager.toPlainText(fixtureData, 'Test');
+                    this.assert(t.includes(snippet));
+                });
+            }
+        }
 
         // Utilities
         await this.test('escapeHtml works', () => { const r = ExportManager.escapeHtml('<script>'); this.assert(!r.includes('<script>')); });
@@ -419,6 +453,61 @@ window.TestRunner = {
         // Header
         await this.test('Platform selector exists', () => this.assert(document.getElementById('platformSelector')));
         await this.test('Auto-sync toggle exists', () => this.assert(document.getElementById('autoSyncToggle')));
+        await this.test('Platform selector is clickable', () => {
+            const selector = document.getElementById('platformSelector');
+            if (!selector) return false;
+            const rect = selector.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            const topEl = document.elementFromPoint(x, y);
+            return this.assert(topEl === selector || selector.contains(topEl));
+        });
+        await this.test('Thread title toggles selection', () => {
+            const item = document.querySelector('.thread-item');
+            if (!item) return true;
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            const title = item.querySelector('.thread-title');
+            if (!checkbox || checkbox.disabled || !title) return true;
+            const initial = checkbox.checked;
+            title.click();
+            const toggled = checkbox.checked !== initial;
+            if (toggled) title.click();
+            return this.assert(toggled);
+        });
+        await this.test('Data source toggles space selector', () => {
+            const allRadio = document.querySelector('input[name="dataSource"][value="all"]');
+            const spacesRadio = document.querySelector('input[name="dataSource"][value="spaces"]');
+            const spaceSelector = document.getElementById('spaceSelector');
+            if (!allRadio || !spacesRadio || !spaceSelector) return true;
+            spacesRadio.checked = true;
+            spacesRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            const visible = !spaceSelector.classList.contains('hidden');
+            allRadio.checked = true;
+            allRadio.dispatchEvent(new Event('change', { bubbles: true }));
+            const hiddenAgain = spaceSelector.classList.contains('hidden');
+            return this.assert(visible && hiddenAgain);
+        });
+        await this.test('Date filter toggles input enabled', () => {
+            const checkbox = document.getElementById('dateFilterEnabled');
+            const input = document.getElementById('dateFilterValue');
+            if (!checkbox || !input) return true;
+            checkbox.checked = true;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            const enabled = !input.disabled;
+            checkbox.checked = false;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            const disabledAgain = input.disabled;
+            return this.assert(enabled && disabledAgain);
+        });
+        await this.test('Empty thread list renders message', () => {
+            const listEl = document.getElementById('threadList');
+            if (!listEl || typeof renderThreadList !== 'function') return true;
+            const before = listEl.innerHTML;
+            renderThreadList([]);
+            const hasMessage = listEl.textContent.includes('No threads found');
+            listEl.innerHTML = before;
+            return this.assert(hasMessage);
+        });
     },
 
     // ============================================
