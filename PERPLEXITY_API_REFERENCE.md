@@ -11,14 +11,23 @@
 
 1. [Executive Summary](#executive-summary)
 2. [HAR Analysis Overview](#har-analysis-overview)
-3. [Authentication & Session](#authentication--session)
-4. [Core API Endpoints](#core-api-endpoints)
-5. [Request/Response Formats](#requestresponse-formats)
-6. [Pagination & Cursors](#pagination--cursors)
-7. [Error Handling](#error-handling)
-8. [Implementation Validation](#implementation-validation)
-9. [Performance Metrics](#performance-metrics)
-10. [Known Issues & Limitations](#known-issues--limitations)
+3. [Current Implementation](#current-implementation)
+4. [Security Implementation](#security-implementation)
+5. [Authentication & Session](#authentication--session)
+6. [Core API Endpoints](#core-api-endpoints)
+7. [Endpoint Directory](#endpoint-directory)
+8. [Request/Response Formats](#requestresponse-formats)
+9. [Pagination & Cursors](#pagination--cursors)
+10. [Error Handling](#error-handling)
+11. [Implementation Validation](#implementation-validation)
+12. [Performance Metrics](#performance-metrics)
+13. [Known Issues & Limitations](#known-issues--limitations)
+14. [Improvement Recommendations](#improvement-recommendations)
+15. [Code Examples](#code-examples)
+16. [Testing & Validation](#testing--validation)
+17. [Debugging Guide](#debugging-guide)
+18. [Changelog](#changelog)
+19. [Appendix](#appendix)
 
 ---
 
@@ -93,6 +102,49 @@ static.cloudflareinsights.com:    2 requests (Cloudflare Analytics)
 ```
 
 **Impact:** None - Extension only uses `perplexity.ai/rest/*` and `perplexity.ai/api/*` endpoints.
+
+---
+
+## Current Implementation
+
+**Adapter:** `src/adapters/perplexity-adapter.js`
+
+**Core methods:**
+```javascript
+PerplexityAdapter.extractUuid(url)
+PerplexityAdapter.getThreads(page, limit, spaceId)
+PerplexityAdapter.getSpaces()
+PerplexityAdapter.getThreadDetail(uuid)
+```
+
+**Request patterns observed in code:**
+- `credentials: "include"` for cookie auth
+- Headers include `x-app-apiclient: default` and `x-app-apiversion: 2.18`
+- Thread detail uses slug from list API
+- Thread detail includes 28 `supported_block_use_cases`
+
+**Data flow summary:**
+1. Get session and user status
+2. List threads with offset pagination
+3. Fetch thread detail with cursor pagination
+4. Normalize entries and title fields
+
+---
+
+## Security Implementation
+
+**Authentication:**
+- Cookie-based sessions only
+- No API keys in request headers
+- `credentials: "include"` used for all API calls
+
+**Transport:**
+- HTTPS requests only to `https://www.perplexity.ai`
+- No third-party API calls required for export
+
+**Sensitive data handling:**
+- Session cookies are not persisted by the adapter
+- Exported data is pulled from authenticated session only
 
 ---
 
@@ -890,34 +942,211 @@ const answer = entry.text ||
 **Response Size:** 892 bytes  
 **Calls in HAR:** 1
 
+### 15. Collection Threads
+
+**Endpoint:** `GET /rest/collections/list_collection_threads`
+
+**Purpose:** List threads within a collection/space
+
+**Calls in HAR:** 2
+
+### 16. Collection Articles
+
+**Endpoint:** `GET /rest/collections/list_collection_articles`
+
+**Purpose:** List articles within a collection/space
+
+**Calls in HAR:** 1
+
+### 17. Collection Bookmarks
+
+**Endpoint:** `GET /rest/collections/list_bookmarks`
+
+**Purpose:** List bookmarked items in collections
+
+**Calls in HAR:** 1
+
+### 18. Space Templates
+
+**Endpoint:** `GET /rest/collections/list_space_templates`
+
+**Purpose:** List available space templates
+
+**Calls in HAR:** 1
+
+### 19. Collection Invitations
+
+**Endpoint:** `GET /rest/collections/invitations`
+
+**Purpose:** List pending collection invitations
+
+**Calls in HAR:** 1
+
+### 20. Collection Metadata
+
+**Endpoint:** `GET /rest/collections/get_collection`
+
+**Purpose:** Fetch collection metadata by slug
+
+**Calls in HAR:** 1
+
+### 21. Space Bookmarks
+
+**Endpoint:** `GET /rest/spaces/bookmarks`
+
+**Purpose:** List bookmarks for spaces
+
+**Calls in HAR:** 1
+
+### 22. Assets
+
+**Endpoint:** `GET /rest/assets/`
+
+**Purpose:** Fetch generated asset listings
+
+**Calls in HAR:** 3
+
+### 23. Upsell Widgets
+
+**Endpoint:** `GET /rest/homepage-widgets/upsell`
+
+**Purpose:** Retrieve upsell widgets for homepage
+
+**Calls in HAR:** 2
+
+### 24. User AI Profile
+
+**Endpoint:** `GET /rest/user/get_user_ai_profile`
+
+**Purpose:** Fetch user AI profile data
+
+**Calls in HAR:** 1
+
+### 25. Sidebar Hubs
+
+**Endpoint:** `GET /rest/user/get_user_main_sidebar_hubs`
+
+**Purpose:** Fetch sidebar hub configuration
+
+**Calls in HAR:** 1
+
+### 26. Visitor Information
+
+**Endpoint:** `GET /rest/visitor/information`
+
+**Purpose:** Fetch visitor metadata
+
+**Calls in HAR:** 1
+
+### 27. Academic Check
+
+**Endpoint:** `GET /rest/academic/check-edu-institution`
+
+**Purpose:** Check academic institution eligibility
+
+**Calls in HAR:** 1
+
+### 28. Enterprise Pending Invitation
+
+**Endpoint:** `GET /rest/enterprise/user/pending-invitation`
+
+**Purpose:** Fetch pending enterprise invitations
+
+**Calls in HAR:** 1
+
+### 29. Mention Shortcuts
+
+**Endpoint:** `GET /rest/tasks/shortcuts/mentions`
+
+**Purpose:** Fetch mention shortcut entries
+
+**Calls in HAR:** 1
+
+### 30. Feedback Prompt Check
+
+**Endpoint:** `POST /rest/entry/should-show-feedback/{uuid}`
+
+**Purpose:** Determine whether to show feedback prompt
+
+**Calls in HAR:** 1
+
+### 31. Analytics Beacon
+
+**Endpoint:** `POST https://count.perplexity.ai/api/v1/bs`
+
+**Purpose:** Analytics beacon (not required for export)
+
+**Calls in HAR:** 1
+
 ---
 
-## Complete Endpoint Reference
+## Endpoint Directory
 
 ### Summary Table
 
-| # | Endpoint | Method | Purpose | Critical |
-|---|----------|--------|---------|----------|
-| 1 | `/api/auth/session` | GET | Get session | ✅ Yes |
-| 2 | `/rest/user/info` | GET | User details | ⚠️ Optional |
-| 3 | `/rest/thread/list_ask_threads` | POST | List threads | ✅ Yes |
-| 4 | `/rest/thread/{slug}` | GET | Thread detail | ✅ Yes |
-| 5 | `/rest/collections/list_user_collections` | GET | List spaces | ⚠️ Optional |
-| 6 | `/rest/sse/perplexity_ask` | POST | Stream chat | ❌ No |
-| 7 | `/rest/thread/list_recent` | GET | Recent threads | ⚠️ Optional |
-| 8 | `/rest/collections/create_collection` | POST | Create space | ❌ No |
-| 9 | `/rest/rate-limit/status` | GET | Rate limits | ⚠️ Optional |
-| 10 | `/rest/rate-limit/free-queries` | GET | Free quota | ⚠️ Optional |
-| 11 | `/rest/user/settings` | GET | User settings | ❌ No |
-| 12 | `/rest/event/analytics` | POST | Analytics | ❌ No |
-| 13 | `/rest/file-repository/*` | Various | File mgmt | ❌ No |
-| 14 | `/rest/experiments/attributes` | GET | A/B tests | ❌ No |
+| # | Endpoint | Method(s) | Calls | Purpose | Critical |
+|---|----------|-----------|-------|---------|----------|
+| 1 | `/api/auth/session` | GET | 2 | Session status | ✅ Yes |
+| 2 | `/rest/user/info` | GET | 1 | User status | ⚠️ Optional |
+| 3 | `/rest/thread/list_ask_threads` | POST | 2 | List threads | ✅ Yes |
+| 4 | `/rest/thread/{slug}` | GET | 6 | Thread detail | ✅ Yes |
+| 5 | `/rest/collections/list_user_collections` | GET | 2 | List spaces | ⚠️ Optional |
+| 6 | `/rest/sse/perplexity_ask` | POST | 1 | SSE stream | ❌ No |
+| 7 | `/rest/thread/list_recent` | GET | 2 | Recent threads | ⚠️ Optional |
+| 8 | `/rest/collections/create_collection` | POST | 1 | Create space | ❌ No |
+| 9 | `/rest/collections/get_collection` | GET | 1 | Space metadata | ❌ No |
+| 10 | `/rest/collections/list_collection_threads` | GET | 2 | Space threads | ❌ No |
+| 11 | `/rest/collections/list_collection_articles` | GET | 1 | Space articles | ❌ No |
+| 12 | `/rest/collections/list_bookmarks` | GET | 1 | Bookmarked items | ❌ No |
+| 13 | `/rest/collections/list_space_templates` | GET | 1 | Space templates | ❌ No |
+| 14 | `/rest/collections/invitations` | GET | 1 | Space invitations | ❌ No |
+| 15 | `/rest/spaces/bookmarks` | GET | 1 | Space bookmarks | ❌ No |
+| 16 | `/rest/entry/should-show-feedback/{uuid}` | POST | 1 | Feedback prompt | ❌ No |
+| 17 | `/rest/event/analytics` | POST | 23 | Analytics events | ❌ No |
+| 18 | `/rest/rate-limit/status` | GET | 13 | Rate limits | ⚠️ Optional |
+| 19 | `/rest/rate-limit/free-queries` | GET | 3 | Free quota | ⚠️ Optional |
+| 20 | `/rest/user/settings` | GET | 2 | User settings | ❌ No |
+| 21 | `/rest/user/get_user_ai_profile` | GET | 1 | AI profile | ❌ No |
+| 22 | `/rest/user/get_user_main_sidebar_hubs` | GET | 1 | Sidebar hubs | ❌ No |
+| 23 | `/rest/visitor/information` | GET | 1 | Visitor info | ❌ No |
+| 24 | `/rest/homepage-widgets/upsell` | GET | 2 | Upsell widgets | ❌ No |
+| 25 | `/rest/academic/check-edu-institution` | GET | 1 | Academic check | ❌ No |
+| 26 | `/rest/enterprise/user/pending-invitation` | GET | 1 | Enterprise invitation | ❌ No |
+| 27 | `/rest/experiments/attributes` | GET | 1 | Experiment flags | ❌ No |
+| 28 | `/rest/tasks/shortcuts/mentions` | GET | 1 | Mention shortcuts | ❌ No |
+| 29 | `/rest/ping` | GET | 2 | Ping | ❌ No |
+| 30 | `/rest/assets/` | GET | 3 | Generated assets | ❌ No |
+| 31 | `/rest/file-repository/enabled` | GET | 1 | File repository availability | ❌ No |
+| 32 | `/rest/file-repository/list-files` | POST | 3 | Repository files | ❌ No |
+| 33 | `/rest/files/list` | POST | 1 | File connections | ❌ No |
+| 34 | `/api/v1/bs` (count.perplexity.ai) | POST | 1 | Analytics beacon | ❌ No |
 
 **Legend:**
 - ✅ Critical: Required for export functionality
 - ⚠️ Optional: Useful but not required
 - ❌ No: Not needed for export
 
+**HAR note:** The HAR reports 35 unique paths because two distinct thread slugs appear as separate paths. The table normalizes those to `/rest/thread/{slug}`.
+
+
+---
+
+## Improvement Recommendations
+
+1. **Add retry logic for 429/5xx**  
+   Use exponential backoff when `rate-limit/status` indicates limits or on server errors.
+
+2. **Parse both `text` and `answer` fields**  
+   Combine plain text and JSON answer variants to avoid missing content.
+
+3. **Handle session expiry explicitly**  
+   If `/api/auth/session` returns 401, prompt re-login before export.
+
+4. **Throttle detail requests**  
+   Respect rate limits by spacing detail requests (100–200ms) to avoid 429s.
+
+5. **Avoid analytics endpoints in exports**  
+   Skip `/rest/event/analytics` and `/api/v1/bs` to reduce noise in logs.
 
 ---
 

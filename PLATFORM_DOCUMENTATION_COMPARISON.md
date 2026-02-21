@@ -150,38 +150,36 @@
 **Files Present:**
 - ✅ GROK_ANALYSIS_SUMMARY.md
 - ✅ analyze_grok_har.py
+- ✅ GROK_API_REFERENCE.md
+- ✅ GROK_VALIDATION_GUIDE.md
+- ✅ README_GROK_DOCS.md
+- ✅ GROK_ADAPTER_VALIDATION.md
+- ✅ grok.har (47,536 lines)
 
 **Missing:**
-- ❌ GROK_API_REFERENCE.md
-- ❌ GROK_VALIDATION_GUIDE.md
-- ❌ README_GROK_DOCS.md
-- ❌ GROK_ADAPTER_VALIDATION.md
-- ❌ grok.har (no HAR file captured)
+- ✅ None (non‑telemetry scope)
 
 **Status:**
-- Only 29% complete
-- Has analysis script but no HAR file
-- Missing all major documentation
+- Documentation package complete (non‑telemetry scope)
 
 ---
 
 ### 6. Perplexity Documentation
 
 **Files Present:**
-- ✅ perplexity.har (renamed from perplexityhar.txt)
+- ✅ perplexity.har (77,052 lines)
+- ✅ PERPLEXITY_API_REFERENCE.md
+- ✅ PERPLEXITY_ANALYSIS_SUMMARY.md
+- ✅ PERPLEXITY_VALIDATION_GUIDE.md
+- ✅ README_PERPLEXITY_DOCS.md
+- ✅ analyze_perplexity_har.py
 
 **Missing:**
-- ❌ PERPLEXITY_API_REFERENCE.md
-- ❌ PERPLEXITY_VALIDATION_GUIDE.md
-- ❌ PERPLEXITY_ANALYSIS_SUMMARY.md
-- ❌ README_PERPLEXITY_DOCS.md
 - ❌ PERPLEXITY_ADAPTER_VALIDATION.md
-- ❌ analyze_perplexity_har.py
 
 **Status:**
-- Only 14% complete
-- HAR file exists but not analyzed
-- No documentation created
+- Documentation package complete
+- Adapter validation report still missing
 
 ---
 
@@ -195,8 +193,8 @@
 | **Claude** | Unknown | 10+ | 31 | ✅ Some | ⚠️ Partial |
 | **DeepSeek** | 15 KB | 12 | 4 | ✅ Many | ✅ Complete |
 | **ChatGPT** | Unknown | Unknown | Unknown | Unknown | Unknown |
-| **Grok** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Perplexity** | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Grok** | 6.3 KB | 13 | 22 | ✅ Some | ✅ Complete |
+| **Perplexity** | 37.9 KB | 17 | 35 | ✅ Many | ✅ Complete |
 
 ### Validation Guides
 
@@ -206,8 +204,8 @@
 | **Claude** | Unknown | ✅ | ✅ | ✅ | ✅ |
 | **DeepSeek** | 8 KB | ✅ | ✅ | ✅ | ✅ |
 | **ChatGPT** | Unknown | Unknown | Unknown | Unknown | Unknown |
-| **Grok** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Perplexity** | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Grok** | 2.3 KB | ✅ | ✅ | ✅ | ✅ |
+| **Perplexity** | 3.9 KB | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
@@ -256,51 +254,13 @@
    - Verify all sections present
    - Add file size metrics
 
-### Grok - Missing Items (CRITICAL)
+### Grok - Missing Items
 
-1. **grok.har**
-   - Capture HAR file from browser
-   - Need actual network traffic
+- ✅ None (non‑telemetry scope)
 
-2. **GROK_API_REFERENCE.md**
-   - Complete technical documentation
-   - Endpoint reference
-   - Authentication details
+### Perplexity - Missing Items
 
-3. **GROK_VALIDATION_GUIDE.md**
-   - Quick reference
-   - Testing scripts
-   - Common pitfalls
-
-4. **README_GROK_DOCS.md**
-   - Documentation index
-   - Quick start guide
-
-5. **GROK_ADAPTER_VALIDATION.md**
-   - Implementation validation
-
-### Perplexity - Missing Items (CRITICAL)
-
-1. **analyze_perplexity_har.py**
-   - Python script to analyze existing HAR
-
-2. **PERPLEXITY_API_REFERENCE.md**
-   - Complete technical documentation
-   - Endpoint reference
-   - Authentication details
-
-3. **PERPLEXITY_VALIDATION_GUIDE.md**
-   - Quick reference
-   - Testing scripts
-
-4. **PERPLEXITY_ANALYSIS_SUMMARY.md**
-   - Executive summary
-   - Key findings
-
-5. **README_PERPLEXITY_DOCS.md**
-   - Documentation index
-
-6. **PERPLEXITY_ADAPTER_VALIDATION.md**
+1. **PERPLEXITY_ADAPTER_VALIDATION.md**
    - Implementation validation
 
 ---
@@ -340,10 +300,8 @@
    - Create all 5 missing documentation files
    - Follow DeepSeek template (best practices)
 
-2. **Perplexity** (14% complete)
-   - Analyze existing perplexity.har
-   - Create all 6 missing documentation files
-   - Follow DeepSeek template
+2. **Perplexity** (Documentation complete)
+   - Optional: Add adapter validation report
 
 ### Priority 2: Add Adapter Validation Reports
 
