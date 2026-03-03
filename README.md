@@ -1,6 +1,6 @@
 # 🚀 OmniExporter AI - Enterprise Edition
 
-![Version](https://img.shields.io/badge/version-5.1.0-blue) ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green) ![Platforms](https://img.shields.io/badge/platforms-6-orange) ![Formats](https://img.shields.io/badge/export%20formats-5-purple)
+![Version](https://img.shields.io/badge/version-5.2.0-blue) ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green) ![Platforms](https://img.shields.io/badge/platforms-6-orange) ![Formats](https://img.shields.io/badge/export%20formats-5-purple)
 
 Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek** to Markdown, JSON, HTML, PDF, Plain Text, and Notion — with a full dashboard, auto-sync, and OAuth2 Notion integration.
 
@@ -141,7 +141,7 @@ PR #2 reorganized all source files from a flat root into the `src/` directory:
 
 ```
 omniexporter-ai-fixed-v2/
-├── manifest.json                  # Extension manifest (MV3, v5.1.0)
+├── manifest.json                  # Extension manifest (MV3, v5.2.0)
 ├── config.example.js              # Configuration template (copy to config.js)
 ├── src/
 │   ├── background.js              # Service worker (alarms, context menus, messaging)
@@ -171,7 +171,11 @@ omniexporter-ai-fixed-v2/
 │   ├── wrangler.toml              # Cloudflare deployment config
 │   └── DEPLOY.md                  # Deployment guide
 └── icons/
-    ├── icon128.png                # Extension icon
+    ├── icon16.png                 # 16x16 extension icon
+    ├── icon32.png                 # 32x32 extension icon
+    ├── icon48.png                 # 48x48 extension icon
+    ├── icon128.png                # 128x128 extension icon
+    ├── generate-icons.py          # Script to regenerate PNG icons from SVG template
     └── logos/                     # Platform SVG logos
         ├── perplexity.svg
         ├── chatgpt.svg
@@ -179,11 +183,39 @@ omniexporter-ai-fixed-v2/
         ├── gemini.svg
         ├── grok.svg
         └── deepseek.svg
+├── docs/
+│   ├── api-references/            # Per-platform API reference docs
+│   │   ├── CHATGPT_API_REFERENCE.md
+│   │   ├── CLAUDE_API_REFERENCE.md
+│   │   ├── DEEPSEEK_API_REFERENCE.md
+│   │   ├── GEMINI_API_REFERENCE.md
+│   │   ├── GROK_API_REFERENCE.md
+│   │   └── PERPLEXITY_API_REFERENCE.md
+│   ├── validation/                # Adapter and integration validation guides
+│   │   ├── AGENT_VALIDATION_GUIDE.md
+│   │   ├── CHATGPT_VALIDATION_GUIDE.md
+│   │   ├── CLAUDE_VALIDATION_GUIDE.md
+│   │   ├── DEEPSEEK_ADAPTER_VALIDATION.md
+│   │   ├── DEEPSEEK_VALIDATION_GUIDE.md
+│   │   ├── GROK_ADAPTER_VALIDATION.md
+│   │   ├── GROK_VALIDATION_GUIDE.md
+│   │   └── PERPLEXITY_VALIDATION_GUIDE.md
+│   ├── platforms/                 # Platform-specific README docs
+│   │   ├── README_CHATGPT_DOCS.md
+│   │   ├── README_CLAUDE_DOCS.md
+│   │   ├── README_DEEPSEEK_DOCS.md
+│   │   ├── README_GEMINI_DOCS.md
+│   │   ├── README_GROK_DOCS.md
+│   │   └── README_PERPLEXITY_DOCS.md
+│   ├── DEEPSEEK_DOCUMENTATION_COMPLETE.md
+│   ├── DOCUMENTATION_COMPARISON.md
+│   ├── PLATFORM_DOCUMENTATION_COMPARISON.md
+│   └── TESTING_PLAN.md
 ```
 
 ## 🔐 Security
 
-OmniExporter AI v5.1.0 includes several security hardening measures:
+OmniExporter AI v5.2.0 includes several security hardening measures:
 
 - **Server-side OAuth secret** — The Notion Client Secret lives only on the Cloudflare Worker; it is never bundled in the extension
 - **Content Security Policy** — `script-src 'self'` prevents remote script execution; `connect-src` is limited to known API domains
