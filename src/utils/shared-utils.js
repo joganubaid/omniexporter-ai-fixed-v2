@@ -147,7 +147,7 @@ class RateLimiter {
 
             if (this.requestTimestamps.length >= this.requestsPerMinute) {
                 const oldestRequest = Math.min(...this.requestTimestamps);
-                const waitTime = RATE_LIMIT_WINDOW_MS - (now - oldestRequest) + RATE_LIMIT_BUFFER_MS;
+                const waitTime = Math.max(0, RATE_LIMIT_WINDOW_MS - (now - oldestRequest) + RATE_LIMIT_BUFFER_MS);
                 await new Promise(r => setTimeout(r, waitTime));
                 continue;
             }

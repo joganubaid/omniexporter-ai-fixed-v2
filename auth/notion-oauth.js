@@ -206,7 +206,7 @@ var NotionOAuth = {
                 throw new Error(`Rate limited. Please try again in ${retryAfter} seconds.`);
             }
             const error = await response.json().catch(() => ({}));
-            throw new Error(`Token exchange failed: ${error.error || response.statusText}`);
+            throw new Error(`Token exchange failed: ${error.error || response.statusText || 'Unknown error'}`);
         }
 
         const tokens = await response.json();
@@ -534,7 +534,7 @@ var NotionOAuth = {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(`API Error: ${err.message || response.statusText}`);
+                throw new Error(`API Error: ${err.message || response.statusText || 'Unknown error'}`);
             }
 
             const data = await response.json().catch(() => null);
@@ -587,7 +587,7 @@ var NotionOAuth = {
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
-            throw new Error(`Upload failed: ${err.message || response.statusText}`);
+            throw new Error(`Upload failed: ${err.message || response.statusText || 'Unknown error'}`);
         }
 
         return await response.json();
