@@ -141,7 +141,7 @@ class ExportManager {
             meta: {
                 exportedAt: new Date().toISOString(),
                 platform: platform,
-                version: '4.2.0',
+                version: '5.2.0',
                 tool: 'OmniExporter AI'
             },
             conversation: {

@@ -1,5 +1,5 @@
 // OmniExporter AI - Popup JavaScript
-// Phase 9: Multi-Platform Export v5.0
+// Phase 9: Multi-Platform Export v5.2.0
 "use strict";
 
 // ============================================
@@ -40,104 +40,8 @@ let selectedExportFormat = "markdown";
 // ============================================
 // FIX 11: RETRY LOGIC WITH EXPONENTIAL BACKOFF
 // ============================================
-async function withRetry(fn, maxRetries = 3, baseDelayMs = 2000) {
-    let lastError;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-            return await fn();
-        } catch (error) {
-            lastError = error;
-            if (error.message?.includes('unauthorized') || error.message?.includes('Invalid')) {
-                throw error;
-            }
-            if (attempt < maxRetries - 1) {
-                const delay = baseDelayMs * Math.pow(2, attempt);
-                logPopup('warn', `Retry ${attempt + 1}/${maxRetries} after ${delay}ms`, { error: error.message });
-                await new Promise(r => setTimeout(r, delay));
-            }
-        }
-    }
-    throw lastError;
-}
-
-// ============================================
-// FIX 12: NOTION ERROR MAPPER
-// ============================================
-const NotionErrorMapper = {
-    map(error) {
-        const code = error?.code || '';
-        const msg = error?.message || '';
-        const errorMap = {
-            'object_not_found': 'Database not found. Please verify your Database ID.',
-            'unauthorized': 'Invalid API key. Please check your Notion integration.',
-            'restricted_resource': 'This database is not shared with your integration.',
-            'rate_limited': 'Too many requests. Please wait a moment and try again.'
-        };
-        if (errorMap[code]) return errorMap[code];
-        if (msg.includes('Could not find database')) return errorMap['object_not_found'];
-        if (msg.includes('API token')) return errorMap['unauthorized'];
-        return msg || 'Unknown Notion error';
-    }
-};
-
-// ============================================
-// FIX 15: ENHANCED RATE LIMITER
-// ============================================
-class RateLimiter {
-    constructor(requestsPerMinute = 30) {
-        this.requestsPerMinute = requestsPerMinute;
-        this.queue = [];
-        this.processing = false;
-        this.requestTimestamps = [];
-    }
-
-    async throttle(fn) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({ fn, resolve, reject, addedAt: Date.now() });
-            this.processQueue();
-        });
-    }
-
-    async processQueue() {
-        if (this.processing || this.queue.length === 0) return;
-        this.processing = true;
-
-        while (this.queue.length > 0) {
-            const now = Date.now();
-            const { addedAt } = this.queue[0];
-
-            if (now - addedAt > 5 * 60 * 1000) {
-                const stale = this.queue.shift();
-                stale.reject(new Error('Request timeout: took too long in queue'));
-                continue;
-            }
-
-            this.requestTimestamps = this.requestTimestamps.filter(t => now - t < 60000);
-
-            if (this.requestTimestamps.length >= this.requestsPerMinute) {
-                const oldestRequest = Math.min(...this.requestTimestamps);
-                const waitTime = 60000 - (now - oldestRequest) + 100;
-                await new Promise(r => setTimeout(r, waitTime));
-                continue;
-            }
-
-            const { fn, resolve, reject } = this.queue.shift();
-            this.requestTimestamps.push(Date.now());
-
-            try {
-                const result = await fn();
-                resolve(result);
-            } catch (error) {
-                reject(error);
-            }
-
-            const delay = this.queue.length > 50 ? 200 : 500;
-            await new Promise(r => setTimeout(r, delay));
-        }
-
-        this.processing = false;
-    }
-}
+// (withRetry, NotionErrorMapper, RateLimiter, LoadingManager, InputSanitizer
+//  are provided by shared-utils.js)
 
 const notionRateLimiter = new RateLimiter(30);
 
@@ -149,37 +53,6 @@ const SCHEMA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // ============================================
 // PERFORMANCE & SECURITY UTILITIES (Phase 2)
 // ============================================
-
-class LoadingManager {
-    static show(elementId, text = '⏳') {
-        const el = document.getElementById(elementId);
-        if (!el) return;
-        el.dataset.originalText = el.textContent;
-        el.textContent = text;
-        el.disabled = true;
-    }
-
-    static hide(elementId) {
-        const el = document.getElementById(elementId);
-        if (!el || !el.dataset.originalText) return;
-        el.textContent = el.dataset.originalText;
-        el.disabled = false;
-        delete el.dataset.originalText;
-    }
-}
-
-class InputSanitizer {
-    static clean(str) {
-        if (typeof str !== 'string') return '';
-        return str.replace(/[&<>"']/g, (m) => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;'
-        })[m]);
-    }
-}
 
 // ============================================
 // CONNECTION STATUS MANAGER (Phase 13)
@@ -222,10 +95,14 @@ class LoadingOverlay {
 
         this.overlay = document.createElement('div');
         this.overlay.className = 'loading-overlay';
-        this.overlay.innerHTML = `
-            <div class="loading-spinner"></div>
-            <div class="loading-text">${message}</div>
-        `;
+
+        const spinner = document.createElement('div');
+        spinner.className = 'loading-spinner';
+        const textEl = document.createElement('div');
+        textEl.className = 'loading-text';
+        textEl.textContent = message;
+        this.overlay.appendChild(spinner);
+        this.overlay.appendChild(textEl);
         document.body.appendChild(this.overlay);
 
         // Trigger animation
@@ -252,21 +129,7 @@ class LoadingOverlay {
     }
 }
 
-class RequestDeduplicator {
-    constructor() {
-        this.activeRequests = new Set();
-    }
-    async run(key, fn) {
-        if (this.activeRequests.has(key)) return null;
-        this.activeRequests.add(key);
-        try {
-            return await fn();
-        } finally {
-            this.activeRequests.delete(key);
-        }
-    }
-}
-
+// (RequestDeduplicator is provided by shared-utils.js)
 const reqDeduplication = new RequestDeduplicator();
 
 // ============================================
@@ -437,7 +300,7 @@ async function ensureContentScript(tabId) {
     try {
         await chrome.scripting.executeScript({
             target: { tabId },
-            files: ['platform-config.js', 'content.js']
+            files: ['src/platform-config.js', 'src/content.js']
         });
         logPopup('debug', 'Content script injected');
         return true;

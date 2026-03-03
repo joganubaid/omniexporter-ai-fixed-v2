@@ -7,6 +7,8 @@
  */
 
 // CORS headers for cross-origin requests from extension
+// Note: '*' is used because Chrome extensions send varying Origin headers.
+// In production, consider validating the Origin against known extension IDs.
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -45,7 +47,7 @@ export default {
 
 async function handleTokenExchange(request, env) {
     try {
-        const { code, redirect_uri } = await request.json();
+        const { code, redirect_uri, code_verifier } = await request.json();
 
         if (!code) {
             return jsonResponse({ error: 'Missing authorization code' }, 400);
@@ -70,7 +72,8 @@ async function handleTokenExchange(request, env) {
             body: JSON.stringify({
                 grant_type: 'authorization_code',
                 code: code,
-                redirect_uri: redirect_uri
+                redirect_uri: redirect_uri,
+                ...(code_verifier && { code_verifier })
             })
         });
 
@@ -89,6 +92,7 @@ async function handleTokenExchange(request, env) {
         return jsonResponse({
             access_token: tokenData.access_token,
             token_type: tokenData.token_type,
+            expires_in: tokenData.expires_in,
             workspace_id: tokenData.workspace_id,
             workspace_name: tokenData.workspace_name,
             workspace_icon: tokenData.workspace_icon,

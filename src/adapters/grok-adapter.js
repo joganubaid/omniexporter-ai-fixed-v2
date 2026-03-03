@@ -177,11 +177,11 @@ const GrokAdapter = {
      * @returns {Promise<{threads: Array, hasMore: boolean, page: number}>}
      * @throws {Error} If the API request fails
      */
-    getThreads: async (page = 0, limit = 50) => {
+    getThreads: async (page = 1, limit = 50) => {
         // Check NetworkInterceptor first
         if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
             const all = window.NetworkInterceptor.getChatList();
-            const start = page * limit;
+            const start = (page - 1) * limit;
             return {
                 threads: all.slice(start, start + limit),
                 hasMore: start + limit < all.length,
@@ -190,7 +190,7 @@ const GrokAdapter = {
         }
 
         try {
-            const result = await GrokAdapter.getThreadsWithOffset(page * limit, limit);
+            const result = await GrokAdapter.getThreadsWithOffset((page - 1) * limit, limit);
             return {
                 threads: result.threads,
                 hasMore: result.hasMore,

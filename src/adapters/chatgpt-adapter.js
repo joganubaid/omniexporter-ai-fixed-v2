@@ -55,8 +55,8 @@ const ChatGPTAdapter = {
                 return null;
             }
 
-            const data = await response.json();
-            if (data.accessToken) {
+            const data = await response.json().catch((e) => { console.warn('[ChatGPT] Failed to parse session response:', e.message); return null; });
+            if (data && data.accessToken) {
                 ChatGPTAdapter._accessToken = data.accessToken;
                 // Token typically expires in ~1 hour; cache for 55 minutes
                 ChatGPTAdapter._tokenExpiry = Date.now() + 55 * 60 * 1000;

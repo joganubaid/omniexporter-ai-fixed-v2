@@ -1,4 +1,4 @@
-// OmniExporter AI - Enterprise Edition v5.0
+// OmniExporter AI - Enterprise Edition v5.2.0
 // background.js - Enterprise Background Service Worker (Phase 10-12)
 "use strict";
 
@@ -67,6 +67,23 @@ chrome.runtime.onInstalled.addListener(() => {
             console.log(`Auto-sync alarm set for every ${interval} minutes`);
         }
     });
+
+    // Create context menu
+    chrome.contextMenus.create({
+        id: 'exportThread',
+        title: 'Export this thread with OmniExporter',
+        contexts: ['page'],
+        documentUrlPatterns: [
+            'https://www.perplexity.ai/*',
+            'https://chatgpt.com/*',
+            'https://chat.openai.com/*',
+            'https://claude.ai/*',
+            'https://gemini.google.com/*',
+            'https://grok.com/*',
+            'https://x.com/i/grok/*',
+            'https://chat.deepseek.com/*'
+        ]
+    });
 });
 
 // Also create keep-alive on startup (service worker restarts)
@@ -95,32 +112,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // ============================================
 // PHASE 7: RESILIENT DATA EXTRACTOR (for background.js)
 // ============================================
-class ResilientDataExtractor {
-    static extractAnswer(entry) {
-        // Strategy 1: Perplexity blocks structure
-        if (entry.blocks && Array.isArray(entry.blocks)) {
-            for (const block of entry.blocks) {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    const answer = block.markdown_block.answer ||
-                        (block.markdown_block.chunks || []).join('\n');
-                    if (answer) return answer;
-                }
-                if (block.text_block?.content) return block.text_block.content;
-            }
-        }
-        // Strategy 2: Direct properties
-        if (entry.answer) return entry.answer;
-        if (entry.text) return entry.text;
-        if (entry.content) return typeof entry.content === 'string' ? entry.content : '';
-        if (entry.response?.text) return entry.response.text;
-        return '';
-    }
-
-    static extractQuery(entry) {
-        return entry.query || entry.query_str || entry.question || entry.prompt || '';
-    }
-}
-
 // ============================================
 // PLATFORM URL GENERATOR
 // ============================================
@@ -357,6 +348,9 @@ async function performAutoSync() {
 
             Logger.info('AutoSync', `Found ${tabs.length} AI platform tab(s)`, { platforms: tabs.map(t => t.url.split('/')[2]) });
 
+            // Note: Only the first matching tab is synced per run to avoid
+            // overwhelming the rate limiter. If multiple AI tabs are open,
+            // subsequent runs will continue processing other platforms via checkpoint.
             const tab = tabs[0];
             const platform = tab.url.includes('perplexity') ? 'Perplexity'
                 : tab.url.includes('chatgpt') || tab.url.includes('openai') ? 'ChatGPT'
@@ -663,25 +657,8 @@ async function trackFailure(failure) {
 }
 
 // ============================================
-// CONTEXT MENU (Optional Enhancement)
+// CONTEXT MENU CLICK HANDLER
 // ============================================
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-        id: 'exportThread',
-        title: 'Export this thread with OmniExporter',
-        contexts: ['page'],
-        documentUrlPatterns: [
-            'https://www.perplexity.ai/*',
-            'https://chatgpt.com/*',
-            'https://chat.openai.com/*',
-            'https://claude.ai/*',
-            'https://gemini.google.com/*',
-            'https://grok.com/*',
-            'https://x.com/i/grok/*',
-            'https://chat.deepseek.com/*'
-        ]
-    });
-});
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === 'exportThread') {
