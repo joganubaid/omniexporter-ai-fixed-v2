@@ -82,7 +82,7 @@ const ClaudeAdapter = {
             const endpoint = platformConfig.buildEndpoint('Claude', 'organizations');
             const response = await ClaudeAdapter._fetchWithRetry(`${baseUrl}${endpoint}`);
 
-            const orgs = await response.json();
+            const orgs = await response.json().catch(() => null);
             if (!orgs || orgs.length === 0) {
                 throw new Error('No Claude organizations found. Please check your login.');
             }
@@ -106,7 +106,7 @@ const ClaudeAdapter = {
             const endpoint = platformConfig.buildEndpoint('Claude', 'conversations', { org: orgId });
             const response = await ClaudeAdapter._fetchWithRetry(`${baseUrl}${endpoint}`);
 
-            const data = await response.json();
+            const data = await response.json().catch(() => null);
             const threads = (Array.isArray(data) ? data : []).map(t => ({
                 uuid: t.uuid,
                 title: DataExtractor.extractTitle(t, 'Claude'),
@@ -176,7 +176,8 @@ const ClaudeAdapter = {
             const url = `${baseUrl}${endpoint}`;
 
             const response = await ClaudeAdapter._fetchWithRetry(url);
-            const data = await response.json();
+            const data = await response.json().catch(() => null);
+            if (!data) throw new Error('Failed to parse conversation response');
 
             console.log(`[Claude] API success for ${uuid}`);
             return {

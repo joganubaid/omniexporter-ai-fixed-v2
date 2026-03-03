@@ -5,6 +5,9 @@
  */
 "use strict";
 
+// Named constants
+const TOKEN_EXPIRY_FALLBACK_SECONDS = 3600; // Default when expires_in is not returned
+
 // Helper to safely call Logger (use var to allow redeclaration in service worker context)
 var _logOAuth = _logOAuth || function (level, message, data) {
     if (typeof Logger !== 'undefined') {
@@ -202,7 +205,7 @@ var NotionOAuth = {
                 _logOAuth('warn', 'Rate limited by token server', { retryAfter });
                 throw new Error(`Rate limited. Please try again in ${retryAfter} seconds.`);
             }
-            const error = await response.json();
+            const error = await response.json().catch(() => ({}));
             throw new Error(`Token exchange failed: ${error.error || response.statusText}`);
         }
 
@@ -303,7 +306,8 @@ var NotionOAuth = {
      * Store OAuth tokens securely
      */
     async storeTokens(tokens) {
-        const expiresAt = Date.now() + (tokens.expires_in * 1000);
+        const expiresIn = tokens.expires_in || TOKEN_EXPIRY_FALLBACK_SECONDS;
+        const expiresAt = Date.now() + (expiresIn * 1000);
         const existing = await chrome.storage.local.get([
             'notion_oauth_workspace_id',
             'notion_oauth_workspace_name'
@@ -529,11 +533,12 @@ var NotionOAuth = {
             });
 
             if (!response.ok) {
-                const err = await response.json();
+                const err = await response.json().catch(() => ({}));
                 throw new Error(`API Error: ${err.message || response.statusText}`);
             }
 
-            const data = await response.json();
+            const data = await response.json().catch(() => null);
+            if (!data) throw new Error('Failed to parse API response');
             const workspaceName = data?.bot?.owner?.workspace ?
                 data.bot.owner.workspace.name :
                 (data.name || 'Notion Workspace');
@@ -581,7 +586,7 @@ var NotionOAuth = {
         });
 
         if (!response.ok) {
-            const err = await response.json();
+            const err = await response.json().catch(() => ({}));
             throw new Error(`Upload failed: ${err.message || response.statusText}`);
         }
 

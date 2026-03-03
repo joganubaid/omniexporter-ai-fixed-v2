@@ -1,5 +1,5 @@
 // OmniExporter AI - Options Page JavaScript
-// Enterprise Dashboard v5.0 - Phase 10-12
+// Enterprise Dashboard v5.2.0 - Phase 10-12
 "use strict";
 
 // ============================================================================
@@ -35,80 +35,8 @@ function debounce(fn, ms = 300) {
     };
 }
 
-/**
- * Manages loading states across the application
- */
-class LoadingManager {
-    static show(elementId, text = 'Loading...') {
-        const el = document.getElementById(elementId);
-        if (!el) return;
-        el.dataset.originalContent = el.innerHTML;
-        el.innerHTML = `<div class="loader-container"><div class="loader"></div><span>${text}</span></div>`;
-    }
-
-    static hide(elementId) {
-        const el = document.getElementById(elementId);
-        if (!el || !el.dataset.originalContent) return;
-        el.innerHTML = el.dataset.originalContent;
-        delete el.dataset.originalContent;
-    }
-}
-
-/**
- * Sanitizes user input to prevent XSS
- */
-class InputSanitizer {
-    static clean(str) {
-        if (typeof str !== 'string') return '';
-        return str.replace(/[&<>"']/g, (m) => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;'
-        })[m]);
-    }
-
-    static validateDatabaseId(id) {
-        const cleanId = id.replace(/-/g, '');
-        return /^[a-f0-9]{32}$/i.test(cleanId);
-    }
-
-    // Validate Notion API key format (Audit Fix)
-    static validateNotionKey(key) {
-        if (!key || typeof key !== 'string') return false;
-        // Notion keys start with 'secret_' and are alphanumeric
-        return /^secret_[a-zA-Z0-9]{43}$/.test(key) || /^ntn_[a-zA-Z0-9]+$/.test(key);
-    }
-
-    // Validate UUID format
-    static validateUuid(uuid) {
-        if (!uuid || typeof uuid !== 'string') return false;
-        return /^[a-zA-Z0-9_-]{8,128}$/.test(uuid);
-    }
-}
-
-/**
- * Request Deduplicator to prevent race conditions
- */
-class RequestDeduplicator {
-    constructor() {
-        this.activeRequests = new Set();
-    }
-
-    async run(key, fn) {
-        if (this.activeRequests.has(key)) {
-            console.warn(`[OmniExporter] Duplicate request ignored: ${key}`);
-            return null;
-        }
-        this.activeRequests.add(key);
-        try {
-            return await fn();
-        } finally {
-            this.activeRequests.delete(key);
-        }
-    }
-}
+// (LoadingManager, InputSanitizer, RequestDeduplicator, withRetry,
+//  NotionErrorMapper, RateLimiter are provided by shared-utils.js)
 
 const reqDeduplication = new RequestDeduplicator();
 
@@ -117,116 +45,6 @@ const SCHEMA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // Notion Schema Cache
 let notionSchemaCache = null;
 let schemaCacheTime = 0;
-
-// ============================================================================
-// SECTION: FIX 11: RETRY LOGIC WITH EXPONENTIAL BACKOFF
-// ============================================================================
-async function withRetry(fn, maxRetries = 3, baseDelayMs = 2000) {
-    let lastError;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-            return await fn();
-        } catch (error) {
-            lastError = error;
-            // Don't retry on auth or validation errors
-            if (error.message?.includes('unauthorized') || error.message?.includes('Invalid')) {
-                throw error;
-            }
-            if (attempt < maxRetries - 1) {
-                const delay = baseDelayMs * Math.pow(2, attempt); // 2s, 4s, 8s
-                console.warn(`[OmniExporter] Retry ${attempt + 1}/${maxRetries} after ${delay}ms:`, error.message);
-                await new Promise(r => setTimeout(r, delay));
-            }
-        }
-    }
-    throw lastError;
-}
-
-// ============================================================================
-// SECTION: FIX 12: NOTION ERROR MAPPER
-// ============================================================================
-const NotionErrorMapper = {
-    map(error) {
-        const code = error?.code || '';
-        const msg = error?.message || '';
-
-        const errorMap = {
-            'object_not_found': 'Database not found. Please verify your Database ID.',
-            'unauthorized': 'Invalid API key. Please check your Notion integration.',
-            'restricted_resource': 'This database is not shared with your integration.',
-            'rate_limited': 'Too many requests. Please wait a moment and try again.',
-            'validation_error': 'Invalid data format. Check your content.',
-            'conflict_error': 'A conflict occurred. Please try again.',
-            'internal_server_error': 'Notion is experiencing issues. Try again later.'
-        };
-
-        if (errorMap[code]) return errorMap[code];
-        if (msg.includes('Could not find database')) return errorMap['object_not_found'];
-        if (msg.includes('API token')) return errorMap['unauthorized'];
-        return msg || 'Unknown Notion error';
-    }
-};
-
-// ============================================================================
-// SECTION: FIX 15: ENHANCED RATE LIMITER
-// ============================================================================
-class RateLimiter {
-    constructor(requestsPerMinute = 30) {
-        this.requestsPerMinute = requestsPerMinute;
-        this.queue = [];
-        this.processing = false;
-        this.requestTimestamps = [];
-    }
-
-    async throttle(fn) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({ fn, resolve, reject, addedAt: Date.now() });
-            this.processQueue();
-        });
-    }
-
-    async processQueue() {
-        if (this.processing || this.queue.length === 0) return;
-        this.processing = true;
-
-        while (this.queue.length > 0) {
-            const now = Date.now();
-            const { addedAt } = this.queue[0];
-
-            // Reject stale requests (>5 min in queue)
-            if (now - addedAt > 5 * 60 * 1000) {
-                const stale = this.queue.shift();
-                stale.reject(new Error('Request timeout: took too long in queue'));
-                continue;
-            }
-
-            this.requestTimestamps = this.requestTimestamps.filter(t => now - t < 60000);
-
-            if (this.requestTimestamps.length >= this.requestsPerMinute) {
-                const oldestRequest = Math.min(...this.requestTimestamps);
-                const waitTime = 60000 - (now - oldestRequest) + 100; // +100ms buffer
-                await new Promise(r => setTimeout(r, waitTime));
-                continue;
-            }
-
-            const { fn, resolve, reject } = this.queue.shift();
-            this.requestTimestamps.push(Date.now());
-
-            try {
-                const result = await fn();
-                resolve(result);
-            } catch (error) {
-                reject(error);
-            }
-
-            // Adaptive delay based on queue size
-            const delay = this.queue.length > 50 ? 200 : 500;
-            await new Promise(r => setTimeout(r, delay));
-        }
-
-        this.processing = false;
-    }
-}
 
 const notionRateLimiter = new RateLimiter(30);
 

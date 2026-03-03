@@ -4,9 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 5.1.x   | ✅ Current |
-| 5.0.x   | ⚠️ Upgrade recommended |
-| < 5.0   | ❌ No longer supported |
+| 5.2.x   | ✅ Current |
+| 5.1.x   | ⚠️ Upgrade recommended |
+| < 5.1   | ❌ No longer supported |
 
 ## Security Practices
 
@@ -41,7 +41,7 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do NOT open a public GitHub issue**
-2. Email: [Add your security contact email]
+2. Email: security@omniexporter.ai
 3. Include: description, reproduction steps, and potential impact
 4. Expected response time: 48 hours
 

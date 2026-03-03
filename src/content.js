@@ -652,24 +652,6 @@ function getPlatformAdapter() {
 // RESILIENT EXTRACTION HELPERS
 // ============================================
 
-/**
- * Extract answer using DataExtractor with fallbacks
- */
-function extractAnswerResilient(entry, platform) {
-    // Try DataExtractor first (uses config-based paths)
-    const extracted = DataExtractor.extractAnswer(entry, platform);
-    if (extracted) return extracted;
-
-    // Fallback: Try Perplexity block extraction
-    if (platform === 'Perplexity' && entry.blocks) {
-        const { answer } = DataExtractor.extractFromPerplexityBlocks(entry);
-        if (answer) return answer;
-    }
-
-    // Final fallback: direct properties
-    return entry.answer || entry.text || entry.content || '';
-}
-
 // ============================================
 // AUTO-VERSION DETECTION ON LOAD
 // ============================================
