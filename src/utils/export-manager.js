@@ -498,14 +498,64 @@ class ExportManager {
         html = html.replace(/^## ([^\n]+)$/gm, '<h2>$1</h2>');
         html = html.replace(/^# ([^\n]+)$/gm, '<h1>$1</h1>');
 
-        // Ordered list
-        html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+        // Lists (ordered and unordered) - process line by line
+        const lines = html.split('\n');
+        const processedLines = [];
+        let currentListType = null; // 'ol', 'ul', or null
 
-        // Unordered list
-        html = html.replace(/^[\-*] (.+)$/gm, '<li>$1</li>');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
 
-        // Wrap consecutive <li> elements in <ul>
-        html = html.replace(/((?:<li>[\s\S]+?<\/li>\n?)+)/g, '<ul>$1</ul>');
+            let match = line.match(/^(\d+)\. (.+)$/); // ordered list
+            if (match) {
+                if (currentListType !== 'ol') {
+                    if (currentListType === 'ul') {
+                        processedLines.push('</ul>');
+                    } else if (currentListType === 'ol') {
+                        processedLines.push('</ol>');
+                    }
+                    processedLines.push('<ol>');
+                    currentListType = 'ol';
+                }
+                processedLines.push(`<li>${match[2]}</li>`);
+                continue;
+            }
+
+            match = line.match(/^[\-*] (.+)$/); // unordered list
+            if (match) {
+                if (currentListType !== 'ul') {
+                    if (currentListType === 'ul') {
+                        processedLines.push('</ul>');
+                    } else if (currentListType === 'ol') {
+                        processedLines.push('</ol>');
+                    }
+                    processedLines.push('<ul>');
+                    currentListType = 'ul';
+                }
+                processedLines.push(`<li>${match[1]}</li>`);
+                continue;
+            }
+
+            // Not a list line; close any open list
+            if (currentListType === 'ul') {
+                processedLines.push('</ul>');
+                currentListType = null;
+            } else if (currentListType === 'ol') {
+                processedLines.push('</ol>');
+                currentListType = null;
+            }
+
+            processedLines.push(line);
+        }
+
+        // Close any remaining open list
+        if (currentListType === 'ul') {
+            processedLines.push('</ul>');
+        } else if (currentListType === 'ol') {
+            processedLines.push('</ol>');
+        }
+
+        html = processedLines.join('\n');
 
         // Paragraph breaks (double newline not inside pre/ul/li)
         html = html.replace(/([^>])\n\n([^<])/g, '$1</p><p>$2');
