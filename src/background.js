@@ -417,13 +417,29 @@ async function performAutoSync() {
             Logger.info('AutoSync', `Found ${newThreads.length} new threads since checkpoint`,
                 { total: threads.length, newCount: newThreads.length, platform });
 
-            // REAL-1 + REAL-4 FIX: Retry logic now uses syncFailures object (uuid → count).
+            // REAL-1 + REAL-4 FIX: Retry logic now uses syncFailures object.
             // trackFailure() writes to this key — reads now match what's written.
             // retryThreads pulls from syncFailures storage, NOT from current API response.
             // This catches threads that failed in PREVIOUS runs (may not appear in current API results).
+            const platformThreadUuids = new Set(threads.map(t => t.uuid));
             const { syncFailures = {} } = await chrome.storage.local.get('syncFailures');
-            // Build retry list: UUIDs in syncFailures that are NOT yet exported, attempt count < 3
-            const retryUuids = Object.entries(syncFailures)
+            // Derive platform-scoped failures:
+            // - If syncFailures[platform] is an object of { uuid -> count }, use that.
+            // - Else, if syncFailures is a flat { uuid -> count }, restrict to UUIDs
+            //   that belong to this platform's threads to avoid cross-platform retries.
+            let platformFailures = {};
+            const maybePlatformFailures = syncFailures && typeof syncFailures[platform] === 'object'
+                ? syncFailures[platform]
+                : null;
+            if (maybePlatformFailures && Object.values(maybePlatformFailures).every(v => typeof v === 'number')) {
+                platformFailures = maybePlatformFailures;
+            } else if (syncFailures && Object.values(syncFailures).every(v => typeof v === 'number')) {
+                platformFailures = Object.fromEntries(
+                    Object.entries(syncFailures).filter(([uuid]) => platformThreadUuids.has(uuid))
+                );
+            }
+            // Build retry list: UUIDs for this platform that are NOT yet exported, attempt count < 3
+            const retryUuids = Object.entries(platformFailures)
                 .filter(([uuid, count]) => !sharedExportedUuids.has(uuid) && count < 3)
                 .map(([uuid]) => uuid);
 
