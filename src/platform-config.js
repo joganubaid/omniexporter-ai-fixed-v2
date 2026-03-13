@@ -724,9 +724,9 @@ if (!window.PlatformConfigManager) {
 } // end if (!window.PlatformConfigManager)
 
 
-window.platformConfig = window.platformConfig || new PlatformConfigManager();
-window.versionDetector = window.versionDetector || new PlatformVersionDetector();
-window.healthMonitor = window.healthMonitor || new PlatformHealthMonitor();
+window.platformConfig = window.platformConfig || new window.PlatformConfigManager();
+window.versionDetector = window.versionDetector || new window.PlatformVersionDetector();
+window.healthMonitor = window.healthMonitor || new window.PlatformHealthMonitor();
 
 
 // Export for content script usage
