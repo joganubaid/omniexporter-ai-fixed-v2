@@ -104,8 +104,8 @@ if (-not ($em -match 'window\.ExportManager')) { Fail "MISSING: ExportManager wi
 else { Pass "ExportManager: window guard present" }
 
 # Storage quota
-if (-not ($mf -match 'unlimitedStorage')) { Fail "MISSING: unlimitedStorage in manifest" }
-else { Pass "unlimitedStorage permission present" }
+if (-not ($mf -match '"storage"')) { Fail "MISSING: storage permission in manifest" }
+else { Pass "storage permission present" }
 
 # content-type guard
 if (-not ($bg -match 'content-type')) { Fail "MISSING: content-type check before .json()" }
