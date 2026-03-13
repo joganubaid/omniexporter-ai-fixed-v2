@@ -478,9 +478,14 @@ class ExportManager {
         if (!text) return '';
         let html = this.escapeHtml(text); // Start HTML-safe
 
-        // Code blocks (must come before inline code)
-        html = html.replace(/```([\s\S]*?)```/g, (_, code) =>
-            `<pre class="code-block"><code>${code.trimEnd()}</code></pre>`);
+        // Extract fenced code blocks and replace them with placeholders
+        const codeBlocks = [];
+        html = html.replace(/```([\s\S]*?)```/g, (_, code) => {
+            const index = codeBlocks.length;
+            const placeholder = `::CODEBLOCK_${index}::`;
+            codeBlocks.push(`<pre class="code-block"><code>${code.trimEnd()}</code></pre>`);
+            return placeholder;
+        });
 
         // Inline code
         html = html.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
@@ -565,6 +570,12 @@ class ExportManager {
 
         // Single line breaks -> <br>
         html = html.replace(/([^>\n])\n([^<\n])/g, '$1<br>$2');
+
+        // Restore fenced code blocks
+        codeBlocks.forEach((block, index) => {
+            const placeholder = `::CODEBLOCK_${index}::`;
+            html = html.replace(placeholder, block);
+        });
 
         return html;
     }
