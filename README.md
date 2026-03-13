@@ -291,6 +291,45 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 3. Check the service worker console for errors (click the "Service worker" link on the extensions page)
 4. Clear extension storage via Options → Advanced → Reset, then reconfigure
 
+## ⚠️ Known Limitations
+
+### Service Worker Keep-Alive
+The keep-alive alarm fires every **1 minute** (Chrome's enforced minimum for published extensions). If no AI site tab is open, the service worker may idle between alarms. Auto-sync will still run correctly, but there may be up to a 1-minute wake-up delay.
+
+### Notion Block Limit
+Notion allows a maximum of 100 blocks per API request. OmniExporter handles this by creating a page with the first 100 blocks, then appending the rest in subsequent PATCH requests. Very long conversations (> 100 Q&A pairs) are fully exported across multiple API calls.
+
+### Cloudflare Bot Detection
+If Perplexity, ChatGPT, or Claude present a Cloudflare Turnstile challenge (e.g., after a long idle period), the extension will detect the HTML response and show an actionable error: **"Cloudflare challenge detected — please open the tab and refresh your session."**
+
+### Storage Quota
+The extension requests the `unlimitedStorage` permission to avoid Chrome's default 5MB `storage.local` cap. This is required for users with large chat histories and long sync logs.
+
+---
+
+## 🗺️ Architecture Roadmap
+
+These are planned improvements for future major versions:
+
+### ES Module Migration (v6.0)
+Currently, `background.js` uses `importScripts()` to load dependencies — a legacy pattern for Chrome service workers. A future v6.0 will:
+- Update `manifest.json` with `"type": "module"` under the `background` key
+- Replace all `importScripts()` calls with `import { Logger } from './utils/logger.js'` syntax
+- Remove all `window.X = window.X || {}` content-script guards (ES modules run once per scope — re-declaration is impossible)
+- Enable proper compile-time syntax errors rather than vague script-load failures
+
+This is the most impactful architectural improvement but requires updating every source file.
+
+### Custom OAuth Domain (Enterprise)
+The Cloudflare Worker for Notion OAuth is currently hosted at `omniexporter-oauth.jonub250383.workers.dev`. Enterprise deployments should move this to a custom domain (e.g., `oauth.yourdomain.com`) for:
+- Corporate firewall compatibility (many block `*.workers.dev` as untrusted)
+- Trust signals for enterprise users who audit extension network traffic
+- Better branding for white-label deployments
+
+See [`cloudflare-worker/DEPLOY.md`](cloudflare-worker/DEPLOY.md) for deployment instructions including custom domain setup.
+
+---
+
 ## 📝 Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code guidelines, and the pull request process.

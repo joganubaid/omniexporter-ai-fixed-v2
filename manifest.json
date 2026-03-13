@@ -24,6 +24,7 @@
         "activeTab",
         "scripting",
         "storage",
+        "unlimitedStorage",
         "tabs",
         "alarms",
         "contextMenus",
