@@ -4,7 +4,7 @@
 // NOW USES: platformConfig for centralized configuration
 "use strict";
 
-const GrokAdapter = {
+const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     name: "Grok",
 
     // ============================================
@@ -109,35 +109,57 @@ const GrokAdapter = {
 
     // ============================================
     // ENTERPRISE: Get ALL threads (Load All feature)
+    // BUG-5 FIX: Replaced single pageSize=60 call with paginated loop.
+    // Grok silently returned only 60 conversations for users with more.
     // ============================================
     getAllThreads: async (progressCallback = null) => {
         try {
-            // HAR-verified: ?pageSize=60 is required to get full list
-            const response = await GrokAdapter._fetchWithRetry(
-                `${GrokAdapter.apiBase}/conversations?pageSize=60`
-            );
-            const data = await response.json();
-            // HAR-verified: response is { conversations: [{conversationId, title, createTime, modifyTime, ...}] }
-            const chats = data.conversations || data.data || data.items || [];
+            const allThreads = [];
+            const seenUuids = new Set();
+            let pageToken = null;
+            let pageNum = 0;
 
-            const threads = chats.map(chat => ({
-                // HAR-verified: field is 'conversationId' not 'id'
-                uuid: chat.conversationId || chat.id || chat.uuid,
-                title: chat.title || chat.name || 'Grok Chat',
-                platform: 'Grok',
-                // HAR-verified: fields are 'modifyTime' and 'createTime'
-                last_query_datetime: chat.modifyTime || chat.createTime || chat.updatedAt || new Date().toISOString()
-            }));
+            do {
+                // HAR-verified: pageSize=50 supported; nextPageToken for continuation
+                const url = pageToken
+                    ? `${GrokAdapter.apiBase}/conversations?pageSize=50&pageToken=${encodeURIComponent(pageToken)}`
+                    : `${GrokAdapter.apiBase}/conversations?pageSize=50`;
+
+                const response = await GrokAdapter._fetchWithRetry(url);
+                const data = await response.json();
+                const chats = data.conversations || data.data || data.items || [];
+
+                for (const chat of chats) {
+                    const uuid = chat.conversationId || chat.id || chat.uuid;
+                    if (uuid && !seenUuids.has(uuid)) {
+                        seenUuids.add(uuid);
+                        allThreads.push({
+                            uuid,
+                            title: chat.title || chat.name || 'Grok Chat',
+                            platform: 'Grok',
+                            last_query_datetime: chat.modifyTime || chat.createTime || chat.updatedAt || new Date().toISOString()
+                        });
+                    }
+                }
+
+                pageToken = data.nextPageToken || data.cursor || null;
+                pageNum++;
+
+                if (progressCallback) progressCallback(allThreads.length, !!pageToken);
+
+                // Safety limit
+                if (pageNum > 100 || allThreads.length > 5000) break;
+
+                if (pageToken) await new Promise(r => setTimeout(r, 300));
+
+            } while (pageToken);
 
             // Update cache
-            GrokAdapter._allThreadsCache = threads;
+            GrokAdapter._allThreadsCache = allThreads;
             GrokAdapter._cacheTimestamp = Date.now();
 
-            if (progressCallback) {
-                progressCallback(threads.length, false);
-            }
-
-            return threads;
+            console.log(`[Grok] getAllThreads complete: ${allThreads.length} conversations`);
+            return allThreads;
         } catch (error) {
             console.error('[Grok] getAllThreads failed:', error);
             throw error;
@@ -306,22 +328,23 @@ const GrokAdapter = {
                 });
             }
 
-            // Get title — try conversations_v2 metadata or fall back to first query
-            let title = entries[0]?.query_str?.substring(0, 100) || `Grok Conversation`;
-            try {
-                // HAR-verified: response is {conversation: {conversationId, title, ...}} OR {}
-                const metaUrl = `${GrokAdapter.apiBase}/conversations_v2/${uuid}?includeWorkspaces=true&includeTaskResult=true`;
-                const metaResp = await GrokAdapter._fetchWithRetry(metaUrl, {}, 1);
-                const metaData = await metaResp.json();
-                // HAR-verified key path: metaData.conversation.title
-                const metaTitle = metaData?.conversation?.title || metaData?.title;
-                if (metaTitle && metaTitle.trim()) {
-                    title = metaTitle.trim();
+            // PERF-4 FIX: Only fetch title metadata when we can't derive it from entries.
+            // Avoids a full extra API call (per-thread) when first entry's query is available.
+            let title = entries[0]?.query_str?.substring(0, 100) || null;
+            if (!title) {
+                try {
+                    // HAR-verified: response is {conversation: {conversationId, title, ...}} OR {}
+                    const metaUrl = `${GrokAdapter.apiBase}/conversations_v2/${uuid}?includeWorkspaces=true&includeTaskResult=true`;
+                    const metaResp = await GrokAdapter._fetchWithRetry(metaUrl, {}, 1);
+                    const metaData = await metaResp.json();
+                    // HAR-verified key path: metaData.conversation.title
+                    const metaTitle = metaData?.conversation?.title || metaData?.title;
+                    if (metaTitle && metaTitle.trim()) title = metaTitle.trim();
+                } catch (e) {
+                    console.log('[Grok] Could not fetch title metadata, using first query');
                 }
-            } catch (e) {
-                // Title metadata is optional — not critical
-                console.log('[Grok] Could not fetch title metadata, using first query');
             }
+            title = title || `Grok Conversation`;
 
             console.log(`[Grok] ✓ Success: ${entries.length} entries for: ${title}`);
             return { uuid, title, platform: 'Grok', entries };

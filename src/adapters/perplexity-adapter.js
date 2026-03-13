@@ -8,7 +8,7 @@
 // - Logger (from logger.js)
 
 // HAR-verified: supported_block_use_cases required for full response
-const PERPLEXITY_BLOCK_USE_CASES = [
+const PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES || [
     'answer_modes', 'media_items', 'knowledge_cards', 'inline_entity_cards',
     'place_widgets', 'finance_widgets', 'prediction_market_widgets', 'sports_widgets',
     'flight_status_widgets', 'news_widgets', 'shopping_widgets', 'jobs_widgets',
@@ -19,7 +19,7 @@ const PERPLEXITY_BLOCK_USE_CASES = [
     'pending_followups', 'inline_claims'
 ];
 
-const PerplexityAdapter = {
+const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
     name: "Perplexity",
 
     extractUuid: (url) => {
@@ -56,8 +56,11 @@ const PerplexityAdapter = {
                 headers: {
                     "accept": "*/*",
                     "content-type": "application/json",
-                    "x-app-apiclient": "default",
-                    "x-app-apiversion": "2.18"
+                    // BUG-9 FIX: Use dynamic version from platformConfig if available.
+                    // Previously hardcoded to "2.18" which bypassed the version detector entirely.
+                    "x-app-apiversion": (typeof platformConfig !== 'undefined'
+                        ? platformConfig.activeVersions?.get('Perplexity')
+                        : null) || "2.18"
                 },
                 body: JSON.stringify(body)
             });
@@ -213,3 +216,7 @@ async function fetchPerplexityDetailResilient(uuid) {
         throw error;
     }
 }
+
+// ARCH-1 FIX: Standardize adapter export pattern across all adapters.
+// content.js's getPlatformAdapter() uses window.XAdapter for all detection.
+window.PerplexityAdapter = PerplexityAdapter;

@@ -64,9 +64,12 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                 }
             },
 
-            // Validate API response structure
+            // SEC-5 FIX: Also reject error-shaped objects like {error: "not found"}
+            // Previously accepted any truthy object, including API error responses.
             isValidApiResponse: (data) => {
-                return data && typeof data === 'object';
+                if (!data || typeof data !== 'object') return false;
+                if (data.error && typeof data.error === 'string') return false;
+                return true;
             }
         };
     }
@@ -121,9 +124,14 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                     window.removeEventListener('popstate', navigationHandler);
                 });
 
-                // Intercept pushState/replaceState for SPA routing
-                const originalPushState = history.pushState;
-                const originalReplaceState = history.replaceState;
+                // BUG-2 FIX: Store the truly-original functions behind a window sentinel.
+                // Without this, re-injection captures the already-patched version, stacking indefinitely.
+                if (!history.__omniOriginalPushState) {
+                    history.__omniOriginalPushState = history.pushState;
+                    history.__omniOriginalReplaceState = history.replaceState;
+                }
+                const originalPushState = history.__omniOriginalPushState;
+                const originalReplaceState = history.__omniOriginalReplaceState;
 
                 history.pushState = function (...args) {
                     originalPushState.apply(this, args);
@@ -136,8 +144,8 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                 };
 
                 this.cleanupFunctions.push(() => {
-                    history.pushState = originalPushState;
-                    history.replaceState = originalReplaceState;
+                    history.pushState = history.__omniOriginalPushState;
+                    history.replaceState = history.__omniOriginalReplaceState;
                 });
 
                 console.log("OmniExporter AI Content Script Initialized");
@@ -227,8 +235,8 @@ function normalizeEntries(detail, platform) {
         entries = detail.messages;
     }
 
-    // If no entries found, return empty
-    if (!entries || entries.length === 0) {
+    // BUG-11 FIX: Use Array.isArray() before .length to guard against non-array truthy values.
+    if (!Array.isArray(entries) || entries.length === 0) {
         return [];
     }
 

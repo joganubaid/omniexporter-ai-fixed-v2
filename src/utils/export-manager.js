@@ -319,7 +319,7 @@ class ExportManager {
                 </div>
                 <div class="answer">
                     <div class="answer-label">${platformIcon} Answer</div>
-                    ${this.escapeHtml(answer).replace(/\n/g, '<br>')}
+                    <div class="answer-content">${this._markdownToHtml(answer)}</div>
                 </div>`;
 
             if (entry.sources && entry.sources.length > 0) {
@@ -390,24 +390,28 @@ class ExportManager {
     }
 
     // ============================================
-    // PDF FORMAT (Print Dialog)
+    // PDF FORMAT (Blob-based, no popup required)
+    // MISSING-8 FIX: Use Blob URL instead of window.open to avoid popup blockers.
     // ============================================
     static toPDF(data, platform) {
         const html = this.toHTML(data, platform);
-        const printWindow = window.open('', '_blank');
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
 
-        if (!printWindow) {
-            throw new Error('Pop-up blocked. Please allow pop-ups to export as PDF.');
-        }
+        // Open the blob URL in a new tab — then the user can Ctrl+P / print from there
+        // This avoids the popup blocker hit that window.open('', '_blank') causes
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
 
-        printWindow.document.write(html);
-        printWindow.document.close();
+        // Revoke after a short delay (allow browser to open the tab)
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
 
-        printWindow.onload = () => {
-            printWindow.print();
-        };
-
-        return { success: true, format: 'PDF', note: 'Print dialog opened' };
+        return { success: true, format: 'PDF', note: 'Opened in new tab — use Ctrl+P to print as PDF' };
     }
 
     // ============================================
@@ -436,10 +440,14 @@ class ExportManager {
     }
 
     static generateFilename(title, extension) {
+        // MIN-4 FIX: Only strip filesystem-illegal characters, preserve unicode (CJK, Arabic, accents etc.)
         const sanitized = title
-            .replace(/[^a-z0-9\s-]/gi, '')
+            .replace(/[\\/:*?"<>|\x00-\x1F]/g, '_') // Only actual filesystem-illegal chars
             .replace(/\s+/g, '_')
-            .substring(0, 50);
+            .replace(/_{2,}/g, '_')                  // Collapse consecutive underscores
+            .replace(/^_|_$/g, '')                   // Trim leading/trailing underscores
+            .substring(0, 80)                        // Slightly longer to allow for unicode richness
+            || 'export';
         const timestamp = new Date().toISOString().slice(0, 10);
         return `${sanitized}_${timestamp}${extension}`;
     }
@@ -460,6 +468,52 @@ class ExportManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // ============================================
+    // MISSING-1: Minimal inline markdown-to-HTML converter
+    // No external dependencies — handles the most common markdown patterns in AI responses.
+    // ============================================
+    static _markdownToHtml(text) {
+        if (!text) return '';
+        let html = this.escapeHtml(text); // Start HTML-safe
+
+        // Code blocks (must come before inline code)
+        html = html.replace(/```([\s\S]*?)```/g, (_, code) =>
+            `<pre class="code-block"><code>${code.trimEnd()}</code></pre>`);
+
+        // Inline code
+        html = html.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+
+        // Bold (**text** or __text__)
+        html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+
+        // Italic (*text* or _text_)
+        html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+        html = html.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+
+        // Headings (h1-h3)
+        html = html.replace(/^### ([^\n]+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^## ([^\n]+)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^# ([^\n]+)$/gm, '<h1>$1</h1>');
+
+        // Ordered list
+        html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+
+        // Unordered list
+        html = html.replace(/^[\-*] (.+)$/gm, '<li>$1</li>');
+
+        // Wrap consecutive <li> elements in <ul>
+        html = html.replace(/((?:<li>[\s\S]+?<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+        // Paragraph breaks (double newline not inside pre/ul/li)
+        html = html.replace(/([^>])\n\n([^<])/g, '$1</p><p>$2');
+
+        // Single line breaks -> <br>
+        html = html.replace(/([^>\n])\n([^<\n])/g, '$1<br>$2');
+
+        return html;
     }
 }
 
