@@ -69,11 +69,15 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
 
         XMLHttpRequest.prototype.send = function () {
             try {
-                this.addEventListener('load', function () {
-                    try {
-                        self.processResponse(this._interceptedUrl, this.responseText, this._interceptedMethod);
-                    } catch (e) { }
-                });
+                // Ensure we only attach a single 'load' listener per XHR instance
+                if (!interceptedInstances.has(this)) {
+                    interceptedInstances.add(this);
+                    this.addEventListener('load', function () {
+                        try {
+                            self.processResponse(this._interceptedUrl, this.responseText, this._interceptedMethod);
+                        } catch (e) { }
+                    });
+                }
             } catch (e) { }
             return originalSend.apply(this, arguments);
         };
