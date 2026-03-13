@@ -313,6 +313,11 @@ async function fetchThreadsSinceCheckpoint(tabId, platform, checkpoint) {
 
 async function performAutoSync() {
     console.log('[AutoSync] performAutoSync initiated');
+    // Totals across all platforms (for summary logging / recordSyncJob)
+    let totalThreads = 0;
+    let totalNewThreads = 0;
+    let totalSuccessCount = 0;
+    let totalFailedCount = 0;
     // Fix #1: Acquire global lock before sync
     if (!(await acquireSyncLock())) {
         return; // Another sync is in progress
@@ -494,9 +499,11 @@ async function performAutoSync() {
 
                         if (syncResult.success) {
                             successCount++;
+                            totalSuccessCount++;
                             sharedExportedUuids.add(thread.uuid); // REAL-2: update shared Set
                         } else {
                             failedCount++;
+                            totalFailedCount++;
                             await trackFailure({
                                 uuid: thread.uuid,
                                 reason: syncResult.error || 'Notion sync failed',
@@ -509,6 +516,7 @@ async function performAutoSync() {
 
                     } catch (e) {
                         failedCount++;
+                        totalFailedCount++;
                         console.error(`[AutoSync] Error syncing ${thread.uuid}:`, e);
                     }
                 }
@@ -520,6 +528,17 @@ async function performAutoSync() {
             // Update checkpoint
             await updateSyncCheckpoint(platform, Date.now(), newThreads[0]?.uuid);
 
+            // Aggregate per-platform counts into global totals
+            if (Array.isArray(newThreads)) {
+                totalNewThreads += newThreads.length;
+            }
+            if (typeof threads !== 'undefined' && Array.isArray(threads)) {
+                totalThreads += threads.length;
+            } else if (Array.isArray(newThreads)) {
+                // Fallback if threads is not available; approximate with newThreads
+                totalThreads += newThreads.length;
+            }
+
             } // end for (const [platform, tab] of platformTabMap)
 
             // REAL-2 FIX: Save shared exportedUuids once after all platforms processed
@@ -530,8 +549,13 @@ async function performAutoSync() {
 
             // REAL-11 FIX: Pass total threads (including already-exported) so skipped is correct
             // recordSyncJob will compute skipped = total - attempted
-            await recordSyncJob(threads?.length || newThreads.length, successCount, failedCount, newThreads.length);
-            console.log(`[AutoSync] All platforms complete: ${successCount} synced, ${failedCount} failed`);
+            await recordSyncJob(
+                totalThreads || totalNewThreads,
+                totalSuccessCount,
+                totalFailedCount,
+                totalNewThreads
+            );
+            console.log(`[AutoSync] All platforms complete: ${totalSuccessCount} synced, ${totalFailedCount} failed`);
 
 
 
