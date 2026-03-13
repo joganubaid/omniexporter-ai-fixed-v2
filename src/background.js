@@ -55,11 +55,17 @@ console.log("OmniExporter AI Service Worker Active");
 // ============================================
 const KEEP_ALIVE_ALARM = 'keepAlive';
 
+// REAL-10 FIX: Guard keepAlive alarm so it's never created twice.
+function createKeepAliveAlarm() {
+    chrome.alarms.get(KEEP_ALIVE_ALARM, (existing) => {
+        if (!existing) chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 0.4 });
+    });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
     console.log("OmniExporter AI Service Worker Installed");
 
-    // Create keep-alive alarm (every 25 seconds)
-    chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 0.4 });
+    createKeepAliveAlarm();
 
     // Initialize default settings
     chrome.storage.local.get(['autoSyncEnabled', 'syncInterval'], (res) => {
@@ -77,7 +83,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // Also create keep-alive and context menus on startup (service worker restarts)
 // BUG-12 FIX: onInstalled is NOT called on SW restart — must re-register here.
 chrome.runtime.onStartup.addListener(() => {
-    chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 0.4 });
+    createKeepAliveAlarm();
     setupContextMenus();
     Logger.info('System', 'Service worker started up');
 });
@@ -380,6 +386,10 @@ async function performAutoSync() {
                 if (p && !platformTabMap.has(p)) platformTabMap.set(p, t);
             }
 
+            // REAL-2 FIX: Single shared Set lives outside the platform loop.
+            // Threads exported in the ChatGPT iteration are visible to the Claude iteration.
+            const sharedExportedUuids = new Set(settings.exportedUuids || []);
+
             // Process each unique platform tab
             for (const [platform, tab] of platformTabMap) {
 
@@ -396,43 +406,51 @@ async function performAutoSync() {
                 Logger.info('AutoSync', `Fetched ${threads.length} threads from content script`, { platform });
             } catch (fetchError) {
                 Logger.error('AutoSync', 'Failed to fetch threads', { error: fetchError.message });
-                await recordSyncJob(0, 0, 1); // Log failure
-                continue; // BUG-1 FIX: Do not return — continue to next platform tab
+                await recordSyncJob(threads?.length || 0, 0, 1, 0);
+                continue;
             }
-            const exportedUuids = new Set(settings.exportedUuids || []);
 
-            // Filter out already exported
-            const newThreads = threads.filter(t => !exportedUuids.has(t.uuid));
+            // REAL-2 FIX: Use sharedExportedUuids (defined once before loop) so each platform
+            // sees UUIDs synced by previous platforms in this same run.
+            const newThreads = threads.filter(t => !sharedExportedUuids.has(t.uuid));
 
-            Logger.info('AutoSync', `Found ${newThreads.length} new threads since checkpoint`, { total: threads.length, newCount: newThreads.length });
+            Logger.info('AutoSync', `Found ${newThreads.length} new threads since checkpoint`,
+                { total: threads.length, newCount: newThreads.length, platform });
 
-            // MISSING-4 FIX: Also include previously-failed threads (up to 3 retries).
+            // REAL-1 + REAL-4 FIX: Retry logic now uses syncFailures object (uuid → count).
+            // trackFailure() writes to this key — reads now match what's written.
+            // retryThreads pulls from syncFailures storage, NOT from current API response.
+            // This catches threads that failed in PREVIOUS runs (may not appear in current API results).
             const { syncFailures = {} } = await chrome.storage.local.get('syncFailures');
-            const retryThreads = threads.filter(t =>
-                !exportedUuids.has(t.uuid) &&
-                syncFailures[t.uuid] && syncFailures[t.uuid] < 3
-            );
+            // Build retry list: UUIDs in syncFailures that are NOT yet exported, attempt count < 3
+            const retryUuids = Object.entries(syncFailures)
+                .filter(([uuid, count]) => !sharedExportedUuids.has(uuid) && count < 3)
+                .map(([uuid]) => uuid);
 
-            if (newThreads.length === 0 && retryThreads.length === 0) {
-                // Update checkpoint even if no new threads
-                await updateSyncCheckpoint(platform, Date.now(), null);
-
-                // Log empty run so user sees it in Activity Log
-                await recordSyncJob(0, 0, 0);
-                continue; // BUG-7 FIX: Move to next platform instead of returning
+            // Merge: newThreads + any retry UUID not already in newThreads
+            const newUuidSet = new Set(newThreads.map(t => t.uuid));
+            for (const uuid of retryUuids) {
+                if (!newUuidSet.has(uuid)) {
+                    // We don't have full thread metadata from storage — use minimal stub
+                    // so EXTRACT_CONTENT_BY_UUID can fetch full detail
+                    newThreads.push({ uuid, title: `(retry) ${uuid}`, platform });
+                    newUuidSet.add(uuid);
+                }
             }
 
-            // Merge new + retry candidates (deduped)
-            const seenUuids = new Set(newThreads.map(t => t.uuid));
-            for (const t of retryThreads) {
-                if (!seenUuids.has(t.uuid)) { seenUuids.add(t.uuid); newThreads.push(t); }
+            if (newThreads.length === 0) {
+                await updateSyncCheckpoint(platform, Date.now(), null);
+                await recordSyncJob(threads.length, 0, 0, 0);
+                continue;
             }
 
             let successCount = 0, failedCount = 0;
+            // REAL-3 FIX: Removed Math.min(..., 10) cap — MAX_THREADS_PER_RUN controls the limit.
             const BATCH_SIZE = 5;
+            const MAX_THREADS_PER_RUN = 50;
 
-            // Process in batches
-            for (let i = 0; i < Math.min(newThreads.length, 10); i += BATCH_SIZE) {
+            // Process in batches — REAL-3 FIX: no artificial 10-thread cap
+            for (let i = 0; i < Math.min(newThreads.length, MAX_THREADS_PER_RUN); i += BATCH_SIZE) {
                 const batch = newThreads.slice(i, i + BATCH_SIZE);
                 console.log(`[AutoSync] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}...`);
 
@@ -460,7 +478,7 @@ async function performAutoSync() {
 
                         if (syncResult.success) {
                             successCount++;
-                            exportedUuids.add(thread.uuid);
+                            sharedExportedUuids.add(thread.uuid); // REAL-2: update shared Set
                         } else {
                             failedCount++;
                             await trackFailure({
@@ -483,17 +501,23 @@ async function performAutoSync() {
                 await new Promise(r => setTimeout(r, 2000));
             }
 
-            // Update checkpoint and exported UUIDs
+            // Update checkpoint
             await updateSyncCheckpoint(platform, Date.now(), newThreads[0]?.uuid);
-            await chrome.storage.local.set({
-                lastSyncDate: new Date().toISOString(),
-                exportedUuids: Array.from(exportedUuids)
-            });
-
-            await recordSyncJob(newThreads.length, successCount, failedCount);
-            console.log(`[AutoSync] ${platform} complete: ${successCount} synced, ${failedCount} failed`);
 
             } // end for (const [platform, tab] of platformTabMap)
+
+            // REAL-2 FIX: Save shared exportedUuids once after all platforms processed
+            await chrome.storage.local.set({
+                lastSyncDate: new Date().toISOString(),
+                exportedUuids: Array.from(sharedExportedUuids)
+            });
+
+            // REAL-11 FIX: Pass total threads (including already-exported) so skipped is correct
+            // recordSyncJob will compute skipped = total - attempted
+            await recordSyncJob(threads?.length || newThreads.length, successCount, failedCount, newThreads.length);
+            console.log(`[AutoSync] All platforms complete: ${successCount} synced, ${failedCount} failed`);
+
+
 
         } catch (e) {
             console.error("[AutoSync] Error:", e);
@@ -597,10 +621,13 @@ async function syncToNotion(data, settings) {
             }
 
             // Extract answer from blocks or direct properties
+            // REAL-5 FIX: Accept any block with a markdown_block — don't require intended_usage.
+            // Gemini/Grok/DeepSeek entries go through normalizeEntries() which wraps answers in
+            // blocks[0].markdown_block.answer WITHOUT an intended_usage field.
             let answer = '';
             if (entry.blocks && Array.isArray(entry.blocks)) {
                 entry.blocks.forEach(block => {
-                    if (block.intended_usage === 'ask_text' && block.markdown_block) {
+                    if (block.markdown_block) {
                         answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                     }
                 });
@@ -647,15 +674,19 @@ async function syncToNotion(data, settings) {
     }
 }
 
-async function recordSyncJob(total, success, failed) {
+// REAL-11 FIX: 4th param `attempted` = threads actually processed (new + retry).
+// `total` should be the full threads.length including already-exported ones.
+// skipped = total - attempted (shows how many were already exported).
+async function recordSyncJob(total, success, failed, attempted = total) {
     const { exportHistory = [] } = await chrome.storage.local.get('exportHistory');
 
     exportHistory.unshift({
         timestamp: new Date().toISOString(),
         total,
+        attempted,
         success,
         failed,
-        skipped: total - success - failed,
+        skipped: total - attempted,
         platform: 'AutoSync',
         type: 'auto'
     });
@@ -687,29 +718,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
 });
 
+// REAL-4 FIX: trackFailure now writes to BOTH:
+//   'failures' (array, for Activity Log display)
+//   'syncFailures' (object uuid→count, for retry logic reads)
 async function trackFailure(failure) {
-    const { failures = [] } = await chrome.storage.local.get('failures');
+    const [{ failures = [] }, { syncFailures = {} }] = await Promise.all([
+        chrome.storage.local.get('failures'),
+        chrome.storage.local.get('syncFailures')
+    ]);
 
-    failures.push({
-        ...failure,
-        timestamp: new Date().toISOString()
-    });
-
-    // Keep only last 100 failures
+    failures.push({ ...failure, timestamp: new Date().toISOString() });
     if (failures.length > 100) failures.shift();
 
-    await chrome.storage.local.set({ failures });
+    // Increment retry counter for this UUID
+    syncFailures[failure.uuid] = (syncFailures[failure.uuid] || 0) + 1;
+
+    await chrome.storage.local.set({ failures, syncFailures });
 }
 
 // ============================================
 // CONTEXT MENU CLICK HANDLER
 // ============================================
 
+// REAL-6 FIX: Context menu now actually triggers a download.
+// After extracting, send EXPORT_THREAD back to the content script which calls ExportManager.export().
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === 'exportThread') {
         chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.warn('[ContextMenu] Extract failed:', chrome.runtime.lastError.message);
+                return;
+            }
             if (response && response.success) {
-                console.log("Thread exported via context menu:", response.data.title);
+                console.log('[ContextMenu] Extracted:', response.data.title, '— triggering download');
+                // Send the extracted data back to content script for download via ExportManager
+                chrome.tabs.sendMessage(tab.id, {
+                    type: 'EXPORT_THREAD',
+                    payload: { data: response.data, format: 'markdown' }
+                });
+            } else {
+                console.warn('[ContextMenu] Extract unsuccessful:', response?.error);
             }
         });
     }
