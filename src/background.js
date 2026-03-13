@@ -3,7 +3,8 @@
 "use strict";
 
 try {
-    importScripts('src/utils/logger.js');
+    // background.js lives in src/ — paths are relative to src/
+    importScripts('utils/logger.js');
 } catch (e) {
     console.error("[OmniExporter] Failed to load logger.js:", e);
 }
@@ -34,7 +35,8 @@ try {
 }
 
 try {
-    importScripts('auth/notion-oauth.js');
+    // auth/ is at root level — one level up from src/
+    importScripts('../auth/notion-oauth.js');
 } catch (e) {
     console.error("[OmniExporter] Failed to load auth/notion-oauth.js:", e);
 }
@@ -68,29 +70,42 @@ chrome.runtime.onInstalled.addListener(() => {
         }
     });
 
-    // Create context menu
-    chrome.contextMenus.create({
-        id: 'exportThread',
-        title: 'Export this thread with OmniExporter',
-        contexts: ['page'],
-        documentUrlPatterns: [
-            'https://www.perplexity.ai/*',
-            'https://chatgpt.com/*',
-            'https://chat.openai.com/*',
-            'https://claude.ai/*',
-            'https://gemini.google.com/*',
-            'https://grok.com/*',
-            'https://x.com/i/grok/*',
-            'https://chat.deepseek.com/*'
-        ]
-    });
+    // Create context menus
+    setupContextMenus();
 });
 
-// Also create keep-alive on startup (service worker restarts)
+// Also create keep-alive and context menus on startup (service worker restarts)
+// BUG-12 FIX: onInstalled is NOT called on SW restart — must re-register here.
 chrome.runtime.onStartup.addListener(() => {
     chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 0.4 });
+    setupContextMenus();
     Logger.info('System', 'Service worker started up');
 });
+
+/**
+ * BUG-12 FIX: Create context menus safely, removing any existing ones first.
+ * Called from both onInstalled and onStartup.
+ */
+function setupContextMenus() {
+    const docPatterns = [
+        'https://www.perplexity.ai/*',
+        'https://chatgpt.com/*',
+        'https://chat.openai.com/*',
+        'https://claude.ai/*',
+        'https://gemini.google.com/*',
+        'https://grok.com/*',
+        'https://x.com/i/grok/*',
+        'https://chat.deepseek.com/*'
+    ];
+    chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+            id: 'exportThread',
+            title: 'Export this thread with OmniExporter',
+            contexts: ['page'],
+            documentUrlPatterns: docPatterns
+        });
+    });
+}
 
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === KEEP_ALIVE_ALARM) {
@@ -124,7 +139,8 @@ function getPlatformUrl(platform, uuid) {
         'Grok': `https://grok.com/conversation/${uuid}`,
         'DeepSeek': `https://chat.deepseek.com/c/${uuid}`
     };
-    return urls[platform] || urls['Perplexity'];
+    // MIN-2 FIX: Return null for unknown platform instead of silently returning Perplexity URL.
+    return urls[platform] || null;
 }
 
 // ============================================
@@ -221,8 +237,10 @@ async function enforceStorageLimit() {
     }
 }
 
-// Check storage limits periodically (every 5 minutes)
-chrome.alarms.create('storageCleanup', { periodInMinutes: 5 });
+// BUG-4 FIX: Guard alarm creation — SW restarts often and duplicate alarms cause errors.
+chrome.alarms.get('storageCleanup', (existing) => {
+    if (!existing) chrome.alarms.create('storageCleanup', { periodInMinutes: 5 });
+});
 
 // ============================================
 // AUTO-SYNC IMPLEMENTATION (Incremental with Checkpoints)
@@ -348,17 +366,22 @@ async function performAutoSync() {
 
             Logger.info('AutoSync', `Found ${tabs.length} AI platform tab(s)`, { platforms: tabs.map(t => t.url.split('/')[2]) });
 
-            // Note: Only the first matching tab is synced per run to avoid
-            // overwhelming the rate limiter. If multiple AI tabs are open,
-            // subsequent runs will continue processing other platforms via checkpoint.
-            const tab = tabs[0];
-            const platform = tab.url.includes('perplexity') ? 'Perplexity'
-                : tab.url.includes('chatgpt') || tab.url.includes('openai') ? 'ChatGPT'
-                    : tab.url.includes('claude') ? 'Claude'
-                        : tab.url.includes('gemini') ? 'Gemini'
-                            : tab.url.includes('grok') || tab.url.includes('x.com') ? 'Grok'
-                                : tab.url.includes('deepseek') ? 'DeepSeek'
-                                    : 'Unknown';
+            // BUG-7 FIX: Iterate all open AI tabs instead of only the first.
+            // Build a map of platform -> tab so each platform is processed once per run.
+            const platformTabMap = new Map();
+            for (const t of tabs) {
+                const p = t.url.includes('perplexity') ? 'Perplexity'
+                    : t.url.includes('chatgpt') || t.url.includes('openai') ? 'ChatGPT'
+                    : t.url.includes('claude') ? 'Claude'
+                    : t.url.includes('gemini') ? 'Gemini'
+                    : t.url.includes('grok') || t.url.includes('x.com') ? 'Grok'
+                    : t.url.includes('deepseek') ? 'DeepSeek'
+                    : null;
+                if (p && !platformTabMap.has(p)) platformTabMap.set(p, t);
+            }
+
+            // Process each unique platform tab
+            for (const [platform, tab] of platformTabMap) {
 
             // Get checkpoint for this platform
             const checkpoint = await getSyncCheckpoint(platform);
@@ -374,7 +397,7 @@ async function performAutoSync() {
             } catch (fetchError) {
                 Logger.error('AutoSync', 'Failed to fetch threads', { error: fetchError.message });
                 await recordSyncJob(0, 0, 1); // Log failure
-                return;
+                continue; // BUG-1 FIX: Do not return — continue to next platform tab
             }
             const exportedUuids = new Set(settings.exportedUuids || []);
 
@@ -383,13 +406,26 @@ async function performAutoSync() {
 
             Logger.info('AutoSync', `Found ${newThreads.length} new threads since checkpoint`, { total: threads.length, newCount: newThreads.length });
 
-            if (newThreads.length === 0) {
+            // MISSING-4 FIX: Also include previously-failed threads (up to 3 retries).
+            const { syncFailures = {} } = await chrome.storage.local.get('syncFailures');
+            const retryThreads = threads.filter(t =>
+                !exportedUuids.has(t.uuid) &&
+                syncFailures[t.uuid] && syncFailures[t.uuid] < 3
+            );
+
+            if (newThreads.length === 0 && retryThreads.length === 0) {
                 // Update checkpoint even if no new threads
                 await updateSyncCheckpoint(platform, Date.now(), null);
 
                 // Log empty run so user sees it in Activity Log
                 await recordSyncJob(0, 0, 0);
-                return;
+                continue; // BUG-7 FIX: Move to next platform instead of returning
+            }
+
+            // Merge new + retry candidates (deduped)
+            const seenUuids = new Set(newThreads.map(t => t.uuid));
+            for (const t of retryThreads) {
+                if (!seenUuids.has(t.uuid)) { seenUuids.add(t.uuid); newThreads.push(t); }
             }
 
             let successCount = 0, failedCount = 0;
@@ -455,13 +491,15 @@ async function performAutoSync() {
             });
 
             await recordSyncJob(newThreads.length, successCount, failedCount);
-            console.log(`[AutoSync] Complete: ${successCount} synced, ${failedCount} failed`);
+            console.log(`[AutoSync] ${platform} complete: ${successCount} synced, ${failedCount} failed`);
+
+            } // end for (const [platform, tab] of platformTabMap)
 
         } catch (e) {
             console.error("[AutoSync] Error:", e);
         }
     } finally {
-        // Always release the lock
+        // Always release the lock (BUG-1 FIX: runs even on early errors)
         await releaseSyncLock();
     }
 }
@@ -523,7 +561,14 @@ async function syncToNotion(data, settings) {
                 properties['Platform'] = { select: { name: data.platform || 'AI' } };
             }
             if (dbSchema.properties['Chat Time'] && dbSchema.properties['Chat Time'].type === 'date') {
-                properties['Chat Time'] = { date: { start: new Date().toISOString().split('T')[0] } };
+                // BUG-8 FIX: Use the conversation's actual date instead of today.
+                const rawDate = data.detail?.last_query_datetime
+                    || data.detail?.entries?.[0]?.created_datetime
+                    || data.detail?.entries?.[0]?.last_query_datetime;
+                const chatDate = rawDate
+                    ? new Date(rawDate).toISOString().split('T')[0]
+                    : new Date().toISOString().split('T')[0];
+                properties['Chat Time'] = { date: { start: chatDate } };
             }
             if (dbSchema.properties['Exported'] && dbSchema.properties['Exported'].type === 'date') {
                 properties['Exported'] = { date: { start: new Date().toISOString().split('T')[0] } };

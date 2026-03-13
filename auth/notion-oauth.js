@@ -27,10 +27,13 @@ var NotionOAuth = {
         // Server endpoint for secure token exchange
         // Your deployed Cloudflare Worker
         // Set OAUTH_SERVER_URL in config.js to use your own worker.
-        // The fallback below is the project's default OAuth server (public, shared instance).
+        // ⚠️  SEC-2: This is the project's shared default OAuth server.
+        // IMPORTANT: Fork/redeploy users MUST deploy their own Cloudflare Worker
+        // and set OAUTH_SERVER_URL in config.js. See docs/SETUP.md for instructions.
+        // Failure to do so means your users will route through the project maintainer's server.
         tokenServerEndpoint: typeof OAUTH_SERVER_URL !== 'undefined'
             ? `${OAUTH_SERVER_URL}/api/notion/token`
-            : 'https://omniexporter-oauth.jonub250383.workers.dev/api/notion/token', // Project default — set OAUTH_SERVER_URL in config.js for custom deployment
+            : 'https://omniexporter-oauth.jonub250383.workers.dev/api/notion/token', // ⚠️ Project default — set OAUTH_SERVER_URL in config.js for custom deployment
 
         // Standard Notion endpoints
         redirectUri: null, // Set dynamically
@@ -129,7 +132,9 @@ var NotionOAuth = {
                         }
 
                         const stored = await chrome.storage.local.get(['notion_oauth_state', 'notion_oauth_state_created']);
-                        if (stored.notion_oauth_state && returnedState !== stored.notion_oauth_state) {
+                        // SEC-1 FIX: Reject null/missing returnedState — previously the &&
+                        // short-circuit let a null returnedState bypass the check entirely.
+                        if (!returnedState || returnedState !== stored.notion_oauth_state) {
                             reject(new Error('OAuth state mismatch. Please try again.'));
                             return;
                         }

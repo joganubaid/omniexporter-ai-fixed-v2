@@ -7,7 +7,7 @@
 // - DataExtractor (from platform-config.js)
 // - Logger (from logger.js)
 
-const ChatGPTAdapter = {
+const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
     name: "ChatGPT",
 
     // Cache for pagination
@@ -522,3 +522,6 @@ function extractFromNextData() {
         return null;
     }
 }
+
+// ARCH-1 FIX: Standardize adapter export pattern across all adapters.
+window.ChatGPTAdapter = ChatGPTAdapter;

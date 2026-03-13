@@ -7,7 +7,7 @@
 // - DataExtractor (from platform-config.js)
 // - Logger (from logger.js)
 
-const ClaudeAdapter = {
+const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     name: "Claude",
     _cachedOrgId: null,
 
@@ -98,36 +98,64 @@ const ClaudeAdapter = {
 
     // ============================================
     // ENTERPRISE: Get ALL threads (Load All feature)
+    // BUG-6/PERF-1 FIX: Fetch in pages instead of one massive request.
+    // Users with 500+ conversations caused timeouts with the previous single-call approach.
     // ============================================
     getAllThreads: async function (progressCallback = null) {
         try {
             const orgId = await this.getOrgId();
             const baseUrl = platformConfig.getBaseUrl('Claude');
             const endpoint = platformConfig.buildEndpoint('Claude', 'conversations', { org: orgId });
-            const response = await ClaudeAdapter._fetchWithRetry(`${baseUrl}${endpoint}`);
 
-            const data = await response.json().catch((e) => { console.warn('[Claude] Failed to parse threads response:', e.message); return null; });
-            const threads = (Array.isArray(data) ? data : []).map(t => ({
-                uuid: t.uuid,
-                title: DataExtractor.extractTitle(t, 'Claude'),
-                last_query_datetime: t.updated_at,
-                platform: 'Claude'
-            }));
+            const allThreads = [];
+            const seenUuids = new Set();
+            let offset = 0;
+            const PAGE_SIZE = 50;
+            let hasMore = true;
 
-            // Update cache
-            ClaudeAdapter._allThreadsCache = threads;
-            ClaudeAdapter._cacheTimestamp = Date.now();
+            while (hasMore) {
+                const pageUrl = `${baseUrl}${endpoint}?limit=${PAGE_SIZE}&offset=${offset}&sort=updated_at&order=desc`;
+                const response = await ClaudeAdapter._fetchWithRetry(pageUrl);
+                const data = await response.json().catch(() => null);
 
-            if (progressCallback) {
-                progressCallback(threads.length, false);
+                const page = Array.isArray(data) ? data : [];
+                for (const t of page) {
+                    if (!seenUuids.has(t.uuid)) {
+                        seenUuids.add(t.uuid);
+                        allThreads.push({
+                            uuid: t.uuid,
+                            title: DataExtractor.extractTitle(t, 'Claude'),
+                            last_query_datetime: t.updated_at,
+                            platform: 'Claude'
+                        });
+                    }
+                }
+
+                if (progressCallback) progressCallback(allThreads.length, page.length === PAGE_SIZE);
+
+                // Claude returns fewer than PAGE_SIZE items when done
+                hasMore = page.length === PAGE_SIZE;
+                offset += page.length;
+
+                // Safety cap: 10000 conversations max
+                if (allThreads.length >= 10000) break;
+
+                // Brief pause between pages to avoid rate limiting
+                if (hasMore) await new Promise(r => setTimeout(r, 300));
             }
 
-            return threads;
+            // Update cache
+            ClaudeAdapter._allThreadsCache = allThreads;
+            ClaudeAdapter._cacheTimestamp = Date.now();
+
+            console.log(`[Claude] getAllThreads complete: ${allThreads.length} conversations`);
+            return allThreads;
         } catch (error) {
             console.error('[Claude] getAllThreads failed:', error);
             throw error;
         }
     },
+
 
     // ============================================
     // ENTERPRISE: Offset-based fetching
@@ -233,3 +261,6 @@ function transformClaudeData(data) {
 
     return entries;
 }
+
+// ARCH-1 FIX: Standardize adapter export pattern across all adapters.
+window.ClaudeAdapter = ClaudeAdapter;

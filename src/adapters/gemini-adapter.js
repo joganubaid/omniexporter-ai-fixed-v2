@@ -39,7 +39,7 @@
 // MESSAGE BRIDGE - Connect to gemini-inject.js
 // Listens for messages from page context scripts
 // =============================================
-const GeminiBridge = {
+const GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
     pendingRequests: new Map(),
     isReady: false,
     interceptorReady: false,
@@ -169,7 +169,7 @@ const GeminiBridge = {
 // Initialize bridge
 GeminiBridge.init();
 
-const GeminiAdapter = {
+const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     name: "Gemini",
 
     // Request counter for _reqid parameter (HAR shows incrementing by 100000)

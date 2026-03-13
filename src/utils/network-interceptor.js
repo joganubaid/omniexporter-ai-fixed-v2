@@ -18,7 +18,7 @@ if (!window.__omniExporterInternal) {
     });
 }
 
-const NetworkInterceptor = {
+const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor || {
     capturedEndpoints: {},
     chatListData: null,
     isInitialized: false,
@@ -51,9 +51,13 @@ const NetworkInterceptor = {
         const originalSend = XMLHttpRequest.prototype.send;
         const self = this;
 
-        // Only intercept if not already intercepted
-        if (XMLHttpRequest.prototype._omniIntercepted) return;
-        XMLHttpRequest.prototype._omniIntercepted = true;
+        // SEC-4 FIX: Use a WeakSet instead of writing to XHR.prototype to avoid
+        // prototype pollution that affects all iframes and workers on the page.
+        if (!this._xhrInterceptedInstances) this._xhrInterceptedInstances = new WeakSet();
+        if (this._xhrPatched) return;
+        this._xhrPatched = true;
+
+        const interceptedInstances = this._xhrInterceptedInstances;
 
         XMLHttpRequest.prototype.open = function (method, url) {
             try {
@@ -65,11 +69,15 @@ const NetworkInterceptor = {
 
         XMLHttpRequest.prototype.send = function () {
             try {
-                this.addEventListener('load', function () {
-                    try {
-                        self.processResponse(this._interceptedUrl, this.responseText, this._interceptedMethod);
-                    } catch (e) { }
-                });
+                // Ensure we only attach a single 'load' listener per XHR instance
+                if (!interceptedInstances.has(this)) {
+                    interceptedInstances.add(this);
+                    this.addEventListener('load', function () {
+                        try {
+                            self.processResponse(this._interceptedUrl, this.responseText, this._interceptedMethod);
+                        } catch (e) { }
+                    });
+                }
             } catch (e) { }
             return originalSend.apply(this, arguments);
         };

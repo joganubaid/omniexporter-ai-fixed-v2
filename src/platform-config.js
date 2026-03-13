@@ -268,6 +268,10 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
         }
     };
 
+// Wrap all class declarations in a guard so re-injection on SPA navigation
+// doesn't hit "Identifier 'PlatformConfigManager' has already been declared".
+if (!window.PlatformConfigManager) {
+
     // ============================================
     // PLATFORM CONFIG MANAGER (Enhanced with Test Mode)
     // ============================================
@@ -710,21 +714,20 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
         }
     }
 
-// ============================================
-// GLOBAL INSTANCES (Always re-create on every injection)
-// ============================================
-window.platformConfig = new (window.PlatformConfigManager || PlatformConfigManager)();
-window.versionDetector = new (window.PlatformVersionDetector || PlatformVersionDetector)();
-window.healthMonitor = new (window.PlatformHealthMonitor || PlatformHealthMonitor)();
-
-// Expose classes to window only once
-if (!window.PlatformConfigManager) {
+    // Register all classes on window so other scripts can access them,
+    // and so this guard check works on re-injection.
     window.PlatformConfigManager = PlatformConfigManager;
     window.PlatformVersionDetector = PlatformVersionDetector;
     window.PlatformHealthMonitor = PlatformHealthMonitor;
     window.DataExtractor = DataExtractor;
-}
+
+} // end if (!window.PlatformConfigManager)
+
+
+window.platformConfig = window.platformConfig || new window.PlatformConfigManager();
+window.versionDetector = window.versionDetector || new window.PlatformVersionDetector();
+window.healthMonitor = window.healthMonitor || new window.PlatformHealthMonitor();
+
 
 // Export for content script usage
 console.log('[PlatformConfig] Platform resilience layer loaded');
-

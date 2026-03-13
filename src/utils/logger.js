@@ -8,7 +8,10 @@
  */
 "use strict";
 
-const Logger = {
+// Assign to globalThis so this is safe to re-import in a service worker.
+// Using `const Logger` would throw "already declared" when importScripts runs
+// the file again after a service worker restart within the same global scope.
+globalThis.Logger = globalThis.Logger || ({
     // Configuration
     config: {
         enabled: false,           // Debug mode toggle
@@ -275,7 +278,7 @@ const Logger = {
         this._flushTimeout = setTimeout(() => {
             this._flushToStorage();
             this._flushTimeout = null;
-        }, 1000); // Flush every 1 second max
+        }, 5000); // PERF-3 FIX: 5s flush interval (was 1s — too frequent during bulk exports)
     },
 
     /**
@@ -518,20 +521,19 @@ const Logger = {
         await chrome.storage.local.remove(this.config.storageKey);
         this.info('System', 'Logs cleared');
     }
-};
+}); // end globalThis.Logger assignment
+
+// Alias for convenience — use var (not const/let) so re-importing is safe
+var Logger = globalThis.Logger;
 
 // Auto-initialize when loaded
 Logger.init();
 
 // Export for use in other scripts
+// Ensure backward compat for CommonJS and content scripts
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Logger;
-}
-
-// Make available globally
-if (typeof globalThis !== 'undefined') {
-    globalThis.Logger = Logger;
+    module.exports = globalThis.Logger;
 }
 if (typeof window !== 'undefined') {
-    window.Logger = Logger;
+    window.Logger = globalThis.Logger;
 }

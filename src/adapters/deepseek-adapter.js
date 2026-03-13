@@ -5,7 +5,7 @@
 // NOW USES: platformConfig for centralized configuration
 "use strict";
 
-const DeepSeekAdapter = {
+const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     name: "DeepSeek",
 
     // ============================================
@@ -26,7 +26,8 @@ const DeepSeekAdapter = {
     _cursorCache: [],
     _allThreadsCache: [],
     _cacheTimestamp: 0,
-    _cacheTTL: 60000, // 1 minute cache
+    _cacheTTL: 300000, // MIN-10 FIX: 5 minute cache (was 1 minute — too short for paginated access)
+    _cachedToken: null, // PERF-2 FIX: In-memory token cache to avoid localStorage scan on every call
 
     /**
      * Extract conversation UUID from the current page URL.
@@ -62,6 +63,9 @@ const DeepSeekAdapter = {
     // FIXED: Added multiple token source attempts
     // ============================================
     _getAuthToken: () => {
+        // PERF-2 FIX: Return cached token first to avoid repeated localStorage scanning.
+        if (DeepSeekAdapter._cachedToken) return DeepSeekAdapter._cachedToken;
+
         try {
             // HAR-VERIFIED (2026-02-17): Token is in localStorage under 'userToken'
             // It's a plain string, NOT JSON: "1N55fnYvy+9Zfj5q2Gsk35FZKeph5IU1tfwSRwTb..."
@@ -86,12 +90,14 @@ const DeepSeekAdapter = {
                         const token = parsed.value || parsed.token || parsed.access_token || parsed.biz_data?.token;
                         if (token && token.length > 10) {
                             console.log(`[DeepSeek] Found JSON token in localStorage key: ${key}`);
+                            DeepSeekAdapter._cachedToken = token;
                             return token;
                         }
                     } catch {
                         // Plain string token (HAR-verified format)
                         if (tokenData.length > 10) {
                             console.log(`[DeepSeek] Found plain token in localStorage key: ${key}`);
+                            DeepSeekAdapter._cachedToken = tokenData;
                             return tokenData;
                         }
                     }
@@ -100,27 +106,20 @@ const DeepSeekAdapter = {
                 }
             }
 
-            // Fallback: scan all localStorage keys for anything that looks like a bearer token
-            try {
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    const val = localStorage.getItem(key);
-                    // DeepSeek tokens are ~60+ alphanumeric chars
-                    if (val && /^[A-Za-z0-9+/]{40,}/.test(val)) {
-                        console.log(`[DeepSeek] Found likely token in localStorage key: ${key}`);
-                        return val;
-                    }
-                }
-            } catch (e) { /* ignore */ }
+            // BUG-3 FIX: Removed broad localStorage scan that matched ANY base64-ish string.
+            // The scan was too permissive — it could return Stripe keys, analytics tokens, etc.
+            // as a Bearer token. The proper async fallback is _fetchTokenFromAPI().
 
-            // HAR-verified fallback: try reading token from cookies
+            // HAR-verified fallback: try reading token from cookies (specific patterns only)
             try {
                 const cookiePatterns = ['ds_auth', 'user_token', 'auth_token', 'deepseek_token', 'token'];
                 for (const name of cookiePatterns) {
                     const match = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
                     if (match && match[1] && match[1].length > 10) {
                         console.log(`[DeepSeek] Found token in cookie: ${name}`);
-                        return decodeURIComponent(match[1]);
+                        const token = decodeURIComponent(match[1]);
+                        DeepSeekAdapter._cachedToken = token;
+                        return token;
                     }
                 }
             } catch (e) {
@@ -154,8 +153,9 @@ const DeepSeekAdapter = {
             const token = data?.data?.biz_data?.token || data?.biz_data?.token;
             if (token) {
                 console.log('[DeepSeek] Token retrieved from /users/current API');
-                // Cache it in localStorage for next time
-                try { localStorage.setItem('userToken', token); } catch(e) {}
+                // SEC-3 FIX: Cache in-memory only — do NOT write back to localStorage.
+                // Any injected script on the same origin can read localStorage.
+                DeepSeekAdapter._cachedToken = token;
             }
             return token || null;
         } catch (e) {
