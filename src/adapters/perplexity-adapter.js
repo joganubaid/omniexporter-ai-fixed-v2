@@ -56,6 +56,8 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
                 headers: {
                     "accept": "*/*",
                     "content-type": "application/json",
+                    // Keep client header consistent with other Perplexity calls.
+                    "x-app-apiclient": "default",
                     // BUG-9 FIX: Use dynamic version from platformConfig if available.
                     // Previously hardcoded to "2.18" which bypassed the version detector entirely.
                     "x-app-apiversion": (typeof platformConfig !== 'undefined'
