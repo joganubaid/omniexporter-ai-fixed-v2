@@ -689,9 +689,9 @@ async function syncToNotion(data, settings) {
         // append additional blocks and the sync outcome would be unknown.
         if (!pageId) {
             const errMsg = pageData
-                ? '[AutoSync] Notion page created but no ID returned — cannot append additional blocks.'
-                : '[AutoSync] Notion returned a non-JSON response — cannot determine page ID. Possible Cloudflare challenge.';
-            console.error(errMsg);
+                ? 'Notion page created but no ID returned — cannot append additional blocks.'
+                : 'Notion returned a non-JSON response — cannot determine page ID. Possible Cloudflare challenge.';
+            console.error('[AutoSync]', errMsg);
             return { success: false, error: errMsg };
         }
 

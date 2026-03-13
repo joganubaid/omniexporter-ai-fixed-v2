@@ -300,7 +300,11 @@ The keep-alive alarm fires every **1 minute** (Chrome's enforced minimum for pub
 Notion allows a maximum of 100 blocks per API request. OmniExporter handles this by creating a page with the first 100 blocks, then appending the rest in subsequent PATCH requests. Very long conversations (> 100 Q&A pairs) are fully exported across multiple API calls.
 
 ### Cloudflare Bot Detection
-If Notion's API returns an HTML response instead of JSON (which can happen when Cloudflare intercepts the request), the extension detects the non-JSON Content-Type and fails the sync with an actionable error: **"Notion returned a non-JSON response — cannot determine page ID. Possible Cloudflare challenge."** This guard applies only to Notion sync API calls. AI-site content extraction runs inside the page's own tab context and is not affected.
+If Cloudflare intercepts a Notion API call, the extension detects the non-JSON or HTML response and fails the sync with an actionable error. Depending on the exact response, the message will be one of:
+- **"Cloudflare challenge detected — please open the Notion tab and refresh"** — when Notion returns a non-200 HTML page (Turnstile/bot-check).
+- **"Notion returned a non-JSON response — cannot determine page ID. Possible Cloudflare challenge."** — when the page-create call returns a 2xx but non-JSON body.
+
+This guard applies only to Notion sync API calls. AI-site content extraction runs inside the page's own tab context and is not affected.
 
 ### Storage Quota
 The extension requests the `unlimitedStorage` permission to avoid Chrome's default 5MB `storage.local` cap. This is required for users with large chat histories and long sync logs.
