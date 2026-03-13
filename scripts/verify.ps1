@@ -128,7 +128,7 @@ Section "LAYER 5 — Message Routing Completeness"
 $sentTypes = [System.Collections.Generic.List[string]]::new()
 [regex]::Matches($bg, "type: '([A-Z_]+)'") | ForEach-Object { $sentTypes.Add($_.Groups[1].Value) }
 $handledTypes = [System.Collections.Generic.List[string]]::new()
-[regex]::Matches($ct, 'request\.type === "([A-Z_]+)"') | ForEach-Object { $handledTypes.Add($_.Groups[1].Value) }
+[regex]::Matches($ct, "request\.type\s*===\s*['""]([A-Z_]+)['""]") | ForEach-Object { $handledTypes.Add($_.Groups[1].Value) }
 
 foreach ($t in ($sentTypes | Sort-Object -Unique)) {
     if ($t -in $handledTypes) { Pass "Message routed: $t" }
