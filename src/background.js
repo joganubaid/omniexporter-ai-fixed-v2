@@ -57,10 +57,13 @@ const KEEP_ALIVE_ALARM = 'keepAlive';
 
 // FIX #1: Changed from 0.4 to 1 minute — Chrome enforces a 1-minute minimum for production
 // (non-developer-mode) extensions. 0.4 minutes only works when loaded unpacked.
-// Guard with chrome.alarms.get to prevent duplicates (FIX #10).
+// Recreate the alarm if it is missing or has a period shorter than the required 1 minute
+// (e.g. left over from a previous dev-mode install).
 function createKeepAliveAlarm() {
     chrome.alarms.get(KEEP_ALIVE_ALARM, (existing) => {
-        if (!existing) chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 1 });
+        if (!existing || !existing.periodInMinutes || existing.periodInMinutes < 1) {
+            chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 1 });
+        }
     });
 }
 
@@ -585,20 +588,24 @@ async function performAutoSync() {
 /**
  * FIX #5: Notion-specific fetch with exponential backoff on 429.
  * Notion rate-limits at ~3 requests/second. A flat 1s delay is not retry logic.
+ * maxRetries is the number of *retries* (not total attempts), so total attempts = maxRetries + 1.
  */
 async function notionFetchWithBackoff(url, options, maxRetries = 4) {
     let delay = 1000;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const totalAttempts = maxRetries + 1;
+    for (let attempt = 0; attempt < totalAttempts; attempt++) {
         const response = await fetch(url, options);
         if (response.status !== 429 && response.status !== 503) return response;
+        if (attempt === maxRetries) {
+            console.warn(`[Notion] Rate limited (${response.status}) — max retries exhausted (${totalAttempts} attempts). Returning last response.`);
+            return response; // exhausted retries — return last response
+        }
         const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
         const wait = retryAfter > 0 ? retryAfter * 1000 : delay;
-        console.warn(`[Notion] Rate limited (${response.status}), waiting ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+        console.warn(`[Notion] Rate limited (${response.status}), waiting ${wait}ms (attempt ${attempt + 1}/${totalAttempts})`);
         await new Promise(r => setTimeout(r, wait));
         delay = Math.min(delay * 2, 30000); // cap at 30s
     }
-    // Final attempt after max retries
-    return fetch(url, options);
 }
 
 async function syncToNotion(data, settings) {
@@ -736,8 +743,18 @@ async function syncToNotion(data, settings) {
         const pageData = contentType.includes('application/json') ? await response.json() : null;
         const pageId = pageData?.id;
 
+        // Fail fast when we cannot determine the page ID — without it we cannot
+        // append additional blocks and the sync outcome would be unknown.
+        if (!pageId) {
+            const errMsg = pageData
+                ? 'Notion page created but no ID returned — cannot append additional blocks.'
+                : 'Notion returned a non-JSON response — cannot determine page ID. Possible Cloudflare challenge.';
+            console.error('[AutoSync]', errMsg);
+            return { success: false, error: errMsg };
+        }
+
         // Append remaining blocks in batches of 100 if page was created successfully
-        if (pageId && children.length > 100) {
+        if (children.length > 100) {
             for (let i = 100; i < children.length; i += 100) {
                 const batch = children.slice(i, i + 100);
                 await new Promise(r => setTimeout(r, 350)); // Notion rate limit
@@ -750,7 +767,7 @@ async function syncToNotion(data, settings) {
                     }
                 );
                 if (!patchResp.ok) {
-                    console.warn(`[AutoSync] Failed to append block batch ${i}-${i+100}`);
+                    console.warn(`[AutoSync] Failed to append block batch ${i}–${i + batch.length} (status: ${patchResp.status})`);
                     break; // partial append — don't fail the whole sync
                 }
             }
