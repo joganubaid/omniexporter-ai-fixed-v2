@@ -29,8 +29,11 @@ $m.content_scripts | ForEach-Object { $_.js } | ForEach-Object {
 }
 
 # Permissions
+$allPermissions = @()
+if ($m.permissions) { $allPermissions += $m.permissions }
+if ($m.optional_permissions) { $allPermissions += $m.optional_permissions }
 @("storage","unlimitedStorage","alarms","tabs","contextMenus","scripting","activeTab","identity") | ForEach-Object {
-    if ($_ -notin $m.permissions) { Fail "Permission missing: $_" } else { Pass "perm: $_" }
+    if ($_ -notin $allPermissions) { Fail "Permission missing: $_" } else { Pass "perm: $_" }
 }
 
 # web_accessible_resources
