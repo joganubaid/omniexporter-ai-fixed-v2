@@ -58,7 +58,7 @@ Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepS
 ## 🔧 Installation
 
 ### From Chrome Web Store
-1. Visit the [Chrome Web Store](#) *(link coming soon)*
+1. Visit the Chrome Web Store *(link will be added after approval)*
 2. Click "Add to Chrome"
 3. Grant the requested permissions
 
