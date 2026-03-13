@@ -55,11 +55,19 @@ console.log("OmniExporter AI Service Worker Active");
 // ============================================
 const KEEP_ALIVE_ALARM = 'keepAlive';
 
+// FIX #1: Changed from 0.4 to 1 minute — Chrome enforces a 1-minute minimum for production
+// (non-developer-mode) extensions. 0.4 minutes only works when loaded unpacked.
+// Guard with chrome.alarms.get to prevent duplicates (FIX #10).
+function createKeepAliveAlarm() {
+    chrome.alarms.get(KEEP_ALIVE_ALARM, (existing) => {
+        if (!existing) chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 1 });
+    });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
     console.log("OmniExporter AI Service Worker Installed");
 
-    // Create keep-alive alarm (every 25 seconds)
-    chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 0.4 });
+    createKeepAliveAlarm();
 
     // Initialize default settings
     chrome.storage.local.get(['autoSyncEnabled', 'syncInterval'], (res) => {
@@ -77,7 +85,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // Also create keep-alive and context menus on startup (service worker restarts)
 // BUG-12 FIX: onInstalled is NOT called on SW restart — must re-register here.
 chrome.runtime.onStartup.addListener(() => {
-    chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 0.4 });
+    createKeepAliveAlarm();
     setupContextMenus();
     Logger.info('System', 'Service worker started up');
 });
@@ -143,15 +151,27 @@ function getPlatformUrl(platform, uuid) {
     return urls[platform] || null;
 }
 
-// ============================================
-// GLOBAL SYNC LOCK (Fix #1)
-// ============================================
+// FIX #3: Sync lock is now validated against chrome.storage on every acquire.
+// Without this, if the SW terminates mid-sync and restarts, globalSyncInProgress resets to
+// false — allowing a new sync to start while the previous run’s Notion requests are still in-flight.
 let globalSyncInProgress = false;
 
 async function acquireSyncLock() {
+    // Check in-memory first (fastest path — same SW instance)
     if (globalSyncInProgress) {
-        console.log('[Sync] Another sync is in progress, skipping');
+        console.log('[Sync] Another sync is in progress (in-memory), skipping');
         return false;
+    }
+    // Cross-restart check: verify storage state wasn’t left dirty by a crashed SW
+    const { syncInProgress, syncStartTime } = await chrome.storage.local.get(['syncInProgress', 'syncStartTime']);
+    if (syncInProgress) {
+        const age = Date.now() - (syncStartTime || 0);
+        // If lock is older than 10 minutes, treat as stale and override
+        if (age < 10 * 60 * 1000) {
+            console.log('[Sync] Sync in progress per storage (age: ' + Math.round(age/1000) + 's), skipping');
+            return false;
+        }
+        console.warn('[Sync] Stale lock detected (' + Math.round(age/60000) + 'min), overriding');
     }
     globalSyncInProgress = true;
     await chrome.storage.local.set({ syncInProgress: true, syncStartTime: Date.now() });
@@ -504,23 +524,42 @@ async function performAutoSync() {
     }
 }
 
+/**
+ * FIX #5: Notion-specific fetch with exponential backoff on 429.
+ * Notion rate-limits at ~3 requests/second. A flat 1s delay is not retry logic.
+ */
+async function notionFetchWithBackoff(url, options, maxRetries = 4) {
+    let delay = 1000;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await fetch(url, options);
+        if (response.status !== 429 && response.status !== 503) return response;
+        const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
+        const wait = retryAfter > 0 ? retryAfter * 1000 : delay;
+        console.warn(`[Notion] Rate limited (${response.status}), waiting ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, wait));
+        delay = Math.min(delay * 2, 30000); // cap at 30s
+    }
+    // Final attempt after max retries
+    return fetch(url, options);
+}
+
 async function syncToNotion(data, settings) {
     try {
         const entries = data.detail?.entries || [];
         const children = [];
         const token = await NotionOAuth.getActiveToken();
+        const notionHeaders = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Notion-Version': '2022-06-28'
+        };
 
-        // First, fetch database schema to know which properties exist
+        // Fetch database schema to know which properties exist
         let dbSchema = null;
         try {
-            const schemaResponse = await fetch(
+            const schemaResponse = await notionFetchWithBackoff(
                 `https://api.notion.com/v1/databases/${settings.notionDbId}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Notion-Version': '2022-06-28'
-                    }
-                }
+                { headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
             );
             if (schemaResponse.ok) {
                 dbSchema = await schemaResponse.json();
@@ -534,34 +573,23 @@ async function syncToNotion(data, settings) {
         let titlePropertyName = 'Title';
         if (dbSchema?.properties) {
             for (const [name, prop] of Object.entries(dbSchema.properties)) {
-                if (prop.type === 'title') {
-                    titlePropertyName = name;
-                    break;
-                }
+                if (prop.type === 'title') { titlePropertyName = name; break; }
             }
         }
 
-        // Build properties dynamically based on what exists in the database
         const properties = {};
-
-        // Title is always required
         properties[titlePropertyName] = {
             title: [{ type: "text", text: { content: (data.title || "Untitled").slice(0, 2000) } }]
         };
 
-        // Only add optional properties if they exist in the schema
         if (dbSchema?.properties) {
-            if (dbSchema.properties['URL'] && dbSchema.properties['URL'].type === 'url') {
+            if (dbSchema.properties['URL']?.type === 'url')
                 properties['URL'] = { url: getPlatformUrl(data.platform, data.uuid) };
-            }
-            if (dbSchema.properties['Tags'] && dbSchema.properties['Tags'].type === 'multi_select') {
+            if (dbSchema.properties['Tags']?.type === 'multi_select')
                 properties['Tags'] = { multi_select: [{ name: data.platform || 'AI' }] };
-            }
-            if (dbSchema.properties['Platform'] && dbSchema.properties['Platform'].type === 'select') {
+            if (dbSchema.properties['Platform']?.type === 'select')
                 properties['Platform'] = { select: { name: data.platform || 'AI' } };
-            }
-            if (dbSchema.properties['Chat Time'] && dbSchema.properties['Chat Time'].type === 'date') {
-                // BUG-8 FIX: Use the conversation's actual date instead of today.
+            if (dbSchema.properties['Chat Time']?.type === 'date') {
                 const rawDate = data.detail?.last_query_datetime
                     || data.detail?.entries?.[0]?.created_datetime
                     || data.detail?.entries?.[0]?.last_query_datetime;
@@ -570,9 +598,8 @@ async function syncToNotion(data, settings) {
                     : new Date().toISOString().split('T')[0];
                 properties['Chat Time'] = { date: { start: chatDate } };
             }
-            if (dbSchema.properties['Exported'] && dbSchema.properties['Exported'].type === 'date') {
+            if (dbSchema.properties['Exported']?.type === 'date')
                 properties['Exported'] = { date: { start: new Date().toISOString().split('T')[0] } };
-            }
         }
 
         children.push({
@@ -590,17 +617,13 @@ async function syncToNotion(data, settings) {
             if (query) {
                 children.push({
                     type: "heading_2",
-                    heading_2: {
-                        rich_text: [{ type: "text", text: { content: query.slice(0, 2000) } }]
-                    }
+                    heading_2: { rich_text: [{ type: "text", text: { content: query.slice(0, 2000) } }] }
                 });
             }
-
-            // Extract answer from blocks or direct properties
             let answer = '';
             if (entry.blocks && Array.isArray(entry.blocks)) {
                 entry.blocks.forEach(block => {
-                    if (block.intended_usage === 'ask_text' && block.markdown_block) {
+                    if (block.markdown_block) {
                         answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                     }
                 });
@@ -610,36 +633,72 @@ async function syncToNotion(data, settings) {
             if (answer.trim()) {
                 children.push({
                     type: "paragraph",
-                    paragraph: {
-                        rich_text: [{ type: "text", text: { content: answer.slice(0, 1900) } }]
-                    }
+                    paragraph: { rich_text: [{ type: "text", text: { content: answer.slice(0, 1900) } }] }
                 });
             }
         });
 
-        console.log('[AutoSync] Creating page with properties:', Object.keys(properties));
+        console.log('[AutoSync] Creating page with', children.length, 'blocks');
 
-        const response = await fetch('https://api.notion.com/v1/pages', {
+        // FIX #2: POST the first 100 blocks only (Notion per-request limit).
+        // Then PATCH /v1/blocks/{page_id}/children for any remaining blocks in batches of 100.
+        const firstBatch = children.slice(0, 100);
+        const response = await notionFetchWithBackoff('https://api.notion.com/v1/pages', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Notion-Version': '2022-06-28'
-            },
+            headers: notionHeaders,
             body: JSON.stringify({
                 parent: { database_id: settings.notionDbId },
                 properties,
-                children: children.slice(0, 100) // Notion limit
+                children: firstBatch
             })
         });
 
+        // FIX #6: Check content-type before calling .json() — Cloudflare Turnstile
+        // challenges return text/html on captcha-blocked endpoints, which throws on .json().
+        const contentType = response.headers.get('content-type') || '';
         if (!response.ok) {
-            const err = await response.json();
-            console.error('[AutoSync] Notion API Error:', err);
-            return { success: false, error: err.message || err.code || 'API Error' };
+            let errMsg = `HTTP ${response.status}`;
+            if (contentType.includes('application/json')) {
+                const err = await response.json();
+                errMsg = err.message || err.code || errMsg;
+                console.error('[AutoSync] Notion API Error:', err);
+            } else {
+                const text = await response.text();
+                // HTML response = likely Cloudflare challenge / bot detection
+                if (text.includes('<html')) {
+                    errMsg = 'Cloudflare challenge detected — please open the Notion tab and refresh';
+                    console.warn('[AutoSync] Notion returned HTML (likely Cloudflare block)');
+                } else {
+                    errMsg = text.slice(0, 200);
+                }
+            }
+            return { success: false, error: errMsg };
         }
 
-        console.log('[AutoSync] ✓ Page created successfully');
+        const pageData = contentType.includes('application/json') ? await response.json() : null;
+        const pageId = pageData?.id;
+
+        // Append remaining blocks in batches of 100 if page was created successfully
+        if (pageId && children.length > 100) {
+            for (let i = 100; i < children.length; i += 100) {
+                const batch = children.slice(i, i + 100);
+                await new Promise(r => setTimeout(r, 350)); // Notion rate limit
+                const patchResp = await notionFetchWithBackoff(
+                    `https://api.notion.com/v1/blocks/${pageId}/children`,
+                    {
+                        method: 'PATCH',
+                        headers: notionHeaders,
+                        body: JSON.stringify({ children: batch })
+                    }
+                );
+                if (!patchResp.ok) {
+                    console.warn(`[AutoSync] Failed to append block batch ${i}-${i+100}`);
+                    break; // partial append — don't fail the whole sync
+                }
+            }
+        }
+
+        console.log('[AutoSync] ✓ Page created successfully', pageId ? `(id: ${pageId})` : '');
         return { success: true };
     } catch (e) {
         console.error('[AutoSync] syncToNotion exception:', e);
