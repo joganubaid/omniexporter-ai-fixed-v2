@@ -49,6 +49,8 @@ const GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
     _sessionParamsCacheTTL: 300000, // 5 minutes
 
     init() {
+        // REAL-9 FIX: Mark as initialized immediately so the outer guard works correctly
+        this._listenerAdded = true;
         window.addEventListener('message', (event) => {
             if (event.source !== window) return;
             // Security: Only accept messages from Gemini origin
@@ -166,8 +168,12 @@ const GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
     }
 };
 
-// Initialize bridge
-GeminiBridge.init();
+// REAL-9 FIX: Guard init() so only one window message listener is ever added.
+// On SPA re-injection, window.GeminiBridge already exists (preserved by window.X || guard).
+// Without this guard, each re-injection adds another listener, causing messages to be handled twice.
+if (!GeminiBridge._listenerAdded) {
+    GeminiBridge.init();
+}
 
 const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     name: "Gemini",

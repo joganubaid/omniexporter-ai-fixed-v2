@@ -2,7 +2,11 @@
 // Multi-format export support: Markdown, JSON, HTML, PDF, Plain Text
 "use strict";
 
-class ExportManager {
+// REAL-14 FIX: Wrap in window guard to prevent SyntaxError: 'Identifier already declared'
+// on SPA re-injection. ExportManager is injected as a content script and re-runs on navigation.
+const root = typeof window !== 'undefined' ? window : globalThis;
+if (!root.ExportManager) {
+root.ExportManager = class ExportManager {
     static formats = {
         markdown: {
             name: 'Markdown',
@@ -580,8 +584,9 @@ class ExportManager {
         return html;
     }
 }
+} // end if (!window.ExportManager)
 
-// Export for use
+// Export for use in Node.js test environments
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ExportManager;
+    module.exports = window.ExportManager;
 }

@@ -187,6 +187,21 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                         await handleGetSpaces(adapter, sendResponse);
                     } else if (request.type === "GET_PLATFORM_INFO") {
                         sendResponse({ success: true, platform: adapter.name });
+                    } else if (request.type === "EXPORT_THREAD") {
+                        // REAL-6 FIX: Context menu export handler — calls ExportManager directly.
+                        // Background sends this message after extracting thread content.
+                        try {
+                            const { data, format = 'markdown' } = request.payload;
+                            if (typeof ExportManager !== 'undefined') {
+                                ExportManager.export(data, format, data.platform);
+                                sendResponse({ success: true });
+                            } else {
+                                sendResponse({ success: false, error: 'ExportManager not loaded' });
+                            }
+                        } catch (exportErr) {
+                            sendResponse({ success: false, error: exportErr.message });
+                        }
+                        return; // sendResponse already called
                     }
                 } catch (error) {
                     sendResponse({ success: false, error: error.message });
@@ -383,11 +398,13 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         const offset = payload.offset || 0;
         const limit = payload.limit || 50;
 
-        // ANTI-BOT: Add random delay between requests (200-800ms)
-        if (offset > 0) {
-            const delay = 200 + Math.random() * 600;
-            await new Promise(r => setTimeout(r, delay));
-        }
+        // ANTI-BOT: Add random delay between ALL requests including the first.
+        // REAL-8 FIX: First request (offset===0) used to fire immediately with no delay.
+        // Perplexity and Claude have bot detection that can trigger on unnaturally fast first requests.
+        const delay = offset === 0
+            ? 100 + Math.random() * 300   // 100–400ms on first request
+            : 200 + Math.random() * 600;  // 200–800ms on subsequent pages
+        await new Promise(r => setTimeout(r, delay));
 
         // Common headers to appear more like a real browser
         const browserHeaders = {
@@ -415,7 +432,13 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                     ...browserHeaders,
                     "content-type": "application/json",
                     "x-app-apiclient": "default",
-                    "x-app-apiversion": "2.18"
+                    // REAL-7 FIX: Use dynamic version from PerplexityAdapter if available.
+                    // handleGetThreadListOffset is the actual path for "Load All" — must not be hardcoded.
+                    "x-app-apiversion": (typeof PerplexityAdapter !== 'undefined' && PerplexityAdapter._apiVersion)
+                        ? PerplexityAdapter._apiVersion
+                        : (typeof platformConfig !== 'undefined' && platformConfig.activeVersions?.get('Perplexity'))
+                            ? platformConfig.activeVersions.get('Perplexity')
+                            : '2.18'
                 },
                 body: JSON.stringify(body)
             });
