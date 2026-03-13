@@ -45,10 +45,10 @@ $m.web_accessible_resources | ForEach-Object { $_.resources } | ForEach-Object {
 
 # ─── LAYER 3: Fix Regression Guard ─────────────────────────
 Section "LAYER 3 — Fix Regression Guard"
-$bg = Get-Content "src\background.js" -Raw
-$ct = Get-Content "src\content.js" -Raw
-$ga = Get-Content "src\adapters\gemini-adapter.js" -Raw
-$em = Get-Content "src\utils\export-manager.js" -Raw
+$bg = Get-Content "src/background.js" -Raw
+$ct = Get-Content "src/content.js" -Raw
+$ga = Get-Content "src/adapters/gemini-adapter.js" -Raw
+$em = Get-Content "src/utils/export-manager.js" -Raw
 $mf = Get-Content "manifest.json" -Raw
 
 # Alarm
