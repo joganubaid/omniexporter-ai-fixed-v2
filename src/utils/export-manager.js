@@ -557,6 +557,9 @@ class ExportManager {
 
         html = processedLines.join('\n');
 
+        // Wrap entire content in a paragraph so inserted breaks are well-formed
+        html = `<p>${html}</p>`;
+
         // Paragraph breaks (double newline not inside pre/ul/li)
         html = html.replace(/([^>])\n\n([^<])/g, '$1</p><p>$2');
 
