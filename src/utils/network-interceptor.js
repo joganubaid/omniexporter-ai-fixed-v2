@@ -146,10 +146,10 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
             const data = JSON.parse(responseText);
 
             // Pattern detection for chat lists
-            if (this.isChatListResponse(data, url)) {
-                const platform = this.detectPlatform(url);
+            if (this.isChatListResponse(data, urlStr)) {
+                const platform = this.detectPlatform(urlStr);
                 this.capturedEndpoints[platform] = {
-                    url: url,
+                    url: urlStr,
                     method: method,
                     timestamp: Date.now()
                 };
