@@ -283,25 +283,36 @@ globalThis.Logger = globalThis.Logger || ({
 
     /**
      * Flush buffer to storage
+     * Uses a simple lock to prevent concurrent flushes from losing entries.
      */
+    _flushing: false,
+
     async _flushToStorage() {
-        if (this._buffer.length === 0) return;
+        if (this._buffer.length === 0 || this._flushing) return;
+
+        this._flushing = true;
+        // Snapshot and clear the buffer before the async gap so new entries
+        // that arrive during the storage round-trip are not lost.
+        const toFlush = this._buffer;
+        this._buffer = [];
 
         try {
             const { [this.config.storageKey]: existingLogs = [] } =
                 await chrome.storage.local.get(this.config.storageKey);
 
             // Combine and limit
-            const allLogs = [...existingLogs, ...this._buffer];
+            const allLogs = [...existingLogs, ...toFlush];
             const trimmedLogs = allLogs.slice(-this.config.maxEntries);
 
             await chrome.storage.local.set({
                 [this.config.storageKey]: trimmedLogs
             });
-
-            this._buffer = [];
         } catch (e) {
+            // Put entries back so they aren't lost
+            this._buffer = [...toFlush, ...this._buffer];
             console.error('[Logger] Storage flush failed:', e);
+        } finally {
+            this._flushing = false;
         }
     },
 

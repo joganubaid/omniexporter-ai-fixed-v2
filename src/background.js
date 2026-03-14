@@ -495,10 +495,23 @@ async function performAutoSync() {
                 for (const thread of batch) {
                     try {
                         const detailResponse = await new Promise((resolve) => {
+                            const timeout = setTimeout(() => {
+                                console.warn(`[AutoSync] Timeout extracting thread ${thread.uuid}`);
+                                resolve(null);
+                            }, 30000);
+
                             chrome.tabs.sendMessage(tab.id, {
                                 type: 'EXTRACT_CONTENT_BY_UUID',
                                 payload: { uuid: thread.uuid }
-                            }, resolve);
+                            }, (response) => {
+                                clearTimeout(timeout);
+                                if (chrome.runtime.lastError) {
+                                    console.warn('[AutoSync] sendMessage error:', chrome.runtime.lastError.message);
+                                    resolve(null);
+                                } else {
+                                    resolve(response);
+                                }
+                            });
                         });
 
                         if (!detailResponse || !detailResponse.success) {
