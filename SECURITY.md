@@ -12,7 +12,7 @@
 
 ### Authentication
 - Notion OAuth2 client secret is stored server-side on the Cloudflare Worker — never exposed in the extension
-- OAuth tokens stored in `chrome.storage.local` (plain JSON — protected by OS-level user account isolation, **not** encrypted by Chrome)
+- OAuth tokens stored with a **split strategy**: the access token is stored in `chrome.storage.session` (ephemeral — cleared on browser close) when available, with `chrome.storage.local` as a fallback. Refresh-token metadata is always stored in `chrome.storage.local` (plain JSON — protected by OS-level user account isolation, **not** encrypted by Chrome)
 - **Token refresh:** Notion OAuth does not support refresh tokens. When a token expires the extension triggers silent re-authorization via `chrome.identity`. If the user is still logged into Notion, this completes without any visible dialog.
 - Bearer tokens for ChatGPT are fetched per-session from the auth endpoint and cached with TTL
 

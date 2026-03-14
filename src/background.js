@@ -133,6 +133,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'storageCleanup') {
         enforceStorageLimit();
     }
+
+    if (alarm.name === 'clearSyncBadge') {
+        chrome.action.setBadgeText({ text: '' });
+    }
 });
 
 // ============================================
@@ -579,8 +583,12 @@ async function performAutoSync() {
             chrome.action.setBadgeText({ text: badgeText });
             if (totalSuccessCount > 0) {
                 chrome.action.setBadgeBackgroundColor({ color: '#22c55e' }); // green
-                // Auto-clear badge after 30 seconds
-                setTimeout(() => chrome.action.setBadgeText({ text: '' }), 30000);
+                // Auto-clear badge after 30 seconds using chrome.alarms (reliable in MV3 service workers)
+                try {
+                    chrome.alarms.create('clearSyncBadge', { delayInMinutes: 0.5 });
+                } catch (alarmErr) {
+                    console.warn('[AutoSync] Could not schedule badge clear alarm:', alarmErr);
+                }
             }
 
 

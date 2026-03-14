@@ -73,7 +73,7 @@ User clicks "Save to Notion"
 ## Security Model
 
 - **Client secret** lives only in the Cloudflare Worker env var — never in the extension
-- **Tokens** stored in `chrome.storage.local` (plain JSON, OS-level isolation per user)
+- **Tokens** stored with a split strategy: the access token is kept in `chrome.storage.session` (ephemeral, cleared on browser close) when available, falling back to `chrome.storage.local`. Refresh-token metadata (expiry, workspace info) is always persisted in `chrome.storage.local` (plain JSON, OS-level isolation per user)
 - **CORS** on the worker is restricted to your `chrome-extension://EXTENSION_ID` origin
 - **postMessage** in Gemini adapter uses `https://gemini.google.com` as the target origin
 - **NetworkInterceptor** only processes URLs matching known AI platform API patterns

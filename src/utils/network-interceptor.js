@@ -128,7 +128,15 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
             /grok\.com\/rest\/|x\.com\/i\/grok/,
             /chat\.deepseek\.com\/api\//,
         ];
-        const urlStr = url ? url.toString() : '';
+        // Extract .url if this is a Request object (e.g. from fetch intercept), then normalize
+        // relative paths (e.g. "/backend-api/...") to absolute URLs via location.origin.
+        const rawUrl = (url && typeof url === 'object' && !(url instanceof URL) && 'url' in url) ? url.url : url;
+        let urlStr = '';
+        try {
+            urlStr = rawUrl ? new URL(rawUrl.toString(), location.origin).href : '';
+        } catch (_) {
+            urlStr = rawUrl ? rawUrl.toString() : '';
+        }
         if (!AI_URL_PATTERNS.some(pattern => pattern.test(urlStr))) return;
 
         // SAFETY: Silent fail on any error

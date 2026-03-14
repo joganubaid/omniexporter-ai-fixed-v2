@@ -453,17 +453,49 @@ class ContentScriptHealthChecker {
             console.log('[HealthCheck] Content script not responding, injecting...');
 
             const tab = await chrome.tabs.get(tabId);
-            const supportedDomains = ['perplexity.ai', 'chatgpt.com', 'claude.ai', 'gemini.google.com', 'grok.com', 'x.com/i/grok', 'chat.deepseek.com'];
-            const isSupported = supportedDomains.some(d => tab.url?.includes(d));
+            const tabUrl = tab.url || '';
+            let hostname = '';
+            try { hostname = new URL(tabUrl).hostname; } catch (_) { /* non-parseable URL */ }
 
-            if (!isSupported) {
+            // Map platform domains to the same script bundles defined in manifest.json
+            // Use exact hostname matching (or suffix check) to prevent substring spoofing.
+            const matchesHost = (host, ...allowed) => allowed.some(d => host === d || host.endsWith('.' + d));
+            const PLATFORM_SCRIPTS = [
+                {
+                    test: h => matchesHost(h, 'perplexity.ai'),
+                    files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/perplexity-adapter.js', 'src/content.js']
+                },
+                {
+                    test: h => matchesHost(h, 'chatgpt.com', 'chat.openai.com'),
+                    files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/chatgpt-adapter.js', 'src/content.js']
+                },
+                {
+                    test: h => matchesHost(h, 'claude.ai'),
+                    files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/claude-adapter.js', 'src/content.js']
+                },
+                {
+                    test: h => matchesHost(h, 'gemini.google.com'),
+                    files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/gemini-inject.js', 'src/adapters/gemini-adapter.js', 'src/content.js']
+                },
+                {
+                    test: h => matchesHost(h, 'grok.com', 'x.com'),
+                    files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js']
+                },
+                {
+                    test: h => matchesHost(h, 'chat.deepseek.com'),
+                    files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/deepseek-adapter.js', 'src/content.js']
+                },
+            ];
+
+            const platformEntry = PLATFORM_SCRIPTS.find(p => p.test(hostname));
+            if (!platformEntry) {
                 return { success: false, error: 'Tab is not on a supported platform' };
             }
 
-            // Bug 10 fix: inject platform-config.js BEFORE content.js
+            // Bug 10 fix: inject the full platform script bundle (matching manifest.json order)
             await chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ['src/platform-config.js', 'src/content.js']
+                files: platformEntry.files
             });
 
             await new Promise(r => setTimeout(r, 500));

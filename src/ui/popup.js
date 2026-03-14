@@ -633,14 +633,18 @@ async function syncToNotionAPI(data, apiKey, dbId) {
         };
         for (let i = 100; i < children.length; i += 100) {
             const batch = children.slice(i, i + 100);
-            await new Promise(r => setTimeout(r, 350)); // respect rate limits
-            const patchResp = await fetch(
-                `https://api.notion.com/v1/blocks/${pageId}/children`,
-                { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
-            );
+            const patchResp = await withRetry(async () => {
+                return await notionRateLimiter.throttle(async () => {
+                    return await fetch(
+                        `https://api.notion.com/v1/blocks/${pageId}/children`,
+                        { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
+                    );
+                });
+            });
             if (!patchResp.ok) {
-                console.warn(`[Popup] Failed to append block batch ${i}–${i + batch.length}`);
-                break; // partial append — don't fail the whole export
+                const errBody = await patchResp.json().catch(() => null);
+                const errMsg = errBody ? NotionErrorMapper.map(errBody) : `HTTP ${patchResp.status}`;
+                throw new Error(`Export partially failed appending blocks ${i}–${i + batch.length}: ${errMsg}`);
             }
         }
     }
