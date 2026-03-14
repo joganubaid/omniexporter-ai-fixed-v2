@@ -478,7 +478,7 @@ class ContentScriptHealthChecker {
                     files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/gemini-inject.js', 'src/adapters/gemini-adapter.js', 'src/content.js']
                 },
                 {
-                    test: h => matchesHost(h, 'grok.com', 'x.com'),
+                    test: h => matchesHost(h, 'grok.com'),
                     files: ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js']
                 },
                 {
