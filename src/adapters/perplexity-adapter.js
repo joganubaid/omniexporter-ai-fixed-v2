@@ -137,17 +137,17 @@ async function fetchPerplexityDetailResilient(uuid) {
     let isInitial = true;
     let title = 'Untitled Thread';
 
-    // Get version from config or detector
-    const version = platformConfig.activeVersions.get('Perplexity') ||
-        PLATFORM_CONFIGS.Perplexity.versions.current;
-
     try {
         while (true) {
+            // Re-read version each iteration so config hot-reloads take effect
+            const currentVersion = platformConfig.activeVersions.get('Perplexity') ||
+                PLATFORM_CONFIGS.Perplexity.versions.current;
+
             const baseUrl = platformConfig.getBaseUrl('Perplexity');
             const params = new URLSearchParams({
                 with_parent_info: "true",
                 with_schematized_response: "true",
-                version: version,
+                version: currentVersion,
                 source: "default",
                 limit: isInitial ? "10" : "100"
             });

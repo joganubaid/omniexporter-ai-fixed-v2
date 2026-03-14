@@ -329,11 +329,13 @@ const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
 
                 console.log(`[ChatGPT] DOM fallback found ${threads.length} threads`);
 
-                // Simple pagination for DOM results
+                // DOM fallback returns whatever is visible in the sidebar — this
+                // is the full set; higher pages would return the same DOM so we
+                // report hasMore: false to prevent infinite pagination loops.
                 const start = (page - 1) * limit;
                 return {
                     threads: threads.slice(start, start + limit),
-                    hasMore: start + limit < threads.length,
+                    hasMore: false,
                     page
                 };
             }

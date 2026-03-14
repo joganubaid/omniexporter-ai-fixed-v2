@@ -158,7 +158,10 @@ window.TestRunner = {
     appendResult(text) {
         const container = document.getElementById('testResults');
         if (container) {
-            container.innerHTML += text + '<br>';
+            const line = document.createElement('span');
+            line.textContent = text;
+            container.appendChild(line);
+            container.appendChild(document.createElement('br'));
             container.scrollTop = container.scrollHeight;
         }
     },

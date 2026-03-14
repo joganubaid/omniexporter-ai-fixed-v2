@@ -276,6 +276,7 @@
             this.originalOpen = null;
             this.originalSend = null;
             this.capturedData = [];
+            this.MAX_CAPTURED = 200; // Prevent unbounded memory growth
         }
 
         start() {
@@ -300,6 +301,10 @@
                 if (url && url.includes('/_/BardChatUi/data/')) {
                     xhr.addEventListener('load', function () {
                         try {
+                            // Evict oldest entries when buffer is full
+                            if (self.capturedData.length >= self.MAX_CAPTURED) {
+                                self.capturedData.splice(0, Math.floor(self.MAX_CAPTURED / 2));
+                            }
                             self.capturedData.push({
                                 url,
                                 method: xhr._omni_method,

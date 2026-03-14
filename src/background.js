@@ -396,7 +396,9 @@ async function performAutoSync() {
 
             // BUG-7 FIX: Iterate all open AI tabs instead of only the first.
             // Build a map of platform -> tab so each platform is processed once per run.
+            // Prefer tabs whose URL includes a conversation/chat path over landing pages.
             const platformTabMap = new Map();
+            const chatPathPatterns = ['/c/', '/chat/', '/conversation/', '/thread/'];
             for (const t of tabs) {
                 const p = t.url.includes('perplexity') ? 'Perplexity'
                     : t.url.includes('chatgpt') || t.url.includes('openai') ? 'ChatGPT'
@@ -405,7 +407,13 @@ async function performAutoSync() {
                     : t.url.includes('grok') || t.url.includes('x.com') ? 'Grok'
                     : t.url.includes('deepseek') ? 'DeepSeek'
                     : null;
-                if (p && !platformTabMap.has(p)) platformTabMap.set(p, t);
+                if (!p) continue;
+                const isOnChatPage = chatPathPatterns.some(pat => t.url.includes(pat));
+                const existing = platformTabMap.get(p);
+                // Replace if no tab yet, or if new tab is on a chat page and old one isn't
+                if (!existing || (isOnChatPage && !chatPathPatterns.some(pat => existing.url.includes(pat)))) {
+                    platformTabMap.set(p, t);
+                }
             }
 
             // REAL-2 FIX: Single shared Set lives outside the platform loop.
