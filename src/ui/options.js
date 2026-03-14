@@ -17,6 +17,22 @@ let exportHistory = [];
 let syncStatusMap = {};
 let exportStartTime = null;
 
+// ============================================================
+// SHARED PLATFORM URL MAP (Bug 6 fix — mirrors popup.js)
+// ============================================================
+const PLATFORM_URLS = {
+    'Perplexity': uuid => `https://www.perplexity.ai/search/${uuid}`,
+    'ChatGPT':    uuid => `https://chatgpt.com/c/${uuid}`,
+    'Claude':     uuid => `https://claude.ai/chat/${uuid}`,
+    'Gemini':     uuid => `https://gemini.google.com/app/${uuid}`,
+    'Grok':       uuid => `https://grok.com/chat/${uuid}`,
+    'DeepSeek':   uuid => `https://chat.deepseek.com/a/chat/s/${uuid}`,
+};
+function getPlatformUrl(platform, uuid) {
+    const builder = PLATFORM_URLS[platform] || PLATFORM_URLS['Perplexity'];
+    return builder(uuid || '');
+}
+
 // ============================================================================
 // SECTION: PERFORMANCE & SECURITY UTILITIES (Phase 2)
 // ============================================================================
@@ -444,9 +460,10 @@ class ContentScriptHealthChecker {
                 return { success: false, error: 'Tab is not on a supported platform' };
             }
 
+            // Bug 10 fix: inject platform-config.js BEFORE content.js
             await chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ['content.js']
+                files: ['src/platform-config.js', 'src/content.js']
             });
 
             await new Promise(r => setTimeout(r, 500));
@@ -2220,9 +2237,9 @@ async function getNotionDatabaseSchema(dbId, apiKey) {
  * Dynamically builds Notion properties based on available columns
  */
 async function buildNotionProperties(data, dbId, apiKey, entries = []) {
-    // Required Title property
+    // Bug 3 fix: key must be 'Title' (capital T) to match auto-created DB schema by notion-oauth.js
     const properties = {
-        title: {
+        'Title': {
             title: [{
                 type: "text",
                 text: { content: (data.title || 'Untitled Chat').slice(0, 2000) }
@@ -2236,9 +2253,9 @@ async function buildNotionProperties(data, dbId, apiKey, entries = []) {
 
         const availableProps = schema.properties;
 
-        // URL column
+        // URL column — Bug 6 fix: use platform-aware URL instead of hardcoded Perplexity
         if (availableProps['URL'] && data.uuid) {
-            properties.URL = { url: `https://www.perplexity.ai/search/${data.uuid}` };
+            properties.URL = { url: getPlatformUrl(currentPlatform, data.uuid) };
         }
 
         // Chat Time column

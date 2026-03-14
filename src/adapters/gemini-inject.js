@@ -347,11 +347,6 @@
         });
     }
 
-    // Expose for debugging (remove in production)
-    window.__omniexporter_gemini = {
-        bridge,
-        interceptor,
-        getGlobalData: () => bridge.getGlobalData(),
-        getConversations: () => bridge.getConversations()
-    };
+    // Sec 3 fix: debug window object removed — it exposed bridge.getGlobalData() (XSRF token)
+    // to any page script. Internal instances are kept as local constants.
 })();

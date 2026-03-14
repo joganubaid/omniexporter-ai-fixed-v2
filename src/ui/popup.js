@@ -38,6 +38,22 @@ let currentPlatform = "Unknown";
 let selectedExportFormat = "markdown";
 
 // ============================================
+// SHARED PLATFORM URL MAP (Bug 2/7 fix)
+// ============================================
+const PLATFORM_URLS = {
+    'Perplexity': uuid => `https://www.perplexity.ai/search/${uuid}`,
+    'ChatGPT':    uuid => `https://chatgpt.com/c/${uuid}`,
+    'Claude':     uuid => `https://claude.ai/chat/${uuid}`,
+    'Gemini':     uuid => `https://gemini.google.com/app/${uuid}`,
+    'Grok':       uuid => `https://grok.com/chat/${uuid}`,
+    'DeepSeek':   uuid => `https://chat.deepseek.com/a/chat/s/${uuid}`,
+};
+function getPlatformUrl(platform, uuid) {
+    const builder = PLATFORM_URLS[platform] || PLATFORM_URLS['Perplexity'];
+    return builder(uuid || '');
+}
+
+// ============================================
 // FIX 11: RETRY LOGIC WITH EXPONENTIAL BACKOFF
 // ============================================
 // (withRetry, NotionErrorMapper, RateLimiter, LoadingManager, InputSanitizer
@@ -514,59 +530,8 @@ async function saveToNotion() {
     }
 }
 
-/**
- * Build Notion page properties based on database schema
- * Supports common property types: Title, URL, Date, Select, Multi-Select
- */
-async function buildNotionProperties(data, dbId, apiKey, entries) {
-    // Build title - always required
-    const title = data.title || data.query_str || 'Untitled Chat';
-
-    // Build URL based on platform
-    const platformUrls = {
-        'Perplexity': `https://www.perplexity.ai/search/${data.uuid}`,
-        'ChatGPT': `https://chatgpt.com/c/${data.uuid}`,
-        'Claude': `https://claude.ai/chat/${data.uuid}`,
-        'Gemini': `https://gemini.google.com/app/${data.uuid}`,
-        'Grok': `https://grok.com/chat/${data.uuid}`,
-        'DeepSeek': `https://chat.deepseek.com/a/chat/s/${data.uuid}`
-    };
-    const chatUrl = platformUrls[currentPlatform] || platformUrls['Perplexity'];
-
-    // Build date - use last_query_datetime or current date
-    const chatDate = data.last_query_datetime || data.updated_at || new Date().toISOString();
-
-    // Build properties object - Notion property names are case-sensitive
-    // We include common property names that databases might have
-    const properties = {
-        // Title is always required (case-insensitive match)
-        'Title': {
-            title: [{ type: 'text', text: { content: title.slice(0, 2000) } }]
-        }
-    };
-
-    // Add URL property (common names: URL, Link, Source)
-    properties['URL'] = { url: chatUrl };
-
-    // Add Tags/Platform property (common names: Tags, Platform, Source)
-    properties['Tags'] = {
-        multi_select: [{ name: currentPlatform || 'AI' }]
-    };
-
-    // Add Chat Time/Date property (common names: Chat Time, Date, Created)
-    properties['Chat Time'] = {
-        date: { start: chatDate.split('T')[0] } // Format: YYYY-MM-DD
-    };
-
-    // Add Space Name if available
-    if (data.space_name) {
-        properties['Space Name'] = {
-            rich_text: [{ type: 'text', text: { content: data.space_name } }]
-        };
-    }
-
-    return properties;
-}
+// NOTE: buildNotionProperties is defined once below (near getNotionDatabaseSchema)
+// The previous duplicate definition was removed — Bug 2 fix.
 
 // Sync to Notion API
 async function syncToNotionAPI(data, apiKey, dbId) {
@@ -645,20 +610,42 @@ async function syncToNotionAPI(data, apiKey, dbId) {
                 body: JSON.stringify({
                     parent: { database_id: dbId },
                     properties: properties,
-                    children: children.slice(0, 100)
+                    children: children.slice(0, 100) // Notion max per request
                 })
             });
         });
     });
 
-
-
     if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({}));
         throw new Error(NotionErrorMapper.map(error));
     }
 
-    return await response.json();
+    const pageData = await response.json();
+    const pageId = pageData?.id;
+
+    // Err 1 fix: append remaining blocks beyond the first 100 (Notion limit per POST)
+    if (pageId && children.length > 100) {
+        const notionHeaders = {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'Notion-Version': '2022-06-28'
+        };
+        for (let i = 100; i < children.length; i += 100) {
+            const batch = children.slice(i, i + 100);
+            await new Promise(r => setTimeout(r, 350)); // respect rate limits
+            const patchResp = await fetch(
+                `https://api.notion.com/v1/blocks/${pageId}/children`,
+                { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
+            );
+            if (!patchResp.ok) {
+                console.warn(`[Popup] Failed to append block batch ${i}–${i + batch.length}`);
+                break; // partial append — don't fail the whole export
+            }
+        }
+    }
+
+    return pageData;
 }
 
 // Split text for Notion's 2000 char limit
@@ -732,7 +719,7 @@ function formatToMarkdown(data) {
     const date = firstEntry.updated_datetime
         ? new Date(firstEntry.updated_datetime).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0];
-    const url = `https://www.perplexity.ai/search/${data.uuid || ''}`;
+    const url = getPlatformUrl(currentPlatform, data.uuid); // Bug 7 fix: platform-aware URL
 
     let md = '---\n';
     md += `title: ${title}\n`;
@@ -810,15 +797,17 @@ async function getNotionDatabaseSchema(dbId, apiKey) {
 }
 
 async function buildNotionProperties(data, dbId, apiKey, entries = []) {
+    // Bug 3 fix: key must be 'Title' (capital T) to match auto-created DB schema
     const properties = {
-        title: { title: [{ type: "text", text: { content: (data.title || 'Chat').slice(0, 2000) } }] }
+        'Title': { title: [{ type: "text", text: { content: (data.title || 'Chat').slice(0, 2000) } }] }
     };
     try {
         const schema = await getNotionDatabaseSchema(dbId, apiKey);
         if (!schema || !schema.properties) return properties;
         const availableProps = schema.properties;
         if (availableProps['URL'] && data.uuid) {
-            properties.URL = { url: `https://www.perplexity.ai/search/${data.uuid}` };
+            // Bug 2/7 fix: use platform-aware URL via shared helper
+            properties.URL = { url: getPlatformUrl(currentPlatform, data.uuid) };
         }
         const threadTime = (entries && entries[0]) ? (entries[0].updated_datetime || entries[0].created_datetime) : null;
         if (availableProps['Chat Time'] && threadTime) {

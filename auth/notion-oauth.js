@@ -400,52 +400,30 @@ var NotionOAuth = {
     },
 
     /**
-     * Refresh expired access token
+     * Bug 1 Fix: Notion OAuth does NOT support refresh tokens (server returns 501).
+     * The previous implementation sent grant_type:'refresh_token' to the /token endpoint
+     * which ignores the grant_type field entirely and fails.
+     *
+     * Correct approach: when the token is expired, clear it and trigger a new authorize() flow.
+     * The authorize() call uses chrome.identity.launchWebAuthFlow which Notion handles silently
+     * if the user is already logged in (no visible UI popup in most cases).
      */
-    async refreshAccessToken(refreshToken) {
-        if (!refreshToken) {
-            throw new Error('No refresh token available. Please re-authorize.');
+    async refreshAccessToken(_refreshToken) {
+        _logOAuth('info', 'Token expired — Notion does not support refresh tokens. Re-authorizing...');
+
+        // Clear the stale token so getActiveToken() doesn't loop
+        await this.disconnect();
+
+        try {
+            // Re-run the full OAuth flow. For already-connected users Notion usually
+            // completes this silently without showing a login page.
+            const tokens = await this.authorize();
+            _logOAuth('info', 'Re-authorization successful');
+            return tokens.access_token;
+        } catch (authErr) {
+            _logOAuth('error', 'Re-authorization failed', { error: authErr.message });
+            throw new Error('Session expired. Please reconnect to Notion in Settings.');
         }
-
-        const now = Date.now();
-        if (now - this._lastTokenRequest < this._TOKEN_COOLDOWN_MS) {
-            throw new Error('Token request rate limited. Please wait a few seconds.');
-        }
-        this._lastTokenRequest = now;
-
-        _logOAuth('info', 'Refreshing access token via server...');
-
-        // Route through Cloudflare Worker — same as exchangeCodeForToken
-        // The server holds the client secret; we never expose it client-side
-        const response = await fetch(this.config.tokenServerEndpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                grant_type: 'refresh_token',
-                refresh_token: refreshToken
-            })
-        });
-
-        if (!response.ok) {
-            if (response.status === 429) {
-                const retryAfter = response.headers.get('Retry-After') || '60';
-                _logOAuth('warn', 'Rate limited by token server', { retryAfter });
-                throw new Error(`Rate limited. Please try again in ${retryAfter} seconds.`);
-            }
-            const errorData = await response.json().catch(() => ({}));
-            _logOAuth('error', 'Token refresh failed', { status: response.status });
-            // If refresh fails, user needs to re-authorize
-            await this.disconnect();
-            throw new Error('Session expired. Please reconnect to Notion.');
-        }
-
-        const tokens = await response.json();
-        await this.storeTokens(tokens);
-
-        _logOAuth('info', 'Token refreshed successfully via server');
-        return tokens.access_token;
     },
 
     /**

@@ -118,6 +118,19 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
 
     // Process and identify chat list responses
     processResponse(url, responseText, method) {
+        // Sec 4 fix: only process traffic from known AI platform API endpoints
+        // This prevents intercepting unrelated requests (banking, social, etc.)
+        const AI_URL_PATTERNS = [
+            /perplexity\.ai\/rest\/|perplexity\.ai\/p\//,
+            /chatgpt\.com\/backend-api\/|chat\.openai\.com\/backend-api\//,
+            /claude\.ai\/api\//,
+            /gemini\.google\.com\/_\/BardChatUi\//,
+            /grok\.com\/rest\/|x\.com\/i\/grok/,
+            /chat\.deepseek\.com\/api\//,
+        ];
+        const urlStr = url ? url.toString() : '';
+        if (!AI_URL_PATTERNS.some(pattern => pattern.test(urlStr))) return;
+
         // SAFETY: Silent fail on any error
         try {
             if (!responseText || responseText.length < 10) return;

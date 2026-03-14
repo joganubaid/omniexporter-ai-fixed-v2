@@ -574,6 +574,14 @@ async function performAutoSync() {
             );
             console.log(`[AutoSync] All platforms complete: ${totalSuccessCount} synced, ${totalFailedCount} failed`);
 
+            // Missing 5 fix: update badge with newly synced thread count
+            const badgeText = totalSuccessCount > 0 ? String(totalSuccessCount) : '';
+            chrome.action.setBadgeText({ text: badgeText });
+            if (totalSuccessCount > 0) {
+                chrome.action.setBadgeBackgroundColor({ color: '#22c55e' }); // green
+                // Auto-clear badge after 30 seconds
+                setTimeout(() => chrome.action.setBadgeText({ text: '' }), 30000);
+            }
 
 
         } catch (e) {
