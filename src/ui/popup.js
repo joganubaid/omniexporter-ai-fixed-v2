@@ -634,12 +634,17 @@ async function syncToNotionAPI(data, apiKey, dbId) {
         for (let i = 100; i < children.length; i += 100) {
             const batch = children.slice(i, i + 100);
             const patchResp = await withRetry(async () => {
-                return await notionRateLimiter.throttle(async () => {
+                const resp = await notionRateLimiter.throttle(async () => {
                     return await fetch(
                         `https://api.notion.com/v1/blocks/${pageId}/children`,
                         { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
                     );
                 });
+                if (!resp.ok && (resp.status === 429 || resp.status === 503)) {
+                    // Transient Notion error: let withRetry apply backoff and retry
+                    throw new Error(`Retryable Notion error while appending blocks: HTTP ${resp.status}`);
+                }
+                return resp;
             });
             if (!patchResp.ok) {
                 const errBody = await patchResp.json().catch(() => null);
