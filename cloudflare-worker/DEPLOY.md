@@ -47,7 +47,32 @@ wrangler secret put NOTION_CLIENT_SECRET
 # Enter: YOUR_CLIENT_SECRET_HERE
 ```
 
+## Step 4b: Configure CORS Allow-List (Required after Sec-1 fix)
+
+The worker now restricts CORS to your specific extension ID instead of using `'*'`.
+
+**Find your extension ID:**
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Enable "Developer mode" (toggle top-right)
+3. Load the extension unpacked from the repo root
+4. Copy the 32-character ID shown under the extension name (e.g. `abcdefghijklmnopabcdefghijklmnop`)
+
+**Add it to `cloudflare-worker/worker.js`:**
+```js
+const ALLOWED_ORIGINS = new Set([
+    'chrome-extension://YOUR_32_CHAR_EXTENSION_ID_HERE',
+]);
+```
+
+Then re-deploy with `wrangler deploy`.
+
+> [!IMPORTANT]
+> The extension ID changes if you load the extension from a different path or publish to the Chrome Web Store (which assigns a permanent ID). Update `ALLOWED_ORIGINS` and redeploy whenever your extension ID changes.
+
+---
+
 ## Step 5: Test the Worker
+
 
 ```bash
 curl https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev/health

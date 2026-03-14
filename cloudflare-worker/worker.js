@@ -6,20 +6,33 @@
  * The client secret is stored as an environment variable, never exposed to clients.
  */
 
-// CORS headers for cross-origin requests from extension
-// Note: '*' is used because Chrome extensions send varying Origin headers.
-// In production, consider validating the Origin against known extension IDs.
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-};
+// SEC-1 FIX: Restrict CORS to known Chrome extension origin instead of wildcard '*'.
+// Add your extension's ID to the set below. Find it on chrome://extensions while loaded unpacked.
+// For forks: deploy your own Cloudflare Worker and add YOUR extension ID here.
+const ALLOWED_ORIGINS = new Set([
+    // Add your extension ID here, e.g.:
+    // 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+]);
+
+function getCorsHeaders(request) {
+    const origin = request.headers.get('Origin') || '';
+    // Allow listed extension origins; fall back to same-origin for health checks
+    const allowedOrigin = ALLOWED_ORIGINS.has(origin) ? origin : '';
+    return {
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Vary': 'Origin'
+    };
+}
+// Legacy alias for endpoints that haven't been updated yet
+const corsHeaders = { 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 
 export default {
     async fetch(request, env) {
         // Handle CORS preflight
         if (request.method === 'OPTIONS') {
-            return new Response(null, { headers: corsHeaders });
+            return new Response(null, { headers: getCorsHeaders(request) });
         }
 
         const url = new URL(request.url);
@@ -27,7 +40,7 @@ export default {
         // Health check endpoint
         if (url.pathname === '/health') {
             return new Response(JSON.stringify({ status: 'ok', service: 'omniexporter-oauth' }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                headers: { ...getCorsHeaders(request), 'Content-Type': 'application/json' }
             });
         }
 
@@ -41,7 +54,7 @@ export default {
             return handleTokenRefresh(request, env);
         }
 
-        return new Response('Not Found', { status: 404, headers: corsHeaders });
+        return new Response('Not Found', { status: 404, headers: getCorsHeaders(request) });
     }
 };
 
@@ -111,11 +124,12 @@ async function handleTokenRefresh(request, env) {
     return jsonResponse({ error: 'Refresh not supported by Notion API' }, 501);
 }
 
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, request = null) {
+    const headers = request ? getCorsHeaders(request) : corsHeaders;
     return new Response(JSON.stringify(data), {
         status,
         headers: {
-            ...corsHeaders,
+            ...headers,
             'Content-Type': 'application/json'
         }
     });

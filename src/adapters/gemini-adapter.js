@@ -104,13 +104,14 @@ const GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
                 }
             }, 10000);
 
+            // Sec 2 fix: use specific origin instead of '*' to prevent token interception
             window.postMessage({
                 type: 'OMNIEXPORTER_GEMINI',
                 direction: 'to-page',
                 requestId,
                 action,
                 data
-            }, '*');
+            }, 'https://gemini.google.com');
         });
     },
 
