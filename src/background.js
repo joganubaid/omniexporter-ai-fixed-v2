@@ -165,6 +165,10 @@ async function acquireSyncLock() {
         console.log('[Sync] Another sync is in progress (in-memory), skipping');
         return false;
     }
+    // TOCTOU FIX: Set in-memory flag BEFORE async storage read to prevent
+    // two simultaneous alarm callbacks from both passing the check.
+    globalSyncInProgress = true;
+
     // Cross-restart check: verify storage state wasn’t left dirty by a crashed SW
     const { syncInProgress, syncStartTime } = await chrome.storage.local.get(['syncInProgress', 'syncStartTime']);
     if (syncInProgress) {
@@ -172,11 +176,11 @@ async function acquireSyncLock() {
         // If lock is older than 10 minutes, treat as stale and override
         if (age < 10 * 60 * 1000) {
             console.log('[Sync] Sync in progress per storage (age: ' + Math.round(age/1000) + 's), skipping');
+            globalSyncInProgress = false; // Reset since we're not proceeding
             return false;
         }
         console.warn('[Sync] Stale lock detected (' + Math.round(age/60000) + 'min), overriding');
     }
-    globalSyncInProgress = true;
     await chrome.storage.local.set({ syncInProgress: true, syncStartTime: Date.now() });
     return true;
 }
@@ -363,7 +367,9 @@ async function performAutoSync() {
         try {
             authToken = await NotionOAuth.getActiveToken();
         } catch (error) {
-            console.log("[AutoSync] Skipped: Notion auth missing", error.message);
+            Logger.warn('AutoSync', 'Notion auth missing — skipped sync', { error: error.message });
+            // Track auth failure so the badge/UI can reflect the issue
+            await trackFailure({ uuid: '_auth_', reason: 'Notion auth: ' + error.message, platform: 'Notion' });
             await releaseSyncLock();
             return;
         }
@@ -561,6 +567,12 @@ async function performAutoSync() {
 
                 // Brief pause between batches
                 await new Promise(r => setTimeout(r, 2000));
+
+                // SW SUSPENSION FIX: Persist exportedUuids after each batch so progress
+                // isn't lost if Chrome suspends the Service Worker mid-sync.
+                await chrome.storage.local.set({
+                    exportedUuids: Array.from(sharedExportedUuids)
+                });
             }
 
             // Update checkpoint

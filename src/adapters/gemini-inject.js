@@ -113,10 +113,12 @@
                 return { token: window.WIZ_global_data.SNlM0e };
             }
 
-            // Fallback: Search in page scripts
-            const scripts = document.querySelectorAll('script');
+            // Fallback: Search in inline page scripts (exclude external/injected scripts)
+            const scripts = document.querySelectorAll('script:not([src])');
             for (const script of scripts) {
-                const match = script.textContent?.match(/"SNlM0e":"([^"]+)"/);
+                const content = script.textContent;
+                if (!content || !content.includes('SNlM0e')) continue;
+                const match = content.match(/"SNlM0e":"([^"]+)"/);
                 if (match) return { token: match[1] };
             }
 

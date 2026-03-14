@@ -1232,17 +1232,17 @@ async function testNotionConnection() {
         if (response.ok) {
             const data = await response.json();
             const dbTitle = data.title?.[0]?.plain_text || 'Database';
-            resultEl.innerHTML = `✅ Connected: "${dbTitle}"`;
+            resultEl.innerHTML = `✅ Connected: "${escapeHtml(dbTitle)}"`;
             resultEl.style.color = 'var(--success)';
             log(`Notion connection successful: ${dbTitle}`, 'success');
         } else {
             const error = await response.json();
-            resultEl.innerHTML = `❌ ${error.message || 'Connection failed'}`;
+            resultEl.innerHTML = `❌ ${escapeHtml(error.message || 'Connection failed')}`;
             resultEl.style.color = 'var(--error)';
             log(`Notion connection failed: ${error.message}`, 'error');
         }
     } catch (err) {
-        resultEl.innerHTML = `❌ ${err.message}`;
+        resultEl.innerHTML = `❌ ${escapeHtml(err.message)}`;
         resultEl.style.color = 'var(--error)';
         log(`Notion test error: ${err.message}`, 'error');
     } finally {
@@ -1413,7 +1413,7 @@ async function fetchHistory(page = 1) {
         });
     } catch (e) {
         console.error("[OmniExporter] Error boundary caught fetchHistory error:", e);
-        listEl.innerHTML = `<div class="loader">Error: ${e.message}</div>`;
+        listEl.innerHTML = `<div class="loader">Error: ${escapeHtml(e.message)}</div>`;
     }
 }
 
@@ -2341,7 +2341,7 @@ function log(message, type = 'info') {
     const item = document.createElement('div');
     item.className = `log-item log-${type}`;
     const time = new Date().toLocaleTimeString();
-    item.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+    item.innerHTML = `<span class="log-time">[${time}]</span> ${escapeHtml(message)}`;
     container.insertBefore(item, container.firstChild);
 
     while (container.children.length > 100) {
@@ -2615,7 +2615,7 @@ async function loadLogEntries() {
         });
     } catch (e) {
         console.error('Failed to load log entries:', e);
-        container.innerHTML = `<div class="log-empty-state">Error loading logs: ${e.message}</div>`;
+        container.innerHTML = `<div class="log-empty-state">Error loading logs: ${escapeHtml(e.message)}</div>`;
     }
 }
 
