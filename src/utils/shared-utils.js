@@ -78,7 +78,7 @@ class InputSanitizer {
 
     static validateNotionKey(key) {
         if (!key || typeof key !== 'string') return false;
-        return /^secret_[a-zA-Z0-9]{43}$/.test(key) || /^ntn_[a-zA-Z0-9]+$/.test(key);
+        return /^secret_[a-zA-Z0-9]{43}$/.test(key) || /^ntn_[a-zA-Z0-9]{20,}$/.test(key);
     }
 
     static validateUuid(uuid) {

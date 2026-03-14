@@ -202,6 +202,9 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                             sendResponse({ success: false, error: exportErr.message });
                         }
                         return; // sendResponse already called
+                    } else {
+                        // Unknown message type — respond immediately so the caller doesn't hang.
+                        sendResponse({ success: false, error: `Unknown message type: ${request.type}` });
                     }
                 } catch (error) {
                     sendResponse({ success: false, error: error.message });

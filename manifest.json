@@ -66,6 +66,7 @@
             "js": [
                 "src/utils/logger.js",
                 "src/utils/network-interceptor.js",
+                "src/utils/export-manager.js",
                 "src/platform-config.js",
                 "src/adapters/perplexity-adapter.js",
                 "src/content.js"
@@ -79,6 +80,7 @@
             "js": [
                 "src/utils/logger.js",
                 "src/utils/network-interceptor.js",
+                "src/utils/export-manager.js",
                 "src/platform-config.js",
                 "src/adapters/chatgpt-adapter.js",
                 "src/content.js"
@@ -91,6 +93,7 @@
             "js": [
                 "src/utils/logger.js",
                 "src/utils/network-interceptor.js",
+                "src/utils/export-manager.js",
                 "src/platform-config.js",
                 "src/adapters/claude-adapter.js",
                 "src/content.js"
@@ -103,6 +106,7 @@
             "js": [
                 "src/utils/logger.js",
                 "src/utils/network-interceptor.js",
+                "src/utils/export-manager.js",
                 "src/platform-config.js",
                 "src/adapters/gemini-inject.js",
                 "src/adapters/gemini-adapter.js",
@@ -118,6 +122,7 @@
             "js": [
                 "src/utils/logger.js",
                 "src/utils/network-interceptor.js",
+                "src/utils/export-manager.js",
                 "src/platform-config.js",
                 "src/adapters/grok-adapter.js",
                 "src/content.js"
@@ -131,6 +136,7 @@
             "js": [
                 "src/utils/logger.js",
                 "src/utils/network-interceptor.js",
+                "src/utils/export-manager.js",
                 "src/platform-config.js",
                 "src/adapters/deepseek-adapter.js",
                 "src/content.js"

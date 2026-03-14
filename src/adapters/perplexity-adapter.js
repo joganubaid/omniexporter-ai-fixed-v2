@@ -104,7 +104,9 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
                 headers: {
                     "accept": "*/*",
                     "x-app-apiclient": "default",
-                    "x-app-apiversion": "2.18"
+                    "x-app-apiversion": (typeof platformConfig !== 'undefined'
+                        ? platformConfig.activeVersions?.get('Perplexity')
+                        : null) || "2.18"
                 }
             });
 
@@ -169,7 +171,9 @@ async function fetchPerplexityDetailResilient(uuid) {
                 headers: {
                     "accept": "application/json",
                     "x-app-apiclient": "default",
-                    "x-app-apiversion": "2.18"
+                    "x-app-apiversion": (typeof platformConfig !== 'undefined'
+                        ? platformConfig.activeVersions?.get('Perplexity')
+                        : null) || "2.18"
                 }
             });
 

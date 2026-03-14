@@ -147,7 +147,7 @@ function getPlatformUrl(platform, uuid) {
         'ChatGPT': `https://chatgpt.com/c/${uuid}`,
         'Claude': `https://claude.ai/chat/${uuid}`,
         'Gemini': `https://gemini.google.com/app/${uuid}`,
-        'Grok': `https://grok.com/conversation/${uuid}`,
+        'Grok': `https://grok.com/chat/${uuid}`,
         'DeepSeek': `https://chat.deepseek.com/c/${uuid}`
     };
     // MIN-2 FIX: Return null for unknown platform instead of silently returning Perplexity URL.
@@ -835,7 +835,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // REAL-4 FIX: trackFailure now writes to BOTH:
 //   'failures' (array, for Activity Log display)
-//   'syncFailures' (object uuid→count, for retry logic reads)
+//   'syncFailures' (object platform→{uuid→count}, for retry logic reads)
 async function trackFailure(failure) {
     const [{ failures = [] }, { syncFailures = {} }] = await Promise.all([
         chrome.storage.local.get('failures'),
@@ -845,8 +845,17 @@ async function trackFailure(failure) {
     failures.push({ ...failure, timestamp: new Date().toISOString() });
     if (failures.length > 100) failures.shift();
 
-    // Increment retry counter for this UUID
-    syncFailures[failure.uuid] = (syncFailures[failure.uuid] || 0) + 1;
+    // Increment retry counter using platform-scoped key so performAutoSync retry
+    // logic can read syncFailures[platform] as a {uuid→count} map.
+    if (failure.platform) {
+        if (typeof syncFailures[failure.platform] !== 'object' || syncFailures[failure.platform] === null) {
+            syncFailures[failure.platform] = {};
+        }
+        syncFailures[failure.platform][failure.uuid] = (syncFailures[failure.platform][failure.uuid] || 0) + 1;
+    } else {
+        // Fallback for callers that don't supply a platform (backwards compat)
+        syncFailures[failure.uuid] = (syncFailures[failure.uuid] || 0) + 1;
+    }
 
     await chrome.storage.local.set({ failures, syncFailures });
 }
