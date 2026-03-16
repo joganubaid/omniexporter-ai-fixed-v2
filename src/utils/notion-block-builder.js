@@ -64,8 +64,10 @@ function parseInlineMarkdown(text) {
 
     // Tokenise inline markdown: bold, italic, inline code, links
     // Order matters: bold (**) before italic (*), and code before both.
-    // Bold (**) before italic (*). Italic requires non-space after opening
-    // and before closing * to avoid false matches on list markers like "* item".
+    // Group 1: `code`  — inline code
+    // Group 2: [text](url) — markdown link (groups 3=text, 4=url)
+    // Group 5: **bold** — bold text
+    // Group 6: *italic* — italic text (requires non-space after/before *)
     const TOKEN_RE = /(`[^`\n]+`)|(\[([^\]]+)\]\((https?:\/\/[^)]+)\))|(\*\*[^*\n]+\*\*)|(\*(?=[^\s*])[^*\n]+(?<=[^\s*])\*)/g;
 
     const parts = [];

@@ -586,10 +586,10 @@ function transformChatGPTData(data) {
                         parts.push(p);
                     } else if (p && typeof p === 'object') {
                         if (p.content_type === 'image_asset_pointer') {
-                            const desc = p.metadata?.dalle?.prompt || p.asset_pointer || p.id || 'image';
+                            const desc = p.metadata?.dalle?.prompt || 'Generated image';
                             parts.push(`🖼️ [Image: ${desc}]`);
                         } else if (p.content_type === 'file_asset_pointer') {
-                            const fileName = p.metadata?.file_name || p.name || p.asset_pointer || 'file';
+                            const fileName = p.metadata?.file_name || p.name || 'Uploaded file';
                             parts.push(`📎 [File: ${fileName}]`);
                         } else if (p.text) {
                             parts.push(p.text);
@@ -607,7 +607,7 @@ function transformChatGPTData(data) {
                     } else if (p && typeof p === 'object') {
                         // Handle structured parts (image metadata, file references, etc.)
                         if (p.content_type === 'image_asset_pointer') {
-                            const desc = p.metadata?.dalle?.prompt || p.asset_pointer || p.id || 'generated image';
+                            const desc = p.metadata?.dalle?.prompt || 'Generated image';
                             textParts.push(`🖼️ [Image: ${desc}]`);
                         } else if (p.text) {
                             textParts.push(p.text);
