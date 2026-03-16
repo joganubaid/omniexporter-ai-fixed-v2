@@ -37,6 +37,12 @@ root.ExportManager = class ExportManager {
             extension: '.pdf',
             mimeType: 'application/pdf',
             icon: '📕'
+        },
+        csv: {
+            name: 'CSV',
+            extension: '.csv',
+            mimeType: 'text/csv',
+            icon: '📋'
         }
     };
 
@@ -62,6 +68,9 @@ root.ExportManager = class ExportManager {
                 break;
             case 'txt':
                 content = this.toPlainText(data, platform);
+                break;
+            case 'csv':
+                content = this.toCSV(data, platform);
                 break;
             case 'pdf':
                 return this.toPDF(data, platform);
@@ -394,6 +403,44 @@ root.ExportManager = class ExportManager {
         txt += `${divider}\n`;
 
         return txt;
+    }
+
+    // ============================================
+    // CSV FORMAT
+    // ============================================
+    static toCSV(data, platform) {
+        const entries = data.detail?.entries || [];
+        const title = data.title || 'Untitled Chat';
+
+        // CSV escape: wrap in quotes and double any internal quotes
+        const csvEscape = (text) => {
+            if (!text) return '""';
+            const str = String(text).replace(/"/g, '""');
+            return `"${str}"`;
+        };
+
+        // Header row
+        let csv = '\uFEFF'; // BOM for Excel UTF-8 compat
+        csv += 'Index,Platform,Title,Question,Answer,Sources,Date\n';
+
+        entries.forEach((entry, index) => {
+            const query = entry.query || entry.query_str || '';
+            const answer = this.extractAnswer(entry).replace(/\n+/g, ' ').trim();
+            const sources = (entry.sources || []).map(s => s.url || s.title || '').join('; ');
+            const date = entry.updated_datetime || entry.created_datetime || '';
+
+            csv += [
+                index + 1,
+                csvEscape(platform),
+                csvEscape(title),
+                csvEscape(query),
+                csvEscape(answer),
+                csvEscape(sources),
+                csvEscape(date)
+            ].join(',') + '\n';
+        });
+
+        return csv;
     }
 
     // ============================================

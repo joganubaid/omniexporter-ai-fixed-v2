@@ -193,9 +193,9 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
 
         const headers = {
             'Accept': 'application/json',
-            // HAR-verified (2026-02-17): DeepSeek requires these headers on every API call
+            // HAR-verified (2026-03-16): DeepSeek requires these headers on every API call
             'x-client-platform': 'web',
-            'x-client-version': '1.7.0',
+            'x-client-version': '1.7.1',
             'x-client-locale': 'en_US',
             'x-client-timezone-offset': String(-(new Date().getTimezoneOffset())),
             'x-app-version': '20241129.1',
