@@ -1,0 +1,282 @@
+================================================================================
+API ENDPOINTS ANALYSIS REPORT
+================================================================================
+Analysis of 9 Major AI Platform HAR Files
+Generated from live browser network traffic captures
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+Total Platforms Analyzed: 9
+Total Unique API Endpoints: 330 (excluding static assets and CDN)
+Primary Analysis Method: JSON HAR file parsing with Python
+Filter Criteria: URLs containing 'api', 'rest', 'backend', 'chat', 'conversation', 'thread', 'message', 'completion', or 'batchexecute'
+
+================================================================================
+PLATFORM BREAKDOWN
+================================================================================
+
+PLATFORM               ENDPOINTS    KEY HOSTS                                   
+─────────────────────────────────────────────────────────────────────────────
+ChatGPT                90           chatgpt.com, cdn.openai.com, ab.chatgpt.com
+Claude (claude.har)    29           claude.ai, api.anthropic.com
+Claude.ai              39           claude.ai, api.anthropic.com
+DeepSeek               21           chat.deepseek.com, cdn.deepseek.com
+Gemini                 3            gemini.google.com, opal.google.com
+Gemini.google.com      2            gemini.google.com, www.gstatic.com
+Grok                   31           grok.com, apis.google.com
+Perplexity             59           www.perplexity.ai (multiple subdomains)
+Perplexity.ai          56           www.perplexity.ai (multiple subdomains)
+─────────────────────────────────────────────────────────────────────────────
+TOTAL:                 330          
+
+================================================================================
+API ENDPOINT CATEGORIES
+================================================================================
+
+The identified endpoints fall into these key categories:
+
+1. CONVERSATION/THREAD MANAGEMENT
+   - Fetching conversation history
+   - Listing recent threads
+   - Managing conversation metadata
+   - Thread-specific endpoints
+
+2. MESSAGE/CHAT OPERATIONS
+   - Message creation and retrieval
+   - Chat completion requests
+   - Message history streaming
+   - Chat session management
+
+3. USER/SETTINGS ENDPOINTS
+   - User profile information
+   - Settings and preferences
+   - Notification preferences
+   - Account settings
+
+4. MODEL/CONFIG MANAGEMENT
+   - Model configuration
+   - Available models listing
+   - Model-specific settings
+   - Feature flags
+
+5. FILE/IMAGE HANDLING
+   - Image upload/download
+   - File repository operations
+   - Image generation
+   - File preview endpoints
+
+6. AUTHENTICATION & SESSION
+   - Session management
+   - OAuth/Auth flows
+   - Bootstrap/initialization
+
+7. BILLING & SUBSCRIPTION
+   - Credit/subscription status
+   - Pricing information
+   - Payment method management
+
+8. MISCELLANEOUS/UTILITY
+   - Health checks
+   - Rate limiting info
+   - Analytics events
+   - Connector/plugin management
+
+================================================================================
+DETAILED PLATFORM ANALYSIS
+================================================================================
+
+📊 CHATGPT (90 endpoints)
+   ├─ Endpoints per Category:
+   │  ├─ Message/Chat: 272 (heavily weighted toward chat operations)
+   │  └─ Conversation/Thread: 31
+   ├─ Notable Endpoints:
+   │  ├─ /backend-api/conversation/* (conversation management)
+   │  ├─ /backend-api/gizmos/* (Custom GPT management)
+   │  ├─ /backend-api/images/* (Image operations)
+   │  ├─ /backend-api/memories (Memory feature)
+   │  └─ /backend-api/sentinel/* (Security/requirements)
+   ├─ WebSocket: wss://ws.chatgpt.com/p6/ws/user/*
+   └─ API Hosts: chatgpt.com, ab.chatgpt.com (registration), cdn.openai.com
+
+📊 CLAUDE (29 endpoints)
+   ├─ Endpoints per Category:
+   │  ├─ Other: 28
+   │  ├─ Conversation/Thread: 3
+   │  ├─ Model/Config: 2
+   │  └─ User/Settings: 1
+   ├─ Notable Endpoints:
+   │  ├─ /api/organizations/{id}/chat_conversations*
+   │  ├─ /api/organizations/{id}/artifacts/*
+   │  ├─ /api/organizations/{id}/projects
+   │  ├─ /api/organizations/{id}/sync/* (Gmail, Google Calendar, Google Drive integration)
+   │  ├─ /api/organizations/{id}/mcp/v2/bootstrap (MCP support)
+   │  └─ /api/bootstrap/{id}/app_start
+   └─ API Hosts: claude.ai, api.anthropic.com
+
+📊 CLAUDE.AI (39 endpoints)
+   ├─ Endpoints per Category:
+   │  ├─ Other: 43
+   │  ├─ File/Image: 2
+   │  └─ Conversation/Thread: 1
+   ├─ Notable Endpoints:
+   │  ├─ /api/organizations/{id}/files/*/preview (File preview)
+   │  ├─ /api/organizations/{id}/artifacts/artifact_version/*/tools (Artifact tools)
+   │  ├─ /api/organizations/{id}/published_artifacts
+   │  ├─ /api/organizations/{id}/shares (Sharing)
+   │  └─ /api/organizations/{id}/mcp/v2/bootstrap (MCP integration)
+   └─ API Hosts: claude.ai, api.anthropic.com
+
+📊 DEEPSEEK (21 endpoints)
+   ├─ Endpoints per Category:
+   │  ├─ Message/Chat: 29
+   │  └─ Other: 2
+   ├─ Notable Endpoints:
+   │  ├─ /api/v0/chat/completion (Primary completion endpoint)
+   │  ├─ /api/v0/chat/history_messages
+   │  ├─ /api/v0/chat_session/create
+   │  ├─ /api/v0/chat_session/fetch_page
+   │  ├─ /api/v0/users/current
+   │  └─ /api/v0/client/settings
+   ├─ Security: Includes Cloudflare Turnstile CAPTCHA
+   └─ API Hosts: chat.deepseek.com, cdn.deepseek.com
+
+📊 GEMINI (3 endpoints)
+   ├─ Key Endpoints:
+   │  ├─ POST /gemini.google.com/_/BardChatUi/data/batchexecute (Main API)
+   │  ├─ POST /opal.google.com/_/Opal/data/batchexecute (Opal backend)
+   │  └─ GET /fonts.googleapis.com/css2 (Assets)
+   └─ Note: Very minimal API surface captured in HAR
+
+📊 GEMINI.GOOGLE.COM (2 endpoints)
+   ├─ Key Endpoints:
+   │  └─ POST /gemini.google.com/_/BardChatUi/data/batchexecute
+   └─ Note: Primary interface uses batchexecute pattern
+
+📊 GROK (31 endpoints)
+   ├─ Endpoints per Category:
+   │  ├─ Other: 31
+   │  ├─ Conversation/Thread: 24
+   │  └─ Model/Config: 3
+   ├─ Notable Endpoints:
+   │  ├─ /rest/app-chat/conversations* (Conversation management)
+   │  ├─ /rest/app-chat/conversations_v2/* (Newer API)
+   │  ├─ /rest/dev/models (Model list)
+   │  ├─ /rest/user-settings
+   │  ├─ /rest/notifications/list
+   │  ├─ /rest/tasks
+   │  ├─ /rest/workspaces
+   │  └─ /api/oauth-connectors
+   └─ API Hosts: grok.com, apis.google.com (Google Picker)
+
+📊 PERPLEXITY (59 endpoints)
+   ├─ Endpoints per Category:
+   │  ├─ Other: 112
+   │  ├─ Conversation/Thread: 9
+   │  ├─ User/Settings: 9
+   │  └─ File/Image: 8
+   ├─ Notable Endpoints:
+   │  ├─ /rest/sse/perplexity_ask (Main SSE endpoint for search/chat)
+   │  ├─ /rest/thread/* (Thread management)
+   │  ├─ /rest/collections/* (Collection/bookmark management)
+   │  ├─ /rest/user/* (User profile)
+   │  ├─ /rest/billing/* (Billing info)
+   │  ├─ /rest/models/config
+   │  ├─ /rest/rate-limit/status
+   │  └─ /rest/experiments/attributes
+   └─ API Hosts: www.perplexity.ai, pplx-next-static-public.perplexity.ai
+
+📊 WWW.PERPLEXITY.AI (56 endpoints)
+   ├─ Endpoints per Category:
+   │  ├─ Other: 88
+   │  ├─ Conversation/Thread: 19
+   │  └─ User/Settings: 6
+   ├─ Notable Endpoints (similar to perplexity.har with variations):
+   │  ├─ /rest/billing/* variations (account-promo-message, credits/check)
+   │  ├─ /rest/computer/* (Computer/desktop feature)
+   │  ├─ /rest/homepage-widgets/* (Homepage customization)
+   │  ├─ /rest/thread/* (Thread management)
+   │  └─ Analytics and debugging endpoints
+   └─ API Hosts: www.perplexity.ai (multiple static subdomains)
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+1. ARCHITECTURE PATTERNS:
+   ✓ Most platforms use REST APIs with JSON
+   ✓ Gemini uses RPC-style batchexecute endpoint
+   ✓ ChatGPT uses WebSocket for real-time messaging
+   ✓ Perplexity uses Server-Sent Events (SSE)
+
+2. COMMON FEATURES:
+   ✓ Conversation/thread management across all platforms
+   ✓ User authentication and session management
+   ✓ Model/capability configuration
+   ✓ File and image handling
+   ✓ Rate limiting and quota management
+
+3. DIFFERENTIATION:
+   → ChatGPT: Advanced features (Gizmos, memory, research)
+   → Claude: Integration focus (Gmail, Calendar, Drive sync)
+   → DeepSeek: PoW Challenge for rate limiting
+   → Grok: Workspace and collaboration features
+   → Perplexity: Search-first with collections
+   → Gemini: Heavy use of Google services
+
+4. SECURITY OBSERVATIONS:
+   ✓ Most use HTTPs
+   ✓ ChatGPT uses sentinel endpoints for requirements
+   ✓ DeepSeek includes Cloudflare Turnstile
+   ✓ Token/auth headers in request metadata
+
+5. INTEGRATION POINTS:
+   ✓ OAuth connectors (Grok)
+   ✓ Google services integration (Claude, Grok)
+   ✓ MCP (Model Context Protocol) support (Claude)
+   ✓ Third-party analytics and monitoring
+
+================================================================================
+FILE LOCATIONS
+================================================================================
+
+Source HAR Files:
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/chatgpt.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/claude.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/claude.ai.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/deepseek.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/gemini.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/gemini.google.com.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/grok.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/perplexity.har
+  • /home/runner/work/omniexporter-ai-fixed-v2/omniexporter-ai-fixed-v2/www.perplexity.ai.har
+
+Output Documentation:
+  • API_ENDPOINTS_ANALYSIS.md (Full endpoint listing by platform)
+  • API_ENDPOINTS_SUMMARY.txt (This file)
+
+================================================================================
+METHODOLOGY
+================================================================================
+
+Extraction Process:
+1. Loaded each HAR file as JSON
+2. Iterated through log.entries
+3. Extracted request URL and method
+4. Filtered for API-relevant keywords
+5. Removed CDN/asset URLs
+6. De-duplicated and sorted results
+7. Categorized by endpoint type
+
+Filter Keywords Used:
+  - 'api', 'rest', 'backend'
+  - 'chat', 'conversation', 'thread'
+  - 'message', 'completion', 'batchexecute'
+
+Exclusions:
+  - URLs containing '/cdn/assets'
+  - Static asset files (.js, .css, .wasm, .svg, .png, .jpg)
+  - Query parameters (only base URL retained)
+
+================================================================================
