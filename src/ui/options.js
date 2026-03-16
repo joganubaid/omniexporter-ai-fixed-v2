@@ -1295,7 +1295,7 @@ function loadFailures() {
             const time = f.timestamp ? new Date(f.timestamp).toLocaleString() : 'Unknown time';
             item.innerHTML = `
                 <div class="failure-title">${escapeHtml(f.title || 'Unknown')}</div>
-                <div class="failure-meta">${escapeHtml(f.uuid?.slice(0, 8) || '')}... • ${time}</div>
+                <div class="failure-meta">${escapeHtml(f.uuid?.slice(0, 8) || '')}... • ${escapeHtml(time)}</div>
                 <div class="failure-error">${escapeHtml(f.reason || 'Unknown error')}</div>
                 <button class="retry-btn" data-uuid="${escapeHtml(f.uuid)}">Retry</button>
             `;

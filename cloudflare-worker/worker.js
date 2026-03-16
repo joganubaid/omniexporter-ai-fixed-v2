@@ -16,10 +16,31 @@ const ALLOWED_ORIGINS = new Set([
 
 function getCorsHeaders(request) {
     const origin = request.headers.get('Origin') || '';
-    // Allow listed extension origins; fall back to same-origin for health checks
-    const allowedOrigin = ALLOWED_ORIGINS.has(origin) ? origin : '';
+
+    if (ALLOWED_ORIGINS.has(origin)) {
+        return {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Vary': 'Origin'
+        };
+    }
+
+    // Fallback: if no origins configured yet, allow any chrome-extension:// origin
+    // so the extension can bootstrap. Deployers should add their extension ID
+    // to ALLOWED_ORIGINS for production security.
+    if (ALLOWED_ORIGINS.size === 0 && origin.startsWith('chrome-extension://')) {
+        return {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Vary': 'Origin'
+        };
+    }
+
+    // Origin not allowed
     return {
-        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Origin': '',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Vary': 'Origin'
@@ -63,7 +84,7 @@ async function handleTokenExchange(request, env) {
         const { code, redirect_uri, code_verifier } = await request.json();
 
         if (!code) {
-            return jsonResponse({ error: 'Missing authorization code' }, 400);
+            return jsonResponse({ error: 'Missing authorization code' }, 400, request);
         }
 
         // Get credentials from environment variables
@@ -72,7 +93,7 @@ async function handleTokenExchange(request, env) {
 
         if (!clientId || !clientSecret) {
             console.error('Missing environment variables');
-            return jsonResponse({ error: 'Server configuration error' }, 500);
+            return jsonResponse({ error: 'Server configuration error' }, 500, request);
         }
 
         // Exchange authorization code for access token
@@ -97,7 +118,7 @@ async function handleTokenExchange(request, env) {
             return jsonResponse({
                 error: tokenData.error || 'Token exchange failed',
                 error_description: tokenData.error_description
-            }, tokenResponse.status);
+            }, tokenResponse.status, request);
         }
 
         // Return successful token response
@@ -111,17 +132,17 @@ async function handleTokenExchange(request, env) {
             workspace_icon: tokenData.workspace_icon,
             bot_id: tokenData.bot_id,
             owner: tokenData.owner
-        });
+        }, 200, request);
 
     } catch (error) {
         console.error('Token exchange error:', error);
-        return jsonResponse({ error: 'Internal server error' }, 500);
+        return jsonResponse({ error: 'Internal server error' }, 500, request);
     }
 }
 
 async function handleTokenRefresh(request, env) {
     // Notion doesn't support refresh tokens yet, but this is here for future use
-    return jsonResponse({ error: 'Refresh not supported by Notion API' }, 501);
+    return jsonResponse({ error: 'Refresh not supported by Notion API' }, 501, request);
 }
 
 function jsonResponse(data, status = 200, request = null) {

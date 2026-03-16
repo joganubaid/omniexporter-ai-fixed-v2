@@ -218,7 +218,8 @@ var NotionOAuth = {
             throw new Error(`Token exchange failed: ${error.error || response.statusText || 'Unknown error'}`);
         }
 
-        const tokens = await response.json();
+        const tokens = await response.json().catch(() => null);
+        if (!tokens) throw new Error('Token exchange returned invalid JSON. Possible Cloudflare challenge.');
         _logOAuth('info', 'Token exchange successful');
 
         // Store tokens securely
@@ -249,12 +250,12 @@ var NotionOAuth = {
         });
 
         if (!searchResponse.ok) {
-            const err = await searchResponse.json();
+            const err = await searchResponse.json().catch(() => ({}));
             throw new Error(`Search failed: ${err.message || searchResponse.status}`);
         }
 
-        const pages = await searchResponse.json();
-        if (!pages.results || pages.results.length === 0) {
+        const pages = await searchResponse.json().catch(() => null);
+        if (!pages || !pages.results || pages.results.length === 0) {
             throw new Error('No pages found. Please share at least one page with the integration in Notion.');
         }
 
@@ -294,11 +295,12 @@ var NotionOAuth = {
         });
 
         if (!createResponse.ok) {
-            const err = await createResponse.json();
+            const err = await createResponse.json().catch(() => ({}));
             throw new Error(`Database creation failed: ${err.message || createResponse.status}`);
         }
 
-        const database = await createResponse.json();
+        const database = await createResponse.json().catch(() => null);
+        if (!database || !database.id) throw new Error('Database created but response was invalid.');
         _logOAuth('info', 'Database created successfully');
 
         // 3. Save database ID to storage
@@ -577,7 +579,9 @@ var NotionOAuth = {
             throw new Error(`Upload failed: ${err.message || response.statusText || 'Unknown error'}`);
         }
 
-        return await response.json();
+        return await response.json().catch(() => {
+            throw new Error('Upload succeeded but response was not valid JSON.');
+        });
     }
 };
 

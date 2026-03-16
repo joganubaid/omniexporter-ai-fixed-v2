@@ -599,8 +599,13 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 }
             } catch (e) {
                 console.warn('[Grok] API failed:', e.message);
-                const result = await adapter.getThreads(1, limit);
-                sendResponse({ success: true, data: { threads: result.threads || result, offset: 0, hasMore: false } });
+                try {
+                    const result = await adapter.getThreads(1, limit);
+                    sendResponse({ success: true, data: { threads: result.threads || result, offset: 0, hasMore: false } });
+                } catch (fallbackErr) {
+                    console.error('[Grok] Fallback also failed:', fallbackErr.message);
+                    sendResponse({ success: false, error: 'Grok: ' + fallbackErr.message });
+                }
             }
         }
         // ENTERPRISE: Use getAllThreads if adapter supports it (for complete Load All)
