@@ -156,17 +156,25 @@ class RateLimiter {
             const { fn, resolve, reject } = this.queue.shift();
             this.requestTimestamps.push(Date.now());
 
+            let timeoutId;
             try {
                 // Wrap execution with a timeout to prevent queue deadlock
                 const result = await Promise.race([
                     fn(),
-                    new Promise((_, timeoutReject) =>
-                        setTimeout(() => timeoutReject(new Error('Rate limiter: request execution exceeded 60s timeout')), RATE_LIMIT_EXECUTION_TIMEOUT_MS)
-                    )
+                    new Promise((_, timeoutReject) => {
+                        timeoutId = setTimeout(
+                            () => timeoutReject(new Error('Rate limiter: request execution exceeded 60s timeout')),
+                            RATE_LIMIT_EXECUTION_TIMEOUT_MS
+                        );
+                    })
                 ]);
                 resolve(result);
             } catch (error) {
                 reject(error);
+            } finally {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
             }
 
             const delay = this.queue.length > RATE_LIMIT_ADAPTIVE_QUEUE_THRESHOLD ? RATE_LIMIT_DELAY_HIGH_MS : RATE_LIMIT_DELAY_LOW_MS;
