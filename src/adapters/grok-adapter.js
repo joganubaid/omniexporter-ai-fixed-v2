@@ -377,6 +377,7 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
             // PERF-4 FIX: Only fetch title metadata when we can't derive it from entries.
             // Avoids a full extra API call (per-thread) when first entry's query is available.
             let title = entries[0]?.query_str?.substring(0, 100) || null;
+            let conversationModel = '';
             if (!title) {
                 try {
                     // HAR-verified: response is {conversation: {conversationId, title, ...}} OR {}
@@ -386,6 +387,8 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
                     // HAR-verified key path: metaData.conversation.title
                     const metaTitle = metaData?.conversation?.title || metaData?.title;
                     if (metaTitle && metaTitle.trim()) title = metaTitle.trim();
+                    // Extract model from conversation metadata
+                    conversationModel = metaData?.conversation?.model || metaData?.model || '';
                 } catch (e) {
                     console.log('[Grok] Could not fetch title metadata, using first query');
                 }
@@ -393,7 +396,13 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
             title = title || `Grok Conversation`;
 
             console.log(`[Grok] ✓ Success: ${entries.length} entries for: ${title}`);
-            return { uuid, title, platform: 'Grok', entries };
+            return {
+                uuid,
+                title,
+                platform: 'Grok',
+                model: conversationModel || 'Grok',
+                entries
+            };
 
         } catch (error) {
             const message = error?.message || 'Unknown error';

@@ -82,7 +82,12 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
                     // HAR-verified: use slug for detail API (it expects slug, not UUID)
                     uuid: t.slug || t.uuid,
                     title: DataExtractor.extractTitle(t, 'Perplexity'),
-                    last_query_datetime: t.last_query_datetime
+                    last_query_datetime: t.last_query_datetime,
+                    // HAR-verified 2026-03-16: additional metadata from list_ask_threads
+                    display_model: t.display_model || '',
+                    mode: t.mode || '',
+                    search_focus: t.search_focus || '',
+                    query_count: t.query_count || 0
                 })),
                 hasMore: totalThreads > 0
                     ? ((page - 1) * limit + items.length < totalThreads)
@@ -236,10 +241,97 @@ async function fetchPerplexityDetailResilient(uuid) {
 
         console.log('[OmniExporter] Final result - Title:', title, 'Entries:', entries.length);
 
+        // ── POST-PROCESS: Extract rich content from Perplexity block structures ──
+        // HAR-verified: Perplexity entries contain `blocks[]` with diverse intended_usage types.
+        // Previously only ask_text and web_results were consumed. Now we extract:
+        // media_items, knowledge_cards, inline_images, pending_followups, citations.
+        const enrichedEntries = entries.map(entry => {
+            if (!entry.blocks || !Array.isArray(entry.blocks)) return entry;
+
+            const enriched = { ...entry };
+            const mediaParts = [];
+            const followups = [];
+
+            entry.blocks.forEach(block => {
+                const usage = block.intended_usage || '';
+
+                // Media items (images, videos returned by search)
+                if (usage === 'media_items' && block.media_items_block) {
+                    const items = block.media_items_block.items || block.media_items_block.media_items || [];
+                    items.forEach(item => {
+                        const type = item.type || item.media_type || 'image';
+                        const url = item.url || item.thumbnail_url || '';
+                        const alt = item.alt || item.title || item.description || '';
+                        if (url) {
+                            mediaParts.push(type === 'video'
+                                ? `🎬 [Video: ${alt || url}](${url})`
+                                : `🖼️ [Image: ${alt || url}](${url})`);
+                        }
+                    });
+                }
+
+                // Inline images embedded in response
+                if (usage === 'inline_images' && block.inline_images_block) {
+                    const images = block.inline_images_block.images || block.inline_images_block.items || [];
+                    images.forEach(img => {
+                        const url = img.url || img.image_url || '';
+                        const alt = img.alt || img.caption || '';
+                        if (url) mediaParts.push(`🖼️ [Image: ${alt || 'inline image'}](${url})`);
+                    });
+                }
+
+                // Knowledge cards (structured entity info)
+                if ((usage === 'knowledge_cards' || usage === 'inline_knowledge_cards') && (block.knowledge_card_block || block.inline_knowledge_card_block)) {
+                    const card = block.knowledge_card_block || block.inline_knowledge_card_block || {};
+                    const cardTitle = card.title || card.name || '';
+                    const cardDesc = card.description || card.snippet || '';
+                    const cardUrl = card.url || card.source_url || '';
+                    if (cardTitle || cardDesc) {
+                        mediaParts.push(`📋 **${cardTitle}**${cardDesc ? ': ' + cardDesc : ''}${cardUrl ? ' (' + cardUrl + ')' : ''}`);
+                    }
+                }
+
+                // Follow-up suggestions
+                if (usage === 'pending_followups') {
+                    const items = block.pending_followups_block?.followups
+                        || block.followups || block.items || [];
+                    if (Array.isArray(items)) {
+                        items.forEach(f => {
+                            const text = typeof f === 'string' ? f : (f.text || f.query || f.question || '');
+                            if (text) followups.push(text);
+                        });
+                    }
+                }
+            });
+
+            // Append media references to answer blocks
+            if (mediaParts.length > 0) {
+                const mediaContent = '\n\n' + mediaParts.join('\n');
+                if (enriched.blocks && enriched.blocks.length > 0) {
+                    const lastAskBlock = enriched.blocks.find(b => b.intended_usage === 'ask_text' && b.markdown_block);
+                    if (lastAskBlock) {
+                        lastAskBlock.markdown_block.answer = (lastAskBlock.markdown_block.answer || '') + mediaContent;
+                    }
+                }
+            }
+
+            // Attach follow-up suggestions as related_queries
+            if (followups.length > 0) {
+                enriched.related_queries = (enriched.related_queries || []).concat(followups);
+            }
+
+            return enriched;
+        });
+
+        // Extract model from first entry if available
+        const model = entries[0]?.display_model || entries[0]?.model || '';
+
         return {
-            entries: entries,
+            entries: enrichedEntries,
             title: title,
-            uuid: uuid
+            uuid: uuid,
+            platform: 'Perplexity',
+            model: model
         };
     } catch (error) {
         console.error('[OmniExporter] Error fetching thread detail:', error);

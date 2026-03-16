@@ -587,7 +587,9 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                     ?? `DeepSeek Thread ${uuid.slice(0, 8)}`;
 
                 console.log(`[DeepSeek] ✓ Done: ${entries.length} Q&A pairs, title="${title}"`);
-                return { uuid, title, platform: 'DeepSeek', entries };
+                // Extract model from session info if available
+                const model = sessionInfo?.model || sessionInfo?.agent_mode || data?.data?.model || '';
+                return { uuid, title, platform: 'DeepSeek', model: model || 'DeepSeek', entries };
 
             } catch (e) {
                 console.warn(`[DeepSeek] Endpoint ${endpoint} failed: ${e.message}`);

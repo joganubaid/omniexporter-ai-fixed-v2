@@ -388,7 +388,15 @@ const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
 
                 if (entries.length > 0) {
                     console.log(`[ChatGPT] ✓ API success: ${entries.length} entries for ${uuid}`);
-                    return { uuid, entries, title: data.title || 'ChatGPT Chat', platform: 'ChatGPT' };
+                    return {
+                        uuid,
+                        entries,
+                        title: data.title || 'ChatGPT Chat',
+                        platform: 'ChatGPT',
+                        model: data.default_model_slug || '',
+                        gizmo_id: data.gizmo_id || '',
+                        create_time: data.create_time || null
+                    };
                 }
             } catch (error) {
                 console.warn(`[ChatGPT] Endpoint ${endpoint} failed:`, error.message);
@@ -568,6 +576,27 @@ function transformChatGPTData(data) {
             if (contentType === 'tether_quote' && msg.content?.text) {
                 // Quote from browsing — include as blockquote
                 return `\n> 📝 ${msg.content.text}\n`;
+            }
+
+            // Multimodal text content (text mixed with images/files)
+            if (contentType === 'multimodal_text' && msg.content?.parts) {
+                const parts = [];
+                for (const p of msg.content.parts) {
+                    if (typeof p === 'string') {
+                        parts.push(p);
+                    } else if (p && typeof p === 'object') {
+                        if (p.content_type === 'image_asset_pointer') {
+                            const desc = p.metadata?.dalle?.prompt || p.asset_pointer || p.id || 'image';
+                            parts.push(`🖼️ [Image: ${desc}]`);
+                        } else if (p.content_type === 'file_asset_pointer') {
+                            const fileName = p.metadata?.file_name || p.name || p.asset_pointer || 'file';
+                            parts.push(`📎 [File: ${fileName}]`);
+                        } else if (p.text) {
+                            parts.push(p.text);
+                        }
+                    }
+                }
+                return parts.join('\n');
             }
 
             if (msg.content?.parts && Array.isArray(msg.content.parts)) {
