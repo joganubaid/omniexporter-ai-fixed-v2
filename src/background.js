@@ -689,8 +689,12 @@ async function syncToNotion(data, settings) {
         };
 
         if (dbSchema?.properties) {
-            if (dbSchema.properties['URL']?.type === 'url')
-                properties['URL'] = { url: getPlatformUrl(data.platform, data.uuid) };
+            if (dbSchema.properties['URL']?.type === 'url') {
+                const platformUrl = getPlatformUrl(data.platform, data.uuid);
+                if (platformUrl) {
+                    properties['URL'] = { url: platformUrl };
+                }
+            }
             if (dbSchema.properties['Tags']?.type === 'multi_select')
                 properties['Tags'] = { multi_select: [{ name: data.platform || 'AI' }] };
             if (dbSchema.properties['Platform']?.type === 'select')
@@ -912,6 +916,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
                 chrome.tabs.sendMessage(tab.id, {
                     type: 'EXPORT_THREAD',
                     payload: { data: response.data, format: 'markdown' }
+                }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.warn('[ContextMenu] Export message failed:', chrome.runtime.lastError.message);
+                    }
                 });
             } else {
                 console.warn('[ContextMenu] Extract unsuccessful:', response?.error);

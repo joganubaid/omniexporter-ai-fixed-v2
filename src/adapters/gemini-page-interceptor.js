@@ -147,7 +147,7 @@
         action: 'INTERCEPTOR_READY',
         success: true,
         data: { limit: CONFIG.newLimit }
-    }, '*');
+    }, window.location.origin);
 
     log('✅ Gemini XHR interceptor active - message limit increased to', CONFIG.newLimit);
 })();

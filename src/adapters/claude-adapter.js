@@ -112,8 +112,15 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
             let offset = 0;
             const PAGE_SIZE = 50;
             let hasMore = true;
+            let pageNum = 0;
 
             while (hasMore) {
+                pageNum++;
+                // Safety limit: max 200 pages to prevent runaway loops
+                if (pageNum > 200) {
+                    console.warn('[Claude] Reached max page limit, stopping pagination');
+                    break;
+                }
                 const pageUrl = `${baseUrl}${endpoint}?limit=${PAGE_SIZE}&offset=${offset}&sort=updated_at&order=desc`;
                 const response = await ClaudeAdapter._fetchWithRetry(pageUrl);
                 const data = await response.json().catch(() => null);

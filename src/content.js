@@ -341,7 +341,7 @@ async function handleExtraction(adapter, sendResponse) {
                 uuid: uuid,
                 detail: { entries: normalizedEntries },
                 platform: adapter.name,
-                debug: detail.debug
+                debug: detail?.debug
             }
         });
     } catch (error) {
@@ -374,7 +374,7 @@ async function handleExtractionByUuid(adapter, uuid, sendResponse) {
                 uuid: uuid,
                 detail: { entries: normalizedEntries },
                 platform: adapter.name,
-                debug: detail.debug
+                debug: detail?.debug
             }
         });
     } catch (error) {

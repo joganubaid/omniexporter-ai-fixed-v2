@@ -6,6 +6,12 @@
  * 2. Fill in the values below
  * 3. Reload the extension in chrome://extensions/
  *
+ * IMPORTANT: After configuring this file, you MUST also:
+ * 1. Deploy cloudflare-worker/worker.js to your own Cloudflare account
+ * 2. Add your extension ID to ALLOWED_ORIGINS in the worker
+ * 3. Set OAUTH_SERVER_URL below to your deployed worker URL
+ * See cloudflare-worker/DEPLOY.md for full deployment instructions
+ *
  * SECURITY:
  * - config.js is listed in .gitignore — it will NOT be committed
  * - The Notion Client Secret is stored on the Cloudflare Worker, NOT here

@@ -118,7 +118,7 @@ class NotionPicker {
             content.innerHTML = `
                 <div class="notion-picker-error">
                     <span class="error-icon">⚠️</span>
-                    <p>${error.message}</p>
+                    <p>${this.escapeHtml(error.message)}</p>
                     <button class="notion-picker-btn secondary" onclick="NotionPicker.hide()">Close</button>
                 </div>
             `;

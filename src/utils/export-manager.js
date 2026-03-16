@@ -520,8 +520,6 @@ root.ExportManager = class ExportManager {
                 if (currentListType !== 'ol') {
                     if (currentListType === 'ul') {
                         processedLines.push('</ul>');
-                    } else if (currentListType === 'ol') {
-                        processedLines.push('</ol>');
                     }
                     processedLines.push('<ol>');
                     currentListType = 'ol';
@@ -533,9 +531,7 @@ root.ExportManager = class ExportManager {
             match = line.match(/^[\-*] (.+)$/); // unordered list
             if (match) {
                 if (currentListType !== 'ul') {
-                    if (currentListType === 'ul') {
-                        processedLines.push('</ul>');
-                    } else if (currentListType === 'ol') {
+                    if (currentListType === 'ol') {
                         processedLines.push('</ol>');
                     }
                     processedLines.push('<ul>');

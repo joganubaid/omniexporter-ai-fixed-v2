@@ -227,7 +227,8 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         let url = `${DeepSeekAdapter.apiBase}/chat_session/fetch_page?lte_cursor.pinned=false`;
         if (cursor) {
             // cursor is an object: { updated_at, id }
-            if (typeof cursor === 'object') {
+            // Note: typeof null === 'object', so guard against null explicitly
+            if (cursor !== null && typeof cursor === 'object') {
                 url += `&lte_cursor.updated_at=${cursor.updated_at}&lte_cursor.id=${cursor.id}`;
             } else {
                 url += `&lte_cursor.updated_at=${encodeURIComponent(cursor)}`;
@@ -253,7 +254,7 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
             title: chat.title || chat.name || 'DeepSeek Chat',
             platform: 'DeepSeek',
             // updated_at is a Unix timestamp float (e.g. 1771315969.783)
-            last_query_datetime: chat.updated_at
+            last_query_datetime: chat.updated_at != null
                 ? new Date(chat.updated_at * 1000).toISOString()
                 : new Date().toISOString()
         }));
@@ -487,7 +488,8 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                     const fragCount = Array.isArray(msg.fragments) ? msg.fragments.length : 0;
                     const fragPreview = fragCount > 0 ? JSON.stringify(msg.fragments[0]).substring(0, 80) : 'none';
                     console.log(`[DeepSeek] msg[0] keys=${Object.keys(msg).join(',')}, role="${role}", fragments=${fragCount}, frag[0]="${fragPreview}", extracted="${content.substring(0,60)}"`);
-                }                if (!content) return;
+                }
+                if (!content) return;
                 const isUser = role === 'user' || role === 'human' || (role === '' && idx % 2 === 0);
                 const isAsst = role === 'assistant' || role === 'bot' || role === 'ai' || (role === '' && idx % 2 === 1);
                 if (isUser) { pendingQuery = content; }

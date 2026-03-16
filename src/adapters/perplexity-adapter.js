@@ -138,7 +138,15 @@ async function fetchPerplexityDetailResilient(uuid) {
     let title = 'Untitled Thread';
 
     try {
+        // Safety limit to prevent infinite loops if server returns same cursor
+        const MAX_PAGES = 200;
+        let pageCount = 0;
         while (true) {
+            pageCount++;
+            if (pageCount > MAX_PAGES) {
+                console.warn('[Perplexity] Reached max page limit, stopping pagination');
+                break;
+            }
             // Re-read version each iteration so config hot-reloads take effect
             const currentVersion = platformConfig.activeVersions.get('Perplexity') ||
                 PLATFORM_CONFIGS.Perplexity.versions.current;

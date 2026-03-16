@@ -74,8 +74,11 @@ var NotionOAuth = {
      * Start OAuth2 authorization flow
      */
     async authorize() {
-        if (!this.config.clientId) {
-            throw new Error('OAuth not configured - Client ID missing');
+        if (!this.config.clientId || this.config.clientId === 'YOUR_CLIENT_ID_HERE') {
+            throw new Error('OAuth not configured - Client ID missing. See config.example.js for setup instructions.');
+        }
+        if (this.config.tokenServerEndpoint && this.config.tokenServerEndpoint.includes('YOUR_SUBDOMAIN')) {
+            throw new Error('OAuth not configured - OAUTH_SERVER_URL contains placeholder. See config.example.js for setup instructions.');
         }
 
         const state = crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -134,7 +137,8 @@ var NotionOAuth = {
                         const stored = await chrome.storage.local.get(['notion_oauth_state', 'notion_oauth_state_created']);
                         // SEC-1 FIX: Reject null/missing returnedState — previously the &&
                         // short-circuit let a null returnedState bypass the check entirely.
-                        if (!returnedState || returnedState !== stored.notion_oauth_state) {
+                        // Also guard against stored state being undefined (null !== undefined is true).
+                        if (!returnedState || !stored.notion_oauth_state || returnedState !== stored.notion_oauth_state) {
                             reject(new Error('OAuth state mismatch. Please try again.'));
                             return;
                         }
@@ -295,7 +299,7 @@ var NotionOAuth = {
         }
 
         const database = await createResponse.json();
-        console.log('[NotionOAuth] ✓ Database created:', database.id);
+        _logOAuth('info', 'Database created successfully');
 
         // 3. Save database ID to storage
         await chrome.storage.local.set({
@@ -445,7 +449,7 @@ var NotionOAuth = {
             'notion_auth_method'
         ]);
 
-        console.log('[NotionOAuth] Disconnected');
+        _logOAuth('info', 'Disconnected');
     },
 
     /**

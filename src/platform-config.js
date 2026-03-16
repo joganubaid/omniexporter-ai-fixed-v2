@@ -315,7 +315,13 @@ if (!window.PlatformConfigManager) {
             const failKey = `${platformName}:${endpointKey}`;
 
             // In test mode, always use fallback if available
-            let url = (this.testMode || this.failedEndpoints.get(failKey)) && endpoint.fallback
+            // Failed endpoints auto-recover after 5 minutes
+            const failedAt = this.failedEndpoints.get(failKey);
+            const isEndpointFailed = failedAt && (Date.now() - failedAt < 5 * 60 * 1000);
+            if (!isEndpointFailed && failedAt) {
+                this.failedEndpoints.delete(failKey); // Clean up expired entry
+            }
+            let url = (this.testMode || isEndpointFailed) && endpoint.fallback
                 ? endpoint.fallback
                 : endpoint.primary;
 
@@ -339,7 +345,7 @@ if (!window.PlatformConfigManager) {
 
         markEndpointFailed(platformName, endpointKey) {
             const failKey = `${platformName}:${endpointKey}`;
-            this.failedEndpoints.set(failKey, true);
+            this.failedEndpoints.set(failKey, Date.now());
             console.warn(`[PlatformConfig] Marked endpoint as failed: ${failKey}`);
         }
 
