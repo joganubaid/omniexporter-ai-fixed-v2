@@ -301,7 +301,7 @@ var NotionOAuth = {
 
         const database = await createResponse.json().catch(() => null);
         if (!database || !database.id) throw new Error('Database created but response was invalid.');
-        _logOAuth('info', 'Database created successfully');
+        _logOAuth('info', 'Database created successfully', { id: database.id });
 
         // 3. Save database ID to storage
         await chrome.storage.local.set({
