@@ -161,7 +161,7 @@ class RateLimiter {
                 const result = await Promise.race([
                     fn(),
                     new Promise((_, timeoutReject) =>
-                        setTimeout(() => timeoutReject(new Error('Request execution timeout')), RATE_LIMIT_EXECUTION_TIMEOUT_MS)
+                        setTimeout(() => timeoutReject(new Error('Rate limiter: request execution exceeded 60s timeout')), RATE_LIMIT_EXECUTION_TIMEOUT_MS)
                     )
                 ]);
                 resolve(result);

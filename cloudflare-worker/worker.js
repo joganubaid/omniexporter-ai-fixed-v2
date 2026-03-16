@@ -17,10 +17,21 @@ const ALLOWED_ORIGINS = new Set([
 // Rate limiting: track requests per IP (in-memory, resets on worker restart)
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per minute per IP
+const RATE_LIMIT_MAP_MAX_SIZE = 10000; // max tracked IPs
 const rateLimitMap = new Map();
 
 function isRateLimited(ip) {
     const now = Date.now();
+
+    // Periodic cleanup: evict expired entries when map gets large
+    if (rateLimitMap.size > RATE_LIMIT_MAP_MAX_SIZE) {
+        for (const [key, val] of rateLimitMap) {
+            if (now - val.windowStart > RATE_LIMIT_WINDOW_MS) {
+                rateLimitMap.delete(key);
+            }
+        }
+    }
+
     const entry = rateLimitMap.get(ip);
     if (!entry) {
         rateLimitMap.set(ip, { count: 1, windowStart: now });
@@ -154,10 +165,12 @@ async function handleTokenExchange(request, env) {
 
         if (!tokenResponse.ok) {
             console.error('Notion token exchange failed:', tokenData);
+            // Map known error codes to safe values; do not expose raw API details
+            const SAFE_ERROR_CODES = new Set(['invalid_grant', 'invalid_request', 'unauthorized_client', 'invalid_client']);
+            const errorCode = SAFE_ERROR_CODES.has(tokenData.error) ? tokenData.error : 'token_exchange_failed';
             return jsonResponse({
                 error: 'Token exchange failed',
-                // Do not expose raw API error details to the client
-                error_code: tokenData.error || 'unknown_error'
+                error_code: errorCode
             }, tokenResponse.status, request);
         }
 

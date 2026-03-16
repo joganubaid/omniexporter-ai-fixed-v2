@@ -334,7 +334,7 @@ root.ExportManager = class ExportManager {
                 entry.sources.forEach((source, i) => {
                     // SEC: Sanitize URL to prevent javascript: injection in href
                     const safeUrl = this._sanitizeUrl(source.url);
-                    html += `<a href="${this.escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${i + 1}. ${this.escapeHtml(source.title || source.url)}</a>`;
+                    html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${i + 1}. ${this.escapeHtml(source.title || source.url)}</a>`;
                 });
                 html += `</div>`;
             }
