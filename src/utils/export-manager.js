@@ -415,7 +415,12 @@ root.ExportManager = class ExportManager {
         // CSV escape: wrap in quotes and double any internal quotes
         const csvEscape = (text) => {
             if (text === null || text === undefined) return '""';
-            const str = String(text).replace(/"/g, '""');
+            let str = String(text);
+            // Mitigate CSV/Excel formula injection: prefix dangerous leading characters
+            if (/^[=+\-@]/.test(str)) {
+                str = "'" + str;
+            }
+            str = str.replace(/"/g, '""');
             return `"${str}"`;
         };
 

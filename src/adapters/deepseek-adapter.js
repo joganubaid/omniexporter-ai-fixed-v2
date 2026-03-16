@@ -150,7 +150,7 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                     headers: {
                         'Accept': 'application/json',
                         'x-client-platform': 'web',
-                        'x-client-version': '1.7.0',
+                        'x-client-version': '1.7.1',
                         'x-client-locale': 'en_US',
                         'x-app-version': '20241129.1'
                     }

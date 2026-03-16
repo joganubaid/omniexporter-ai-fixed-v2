@@ -103,10 +103,11 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
     getSpaces: async () => {
         try {
             const baseUrl = platformConfig.getBaseUrl('Perplexity');
+            const endpoint = platformConfig.buildEndpoint('Perplexity', 'spaces');
+            const url = baseUrl + endpoint;
             const version = (typeof platformConfig !== 'undefined'
                 ? platformConfig.activeVersions?.get('Perplexity')
                 : null) || '2.18';
-            const url = `${baseUrl}/rest/collections/list_user_collections?limit=30&offset=0&version=${version}&source=default`;
 
             const response = await fetch(url, {
                 credentials: "include",
