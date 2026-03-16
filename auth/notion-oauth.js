@@ -78,7 +78,7 @@ var NotionOAuth = {
             throw new Error('OAuth not configured - Client ID missing. See config.example.js for setup instructions.');
         }
         if (this.config.tokenServerEndpoint && this.config.tokenServerEndpoint.includes('YOUR_SUBDOMAIN')) {
-            throw new Error('OAuth not configured - OAUTH_SERVER_URL contains placeholder. See config.example.js for setup instructions.');
+            throw new Error('OAuth not configured - tokenServerEndpoint (OAUTH_SERVER_URL) contains placeholder. See config.example.js for setup instructions.');
         }
 
         const state = crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
