@@ -37,6 +37,12 @@ root.ExportManager = class ExportManager {
             extension: '.pdf',
             mimeType: 'application/pdf',
             icon: '📕'
+        },
+        csv: {
+            name: 'CSV',
+            extension: '.csv',
+            mimeType: 'text/csv',
+            icon: '📋'
         }
     };
 
@@ -62,6 +68,9 @@ root.ExportManager = class ExportManager {
                 break;
             case 'txt':
                 content = this.toPlainText(data, platform);
+                break;
+            case 'csv':
+                content = this.toCSV(data, platform);
                 break;
             case 'pdf':
                 return this.toPDF(data, platform);
@@ -125,7 +134,8 @@ root.ExportManager = class ExportManager {
             if (entry.sources && entry.sources.length > 0) {
                 md += `### 📚 Sources\n\n`;
                 entry.sources.forEach((source, i) => {
-                    md += `${i + 1}. [${source.title || source.url}](${source.url})\n`;
+                    const safeUrl = this._sanitizeUrl(source.url);
+                    md += `${i + 1}. [${source.title || source.url}](${safeUrl})\n`;
                 });
                 md += '\n';
             }
@@ -331,7 +341,9 @@ root.ExportManager = class ExportManager {
                 <div class="sources">
                     <div class="sources-label">📚 Sources</div>`;
                 entry.sources.forEach((source, i) => {
-                    html += `<a href="${source.url}" target="_blank">${i + 1}. ${this.escapeHtml(source.title || source.url)}</a>`;
+                    // SEC: Sanitize URL to prevent javascript: injection in href
+                    const safeUrl = this._sanitizeUrl(source.url);
+                    html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${i + 1}. ${this.escapeHtml(source.title || source.url)}</a>`;
                 });
                 html += `</div>`;
             }
@@ -391,6 +403,44 @@ root.ExportManager = class ExportManager {
         txt += `${divider}\n`;
 
         return txt;
+    }
+
+    // ============================================
+    // CSV FORMAT
+    // ============================================
+    static toCSV(data, platform) {
+        const entries = data.detail?.entries || [];
+        const title = data.title || 'Untitled Chat';
+
+        // CSV escape: wrap in quotes and double any internal quotes
+        const csvEscape = (text) => {
+            if (text === null || text === undefined) return '""';
+            const str = String(text).replace(/"/g, '""');
+            return `"${str}"`;
+        };
+
+        // Header row
+        let csv = '\uFEFF'; // BOM for Excel UTF-8 compat
+        csv += 'Index,Platform,Title,Question,Answer,Sources,Date\n';
+
+        entries.forEach((entry, index) => {
+            const query = entry.query || entry.query_str || '';
+            const answer = this.extractAnswer(entry).replace(/\n+/g, ' ').trim();
+            const sources = (entry.sources || []).map(s => s.url || s.title || '').join('; ');
+            const date = entry.updated_datetime || entry.created_datetime || '';
+
+            csv += [
+                index + 1,
+                csvEscape(platform),
+                csvEscape(title),
+                csvEscape(query),
+                csvEscape(answer),
+                csvEscape(sources),
+                csvEscape(date)
+            ].join(',') + '\n';
+        });
+
+        return csv;
     }
 
     // ============================================
@@ -474,6 +524,20 @@ root.ExportManager = class ExportManager {
         return div.innerHTML;
     }
 
+    /**
+     * Sanitize URL to prevent javascript: and data: injection in href attributes.
+     * Only allows http: and https: protocols.
+     */
+    static _sanitizeUrl(url) {
+        if (!url || typeof url !== 'string') return '';
+        const trimmed = url.trim();
+        // Only allow http(s) URLs — block javascript:, data:, vbscript:, etc.
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
+        // Relative URLs are safe
+        if (trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) return trimmed;
+        return '';
+    }
+
     // ============================================
     // MISSING-1: Minimal inline markdown-to-HTML converter
     // No external dependencies — handles the most common markdown patterns in AI responses.
@@ -520,8 +584,6 @@ root.ExportManager = class ExportManager {
                 if (currentListType !== 'ol') {
                     if (currentListType === 'ul') {
                         processedLines.push('</ul>');
-                    } else if (currentListType === 'ol') {
-                        processedLines.push('</ol>');
                     }
                     processedLines.push('<ol>');
                     currentListType = 'ol';
@@ -533,9 +595,7 @@ root.ExportManager = class ExportManager {
             match = line.match(/^[\-*] (.+)$/); // unordered list
             if (match) {
                 if (currentListType !== 'ul') {
-                    if (currentListType === 'ul') {
-                        processedLines.push('</ul>');
-                    } else if (currentListType === 'ol') {
+                    if (currentListType === 'ol') {
                         processedLines.push('</ol>');
                     }
                     processedLines.push('<ul>');

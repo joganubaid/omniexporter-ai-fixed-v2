@@ -14,6 +14,7 @@ const RATE_LIMIT_BUFFER_MS = 100;
 const RATE_LIMIT_ADAPTIVE_QUEUE_THRESHOLD = 50;
 const RATE_LIMIT_DELAY_HIGH_MS = 500;
 const RATE_LIMIT_DELAY_LOW_MS = 200;
+const RATE_LIMIT_EXECUTION_TIMEOUT_MS = 60000; // 60s timeout per individual request
 
 // ============================================
 // LOADING MANAGER
@@ -155,11 +156,25 @@ class RateLimiter {
             const { fn, resolve, reject } = this.queue.shift();
             this.requestTimestamps.push(Date.now());
 
+            let timeoutId;
             try {
-                const result = await fn();
+                // Wrap execution with a timeout to prevent queue deadlock
+                const result = await Promise.race([
+                    fn(),
+                    new Promise((_, timeoutReject) => {
+                        timeoutId = setTimeout(
+                            () => timeoutReject(new Error('Rate limiter: request execution exceeded 60s timeout')),
+                            RATE_LIMIT_EXECUTION_TIMEOUT_MS
+                        );
+                    })
+                ]);
                 resolve(result);
             } catch (error) {
                 reject(error);
+            } finally {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
             }
 
             const delay = this.queue.length > RATE_LIMIT_ADAPTIVE_QUEUE_THRESHOLD ? RATE_LIMIT_DELAY_HIGH_MS : RATE_LIMIT_DELAY_LOW_MS;

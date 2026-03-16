@@ -118,10 +118,12 @@ class NotionPicker {
             content.innerHTML = `
                 <div class="notion-picker-error">
                     <span class="error-icon">⚠️</span>
-                    <p>${error.message}</p>
-                    <button class="notion-picker-btn secondary" onclick="NotionPicker.hide()">Close</button>
+                    <p>${this.escapeHtml(error.message)}</p>
+                    <button class="notion-picker-btn secondary" id="notion-picker-error-close">Close</button>
                 </div>
             `;
+            // Attach close handler without inline onclick
+            document.getElementById('notion-picker-error-close')?.addEventListener('click', () => this.hide());
         } finally {
             this.isLoading = false;
         }

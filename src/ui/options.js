@@ -894,11 +894,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const connectionMonitorInterval = setInterval(monitorConnectionStatus, 10000);
 
         // Phase 6: Memory leak fix - cleanup interval on page unload
-        window.addEventListener('beforeunload', () => {
+        // Use both beforeunload and pagehide for maximum reliability
+        const cleanupInterval = () => {
             if (connectionMonitorInterval) {
                 clearInterval(connectionMonitorInterval);
             }
-        });
+        };
+        window.addEventListener('beforeunload', cleanupInterval);
+        window.addEventListener('pagehide', cleanupInterval);
     } else {
         log('Waiting for AI platform connection...', 'info');
     }
@@ -1295,7 +1298,7 @@ function loadFailures() {
             const time = f.timestamp ? new Date(f.timestamp).toLocaleString() : 'Unknown time';
             item.innerHTML = `
                 <div class="failure-title">${escapeHtml(f.title || 'Unknown')}</div>
-                <div class="failure-meta">${escapeHtml(f.uuid?.slice(0, 8) || '')}... • ${time}</div>
+                <div class="failure-meta">${escapeHtml(f.uuid?.slice(0, 8) || '')}... • ${escapeHtml(time)}</div>
                 <div class="failure-error">${escapeHtml(f.reason || 'Unknown error')}</div>
                 <button class="retry-btn" data-uuid="${escapeHtml(f.uuid)}">Retry</button>
             `;

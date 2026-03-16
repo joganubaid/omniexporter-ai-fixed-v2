@@ -14,12 +14,68 @@ const ALLOWED_ORIGINS = new Set([
     // 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
 ]);
 
+// Rate limiting: track requests per IP (in-memory, resets on worker restart)
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per minute per IP
+const RATE_LIMIT_MAP_MAX_SIZE = 10000; // max tracked IPs
+const rateLimitMap = new Map();
+
+function isRateLimited(ip) {
+    const now = Date.now();
+
+    // Periodic cleanup: evict expired entries when map gets large
+    if (rateLimitMap.size > RATE_LIMIT_MAP_MAX_SIZE) {
+        for (const [key, val] of rateLimitMap) {
+            if (now - val.windowStart > RATE_LIMIT_WINDOW_MS) {
+                rateLimitMap.delete(key);
+            }
+        }
+    }
+
+    const entry = rateLimitMap.get(ip);
+    if (!entry) {
+        rateLimitMap.set(ip, { count: 1, windowStart: now });
+        return false;
+    }
+    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+        // Reset window
+        rateLimitMap.set(ip, { count: 1, windowStart: now });
+        return false;
+    }
+    entry.count++;
+    if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+        return true;
+    }
+    return false;
+}
+
 function getCorsHeaders(request) {
     const origin = request.headers.get('Origin') || '';
-    // Allow listed extension origins; fall back to same-origin for health checks
-    const allowedOrigin = ALLOWED_ORIGINS.has(origin) ? origin : '';
+
+    if (ALLOWED_ORIGINS.has(origin)) {
+        return {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Vary': 'Origin'
+        };
+    }
+
+    // Fallback: if no origins configured yet, allow any chrome-extension:// origin
+    // so the extension can bootstrap. Deployers should add their extension ID
+    // to ALLOWED_ORIGINS for production security.
+    if (ALLOWED_ORIGINS.size === 0 && origin.startsWith('chrome-extension://')) {
+        return {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Vary': 'Origin'
+        };
+    }
+
+    // Origin not allowed
     return {
-        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Origin': '',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Vary': 'Origin'
@@ -44,6 +100,21 @@ export default {
             });
         }
 
+        // Rate limiting for POST endpoints
+        if (request.method === 'POST') {
+            const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+            if (isRateLimited(clientIp)) {
+                return new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), {
+                    status: 429,
+                    headers: {
+                        ...getCorsHeaders(request),
+                        'Content-Type': 'application/json',
+                        'Retry-After': '60'
+                    }
+                });
+            }
+        }
+
         // Token exchange endpoint
         if (url.pathname === '/api/notion/token' && request.method === 'POST') {
             return handleTokenExchange(request, env);
@@ -63,7 +134,7 @@ async function handleTokenExchange(request, env) {
         const { code, redirect_uri, code_verifier } = await request.json();
 
         if (!code) {
-            return jsonResponse({ error: 'Missing authorization code' }, 400);
+            return jsonResponse({ error: 'Missing authorization code' }, 400, request);
         }
 
         // Get credentials from environment variables
@@ -72,7 +143,7 @@ async function handleTokenExchange(request, env) {
 
         if (!clientId || !clientSecret) {
             console.error('Missing environment variables');
-            return jsonResponse({ error: 'Server configuration error' }, 500);
+            return jsonResponse({ error: 'Server configuration error' }, 500, request);
         }
 
         // Exchange authorization code for access token
@@ -94,10 +165,13 @@ async function handleTokenExchange(request, env) {
 
         if (!tokenResponse.ok) {
             console.error('Notion token exchange failed:', tokenData);
+            // Map known error codes to safe values; do not expose raw API details
+            const SAFE_ERROR_CODES = new Set(['invalid_grant', 'invalid_request', 'unauthorized_client', 'invalid_client']);
+            const errorCode = SAFE_ERROR_CODES.has(tokenData.error) ? tokenData.error : 'token_exchange_failed';
             return jsonResponse({
-                error: tokenData.error || 'Token exchange failed',
-                error_description: tokenData.error_description
-            }, tokenResponse.status);
+                error: 'Token exchange failed',
+                error_code: errorCode
+            }, tokenResponse.status, request);
         }
 
         // Return successful token response
@@ -111,17 +185,17 @@ async function handleTokenExchange(request, env) {
             workspace_icon: tokenData.workspace_icon,
             bot_id: tokenData.bot_id,
             owner: tokenData.owner
-        });
+        }, 200, request);
 
     } catch (error) {
         console.error('Token exchange error:', error);
-        return jsonResponse({ error: 'Internal server error' }, 500);
+        return jsonResponse({ error: 'Internal server error' }, 500, request);
     }
 }
 
 async function handleTokenRefresh(request, env) {
     // Notion doesn't support refresh tokens yet, but this is here for future use
-    return jsonResponse({ error: 'Refresh not supported by Notion API' }, 501);
+    return jsonResponse({ error: 'Refresh not supported by Notion API' }, 501, request);
 }
 
 function jsonResponse(data, status = 200, request = null) {

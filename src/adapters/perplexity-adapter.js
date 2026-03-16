@@ -95,18 +95,25 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
         }
     },
 
+    // ============================================
+    // HAR-VERIFIED 2026-03-16: Fetch user collections (Spaces)
+    // GET /rest/collections/list_user_collections?limit=30&offset=0&version=2.18&source=default
+    // Response: [{uuid, title, description, thread_count, emoji, ...}]
+    // ============================================
     getSpaces: async () => {
         try {
-            const endpoint = platformConfig.buildEndpoint('Perplexity', 'spaces');
             const baseUrl = platformConfig.getBaseUrl('Perplexity');
-            const response = await fetch(`${baseUrl}${endpoint}`, {
+            const version = (typeof platformConfig !== 'undefined'
+                ? platformConfig.activeVersions?.get('Perplexity')
+                : null) || '2.18';
+            const url = `${baseUrl}/rest/collections/list_user_collections?limit=30&offset=0&version=${version}&source=default`;
+
+            const response = await fetch(url, {
                 credentials: "include",
                 headers: {
                     "accept": "*/*",
                     "x-app-apiclient": "default",
-                    "x-app-apiversion": (typeof platformConfig !== 'undefined'
-                        ? platformConfig.activeVersions?.get('Perplexity')
-                        : null) || "2.18"
+                    "x-app-apiversion": version
                 }
             });
 
@@ -116,7 +123,15 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
             }
 
             const data = await response.json();
-            return (data || []).map(s => ({ uuid: s.uuid, name: s.title }));
+            // HAR-verified: response is array of collection objects
+            const collections = Array.isArray(data) ? data : [];
+            return collections.map(s => ({
+                uuid: s.uuid,
+                name: s.title || 'Untitled Space',
+                description: s.description || '',
+                threadCount: s.thread_count || 0,
+                emoji: s.emoji || ''
+            }));
         } catch (error) {
             console.error('[Perplexity] getSpaces error:', error);
             return [];
@@ -138,7 +153,15 @@ async function fetchPerplexityDetailResilient(uuid) {
     let title = 'Untitled Thread';
 
     try {
+        // Safety limit to prevent infinite loops if server returns same cursor
+        const MAX_PAGES = 200;
+        let pageCount = 0;
         while (true) {
+            pageCount++;
+            if (pageCount > MAX_PAGES) {
+                console.warn('[Perplexity] Reached max page limit, stopping pagination');
+                break;
+            }
             // Re-read version each iteration so config hot-reloads take effect
             const currentVersion = platformConfig.activeVersions.get('Perplexity') ||
                 PLATFORM_CONFIGS.Perplexity.versions.current;

@@ -125,8 +125,16 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
                     ? `${GrokAdapter.apiBase}/conversations?pageSize=50&pageToken=${encodeURIComponent(pageToken)}`
                     : `${GrokAdapter.apiBase}/conversations?pageSize=50`;
 
-                const response = await GrokAdapter._fetchWithRetry(url);
-                const data = await response.json();
+                let response, data;
+                try {
+                    response = await GrokAdapter._fetchWithRetry(url);
+                    data = await response.json();
+                } catch (pageError) {
+                    console.warn(`[Grok] Page ${pageNum} fetch failed:`, pageError.message);
+                    // Break pagination on error but return what we have so far
+                    break;
+                }
+
                 const chats = data.conversations || data.data || data.items || [];
 
                 for (const chat of chats) {
@@ -368,7 +376,33 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
 
 
 
-    getSpaces: async () => []
+    // ============================================
+    // HAR-VERIFIED 2026-03-16: Fetch workspaces
+    // GET /rest/workspaces?pageSize=50&orderBy=ORDER_BY_LAST_USE_TIME
+    // Response: { workspaces: [{workspaceId, name, ...}] }
+    // ============================================
+    getSpaces: async () => {
+        try {
+            const baseUrl = GrokAdapter.config
+                ? GrokAdapter.config.baseUrl
+                : 'https://grok.com';
+            const url = `${baseUrl}/rest/workspaces?pageSize=50&orderBy=ORDER_BY_LAST_USE_TIME`;
+
+            const response = await GrokAdapter._fetchWithRetry(url, {}, 2);
+            const data = await response.json();
+
+            const workspaces = (data.workspaces || []).map(w => ({
+                uuid: w.workspaceId || w.id || w.uuid,
+                name: w.name || w.title || 'Workspace'
+            }));
+
+            console.log(`[Grok] ✓ Found ${workspaces.length} workspaces`);
+            return workspaces;
+        } catch (error) {
+            console.warn('[Grok] getSpaces (workspaces) failed:', error.message);
+            return [];
+        }
+    }
 };
 
 window.GrokAdapter = GrokAdapter;

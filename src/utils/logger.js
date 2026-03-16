@@ -300,8 +300,11 @@ globalThis.Logger = globalThis.Logger || ({
             const { [this.config.storageKey]: existingLogs = [] } =
                 await chrome.storage.local.get(this.config.storageKey);
 
+            // Guard against corrupted storage (non-array stored value)
+            const validLogs = Array.isArray(existingLogs) ? existingLogs : [];
+
             // Combine and limit
-            const allLogs = [...existingLogs, ...toFlush];
+            const allLogs = [...validLogs, ...toFlush];
             const trimmedLogs = allLogs.slice(-this.config.maxEntries);
 
             await chrome.storage.local.set({

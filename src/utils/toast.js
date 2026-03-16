@@ -100,7 +100,9 @@ class Toast {
     }
 
     static dismissAll() {
-        this.toasts.forEach((_, id) => this.dismiss(id));
+        // Snapshot keys to avoid modifying Map during iteration
+        const ids = [...this.toasts.keys()];
+        ids.forEach(id => this.dismiss(id));
     }
 
     static success(message, duration = 3000) {

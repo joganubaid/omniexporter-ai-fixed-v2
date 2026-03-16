@@ -74,8 +74,11 @@ var NotionOAuth = {
      * Start OAuth2 authorization flow
      */
     async authorize() {
-        if (!this.config.clientId) {
-            throw new Error('OAuth not configured - Client ID missing');
+        if (!this.config.clientId || this.config.clientId === 'YOUR_CLIENT_ID_HERE') {
+            throw new Error('OAuth not configured - Client ID missing. See config.example.js for setup instructions.');
+        }
+        if (this.config.tokenServerEndpoint && this.config.tokenServerEndpoint.includes('YOUR_SUBDOMAIN')) {
+            throw new Error('OAuth not configured - tokenServerEndpoint (OAUTH_SERVER_URL) contains placeholder. See config.example.js for setup instructions.');
         }
 
         const state = crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -134,7 +137,8 @@ var NotionOAuth = {
                         const stored = await chrome.storage.local.get(['notion_oauth_state', 'notion_oauth_state_created']);
                         // SEC-1 FIX: Reject null/missing returnedState — previously the &&
                         // short-circuit let a null returnedState bypass the check entirely.
-                        if (!returnedState || returnedState !== stored.notion_oauth_state) {
+                        // Also guard against stored state being undefined (null !== undefined is true).
+                        if (!returnedState || !stored.notion_oauth_state || returnedState !== stored.notion_oauth_state) {
                             reject(new Error('OAuth state mismatch. Please try again.'));
                             return;
                         }
@@ -211,10 +215,13 @@ var NotionOAuth = {
                 throw new Error(`Rate limited. Please try again in ${retryAfter} seconds.`);
             }
             const error = await response.json().catch(() => ({}));
-            throw new Error(`Token exchange failed: ${error.error || response.statusText || 'Unknown error'}`);
+            // Mask detailed API error messages to prevent information disclosure
+            const safeError = error.error_code || 'unknown_error';
+            throw new Error(`Token exchange failed (${safeError}). Please try again.`);
         }
 
-        const tokens = await response.json();
+        const tokens = await response.json().catch(() => null);
+        if (!tokens) throw new Error('Token exchange returned invalid JSON. Possible Cloudflare challenge.');
         _logOAuth('info', 'Token exchange successful');
 
         // Store tokens securely
@@ -245,12 +252,12 @@ var NotionOAuth = {
         });
 
         if (!searchResponse.ok) {
-            const err = await searchResponse.json();
+            const err = await searchResponse.json().catch(() => ({}));
             throw new Error(`Search failed: ${err.message || searchResponse.status}`);
         }
 
-        const pages = await searchResponse.json();
-        if (!pages.results || pages.results.length === 0) {
+        const pages = await searchResponse.json().catch(() => null);
+        if (!pages || !pages.results || pages.results.length === 0) {
             throw new Error('No pages found. Please share at least one page with the integration in Notion.');
         }
 
@@ -290,12 +297,13 @@ var NotionOAuth = {
         });
 
         if (!createResponse.ok) {
-            const err = await createResponse.json();
+            const err = await createResponse.json().catch(() => ({}));
             throw new Error(`Database creation failed: ${err.message || createResponse.status}`);
         }
 
-        const database = await createResponse.json();
-        console.log('[NotionOAuth] ✓ Database created:', database.id);
+        const database = await createResponse.json().catch(() => null);
+        if (!database || !database.id) throw new Error('Database created but response was invalid.');
+        _logOAuth('info', 'Database created successfully', { id: database.id });
 
         // 3. Save database ID to storage
         await chrome.storage.local.set({
@@ -445,7 +453,7 @@ var NotionOAuth = {
             'notion_auth_method'
         ]);
 
-        console.log('[NotionOAuth] Disconnected');
+        _logOAuth('info', 'Disconnected');
     },
 
     /**
@@ -517,7 +525,8 @@ var NotionOAuth = {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(`API Error: ${err.message || response.statusText || 'Unknown error'}`);
+                _logOAuth('error', 'API Error details', { status: response.status, message: err.message });
+                throw new Error(`Connection test failed (HTTP ${response.status}). Please check your token.`);
             }
 
             const data = await response.json().catch(() => null);
@@ -570,10 +579,13 @@ var NotionOAuth = {
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
-            throw new Error(`Upload failed: ${err.message || response.statusText || 'Unknown error'}`);
+            _logOAuth('error', 'Upload error details', { status: response.status, message: err.message });
+            throw new Error(`Upload failed (HTTP ${response.status}). Please check your configuration.`);
         }
 
-        return await response.json();
+        return await response.json().catch(() => {
+            throw new Error('Upload succeeded but response was not valid JSON.');
+        });
     }
 };
 

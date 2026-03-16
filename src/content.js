@@ -341,7 +341,7 @@ async function handleExtraction(adapter, sendResponse) {
                 uuid: uuid,
                 detail: { entries: normalizedEntries },
                 platform: adapter.name,
-                debug: detail.debug
+                debug: detail?.debug
             }
         });
     } catch (error) {
@@ -374,7 +374,7 @@ async function handleExtractionByUuid(adapter, uuid, sendResponse) {
                 uuid: uuid,
                 detail: { entries: normalizedEntries },
                 platform: adapter.name,
-                debug: detail.debug
+                debug: detail?.debug
             }
         });
     } catch (error) {
@@ -426,6 +426,9 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
 
         // Use Perplexity API directly with offset
         if (adapter.name === 'Perplexity') {
+            if (typeof platformConfig === 'undefined') {
+                throw new Error('platformConfig not loaded');
+            }
             const endpoint = platformConfig.buildEndpoint('Perplexity', 'listThreads');
             const baseUrl = platformConfig.getBaseUrl('Perplexity');
             const url = `${baseUrl}${endpoint}`;
@@ -483,6 +486,12 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         // ENTERPRISE: ChatGPT with native offset support + anti-bot headers
         else if (adapter.name === 'ChatGPT') {
             try {
+                if (typeof platformConfig === 'undefined') {
+                    throw new Error('platformConfig not loaded');
+                }
+                if (typeof ChatGPTAdapter === 'undefined') {
+                    throw new Error('ChatGPTAdapter not loaded');
+                }
                 const baseUrl = platformConfig.getBaseUrl('ChatGPT');
                 const endpoint = platformConfig.buildEndpoint('ChatGPT', 'conversations');
                 // HAR parameters: offset=0&limit=28&order=updated&is_archived=false&is_starred=false
@@ -553,7 +562,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                     if (i >= limit) return;
                     const href = item.closest('a')?.getAttribute('href') || '';
                     const uuid = href.match(/\/app\/([a-zA-Z0-9_-]+)/)?.[1];
-                    if (uuid) {
+                    if (uuid && SecurityUtils.isValidUuid(uuid)) {
                         threads.push({
                             uuid,
                             title: item.textContent?.trim() || 'Gemini Chat',
@@ -599,8 +608,13 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 }
             } catch (e) {
                 console.warn('[Grok] API failed:', e.message);
-                const result = await adapter.getThreads(1, limit);
-                sendResponse({ success: true, data: { threads: result.threads || result, offset: 0, hasMore: false } });
+                try {
+                    const result = await adapter.getThreads(1, limit);
+                    sendResponse({ success: true, data: { threads: result.threads || result, offset: 0, hasMore: false } });
+                } catch (fallbackErr) {
+                    console.error('[Grok] Fallback also failed:', fallbackErr.message);
+                    sendResponse({ success: false, error: 'Grok: ' + fallbackErr.message });
+                }
             }
         }
         // ENTERPRISE: Use getAllThreads if adapter supports it (for complete Load All)

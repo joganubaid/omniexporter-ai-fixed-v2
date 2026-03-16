@@ -161,6 +161,7 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
     // Detect if response contains chat list
     isChatListResponse(data, url) {
         try {
+            if (!url) return false;
             // Check URL patterns
             const listPatterns = [
                 /chat.*list/i, /conversations/i, /threads/i,

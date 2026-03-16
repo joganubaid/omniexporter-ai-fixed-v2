@@ -689,8 +689,12 @@ async function syncToNotion(data, settings) {
         };
 
         if (dbSchema?.properties) {
-            if (dbSchema.properties['URL']?.type === 'url')
-                properties['URL'] = { url: getPlatformUrl(data.platform, data.uuid) };
+            if (dbSchema.properties['URL']?.type === 'url') {
+                const platformUrl = getPlatformUrl(data.platform, data.uuid);
+                if (platformUrl) {
+                    properties['URL'] = { url: platformUrl };
+                }
+            }
             if (dbSchema.properties['Tags']?.type === 'multi_select')
                 properties['Tags'] = { multi_select: [{ name: data.platform || 'AI' }] };
             if (dbSchema.properties['Platform']?.type === 'select')
@@ -799,17 +803,22 @@ async function syncToNotion(data, settings) {
             for (let i = 100; i < children.length; i += 100) {
                 const batch = children.slice(i, i + 100);
                 await new Promise(r => setTimeout(r, 350)); // Notion rate limit
-                const patchResp = await notionFetchWithBackoff(
-                    `https://api.notion.com/v1/blocks/${pageId}/children`,
-                    {
-                        method: 'PATCH',
-                        headers: notionHeaders,
-                        body: JSON.stringify({ children: batch })
+                try {
+                    const patchResp = await notionFetchWithBackoff(
+                        `https://api.notion.com/v1/blocks/${pageId}/children`,
+                        {
+                            method: 'PATCH',
+                            headers: notionHeaders,
+                            body: JSON.stringify({ children: batch })
+                        }
+                    );
+                    if (!patchResp.ok) {
+                        console.warn(`[AutoSync] Failed to append block batch ${i}–${i + batch.length} (status: ${patchResp.status})`);
+                        break; // partial append — don't fail the whole sync
                     }
-                );
-                if (!patchResp.ok) {
-                    console.warn(`[AutoSync] Failed to append block batch ${i}–${i + batch.length} (status: ${patchResp.status})`);
-                    break; // partial append — don't fail the whole sync
+                } catch (batchErr) {
+                    console.error(`[AutoSync] Batch append threw at ${i}–${i + batch.length}:`, batchErr.message);
+                    break; // Stop appending, but don't fail the entire sync
                 }
             }
         }
@@ -849,6 +858,11 @@ async function recordSyncJob(total, success, failed, attempted = total) {
 // MESSAGE HANDLERS
 // ============================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // SEC: Only accept messages from this extension's own content scripts
+    if (sender.id !== chrome.runtime.id) {
+        return false;
+    }
+
     // Handle logs from content scripts
     if (request.type === "LOGGER_STORE_LOG") {
         if (typeof Logger !== 'undefined' && Logger.receiveLog) {
@@ -858,12 +872,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.type === "LOG_FAILURE") {
-        trackFailure(request.payload);
+        trackFailure(request.payload)
+            .then(() => sendResponse({ success: true }))
+            .catch(e => {
+                console.error('[BG] trackFailure error:', e);
+                sendResponse({ success: false, error: e.message });
+            });
+        return true; // Will respond asynchronously
     } else if (request.type === "TRIGGER_SYNC") {
         performAutoSync();
         sendResponse({ success: true });
     }
-    return true;
+    return false;
 });
 
 // REAL-4 FIX: trackFailure now writes to BOTH:
@@ -880,11 +900,22 @@ async function trackFailure(failure) {
 
     // Increment retry counter using platform-scoped key so performAutoSync retry
     // logic can read syncFailures[platform] as a {uuid→count} map.
+    const MAX_FAILURES_PER_PLATFORM = 500;
     if (failure.platform) {
         if (typeof syncFailures[failure.platform] !== 'object' || syncFailures[failure.platform] === null) {
             syncFailures[failure.platform] = {};
         }
         syncFailures[failure.platform][failure.uuid] = (syncFailures[failure.platform][failure.uuid] || 0) + 1;
+
+        // Prune platform failures to prevent unbounded growth
+        const platformEntries = Object.keys(syncFailures[failure.platform]);
+        if (platformEntries.length > MAX_FAILURES_PER_PLATFORM) {
+            // Keep entries with highest retry count (most likely to need tracking)
+            const sorted = Object.entries(syncFailures[failure.platform])
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, MAX_FAILURES_PER_PLATFORM);
+            syncFailures[failure.platform] = Object.fromEntries(sorted);
+        }
     } else {
         // Fallback for callers that don't supply a platform (backwards compat)
         syncFailures[failure.uuid] = (syncFailures[failure.uuid] || 0) + 1;
@@ -912,6 +943,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
                 chrome.tabs.sendMessage(tab.id, {
                     type: 'EXPORT_THREAD',
                     payload: { data: response.data, format: 'markdown' }
+                }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.warn('[ContextMenu] Export message failed:', chrome.runtime.lastError.message);
+                    }
                 });
             } else {
                 console.warn('[ContextMenu] Extract unsuccessful:', response?.error);
