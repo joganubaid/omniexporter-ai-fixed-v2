@@ -64,7 +64,9 @@ function parseInlineMarkdown(text) {
 
     // Tokenise inline markdown: bold, italic, inline code, links
     // Order matters: bold (**) before italic (*), and code before both.
-    const TOKEN_RE = /(`[^`\n]+`)|(\[([^\]]+)\]\((https?:\/\/[^)]+)\))|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)/g;
+    // Bold (**) before italic (*). Italic requires non-space after opening
+    // and before closing * to avoid false matches on list markers like "* item".
+    const TOKEN_RE = /(`[^`\n]+`)|(\[([^\]]+)\]\((https?:\/\/[^)]+)\))|(\*\*[^*\n]+\*\*)|(\*(?=[^\s*])[^*\n]+(?<=[^\s*])\*)/g;
 
     const parts = [];
     let lastIndex = 0;
@@ -325,9 +327,9 @@ function markdownToBlocks(markdown) {
             continue;
         }
 
-        // Bulleted list: - item or * item (but not **bold**)
+        // Bulleted list: - item or * item (exclude dividers *** and bold-only lines)
         const bulletMatch = line.match(/^[-*] (.+)/);
-        if (bulletMatch && !(line.startsWith('**') && line.endsWith('**'))) {
+        if (bulletMatch && !(/^\*{3,}\s*$/.test(line)) && !(line.startsWith('**') && line.endsWith('**'))) {
             blocks.push(bulletedListItem(bulletMatch[1]));
             i++;
             continue;

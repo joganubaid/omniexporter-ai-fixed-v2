@@ -46,3 +46,7 @@ tests.js
 *_FINDINGS.md
 *_SUMMARY.md
 *_AUDIT.md
+API_ENDPOINTS_ANALYSIS.md
+API_ANALYSIS_*.md
+API_ENDPOINTS_*.txt
+api_endpoints_*.json
