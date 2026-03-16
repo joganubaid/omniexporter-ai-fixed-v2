@@ -540,15 +540,51 @@ function transformChatGPTData(data) {
         }
 
         // Helper to safely extract text content
+        // HAR-VERIFIED 2026-03-16: Handles tool calls, code interpreter, DALL-E, and browsing results
         const extractContent = (msg) => {
-            // Fix #5: Skip known non-text content types (blocklist approach)
             const contentType = msg.content?.content_type;
-            const skipTypes = ['model_editable_context', 'system_error', 'tether_browsing_display', 'tether_quote'];
+            // Skip only truly non-exportable system types
+            const skipTypes = ['model_editable_context', 'system_error'];
             if (contentType && skipTypes.includes(contentType)) {
                 return '';
             }
+
+            // Handle tool/function call results with structured output
+            if (contentType === 'code' && msg.content?.text) {
+                // Code interpreter execution result
+                return `\n\`\`\`\n${msg.content.text}\n\`\`\`\n`;
+            }
+
+            if (contentType === 'execution_output' && msg.content?.text) {
+                return `\n> **Code output:**\n\`\`\`\n${msg.content.text}\n\`\`\`\n`;
+            }
+
+            if (contentType === 'tether_browsing_display' && msg.content?.result) {
+                // Browsing result — include source URL and snippet
+                const result = msg.content.result;
+                return `\n> 🌐 **Browsing:** ${result.title || ''}\n> ${result.url || ''}\n> ${result.snippet || ''}\n`;
+            }
+
+            if (contentType === 'tether_quote' && msg.content?.text) {
+                // Quote from browsing — include as blockquote
+                return `\n> 📝 ${msg.content.text}\n`;
+            }
+
             if (msg.content?.parts && Array.isArray(msg.content.parts)) {
-                return msg.content.parts.filter(p => typeof p === 'string').join('\n');
+                const textParts = [];
+                for (const p of msg.content.parts) {
+                    if (typeof p === 'string') {
+                        textParts.push(p);
+                    } else if (p && typeof p === 'object') {
+                        // Handle structured parts (image metadata, file references, etc.)
+                        if (p.content_type === 'image_asset_pointer') {
+                            textParts.push(`🖼️ [Image: ${p.metadata?.dalle?.prompt || 'generated image'}]`);
+                        } else if (p.text) {
+                            textParts.push(p.text);
+                        }
+                    }
+                }
+                return textParts.join('\n');
             }
             if (msg.content?.text) return msg.content.text;
             if (typeof msg.content === 'string') return msg.content;

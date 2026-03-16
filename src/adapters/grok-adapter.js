@@ -301,6 +301,7 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
             console.log(`[Grok] Step 2 complete: ${rawMessages.length} messages loaded`);
 
             // ── STEP 3: Transform messages into entries ─────────────────────
+            // HAR-VERIFIED 2026-03-16: Handle media references and structured content
             const entries = [];
             let currentQuery = '';
 
@@ -308,7 +309,44 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
                 // HAR-verified: sender is "human" or "assistant" (lowercase)
                 const sender = (msg.sender || msg.role || msg.author || '').toLowerCase();
                 // HAR-verified: content field is "message" (not "content" or "text")
-                const content = msg.message || msg.content || msg.text || '';
+                let content = msg.message || msg.content || msg.text || '';
+
+                // Handle structured media references in response nodes
+                if (msg.mediaReferences && Array.isArray(msg.mediaReferences) && msg.mediaReferences.length > 0) {
+                    const mediaParts = msg.mediaReferences.map(ref => {
+                        if (ref.type === 'image' || ref.mediaType === 'image') {
+                            return `🖼️ [Image: ${ref.prompt || ref.alt || ref.url || 'generated image'}]`;
+                        }
+                        if (ref.type === 'video' || ref.mediaType === 'video') {
+                            return `🎬 [Video: ${ref.title || ref.url || 'generated video'}]`;
+                        }
+                        return `📎 [Media: ${ref.url || ref.title || 'attachment'}]`;
+                    });
+                    if (mediaParts.length > 0) {
+                        content = content ? `${content}\n\n${mediaParts.join('\n')}` : mediaParts.join('\n');
+                    }
+                }
+
+                // Handle code blocks in structured response
+                if (msg.codeBlocks && Array.isArray(msg.codeBlocks)) {
+                    const codeParts = msg.codeBlocks.map(cb => {
+                        const lang = cb.language || '';
+                        return `\n\`\`\`${lang}\n${cb.code || cb.content || ''}\n\`\`\`\n`;
+                    });
+                    if (codeParts.length > 0) {
+                        content = content ? `${content}\n${codeParts.join('\n')}` : codeParts.join('\n');
+                    }
+                }
+
+                // Handle web search results
+                if (msg.searchResults && Array.isArray(msg.searchResults)) {
+                    const sources = msg.searchResults.map(s =>
+                        `> 🔗 [${s.title || 'Source'}](${s.url || '#'})`
+                    );
+                    if (sources.length > 0) {
+                        content = content ? `${content}\n\n${sources.join('\n')}` : sources.join('\n');
+                    }
+                }
 
                 if (!content.trim()) return;
 

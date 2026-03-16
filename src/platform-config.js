@@ -88,6 +88,11 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                     primary: '/api/organizations/{org}/chat_conversations', // VERIFIED: 2026-03-16
                     fallback: '/api/v1/organizations/{org}/conversations' // FALLBACK
                 },
+                // HAR-verified 2026-03-16: v2 endpoint returns richer metadata (model, settings, enabled_mcp_tools)
+                conversationsV2: {
+                    primary: '/api/organizations/{org}/chat_conversations_v2?limit=30&starred=false&consistency=eventual',
+                    fallback: '/api/organizations/{org}/chat_conversations'
+                },
                 conversationDetail: {
                     primary: '/api/organizations/{org}/chat_conversations/{uuid}?tree=True&rendering_mode=messages&render_all_tools=true&consistency=str', // VERIFIED: 2026-03-16 by HAR (added consistency=str)
                     fallback: '/api/v1/organizations/{org}/conversations/{uuid}' // FALLBACK
@@ -106,6 +111,21 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                 listStyles: {
                     primary: '/api/organizations/{org}/list_styles', // VERIFIED: 2026-03-16 by HAR
                     fallback: '/api/organizations/{org}/list_styles'
+                },
+                // HAR-verified 2026-03-16: artifact version listing
+                artifactVersions: {
+                    primary: '/api/organizations/{org}/artifacts/{uuid}/versions?source=w',
+                    fallback: '/api/organizations/{org}/artifacts/{uuid}/versions'
+                },
+                // HAR-verified 2026-03-16: artifact storage info
+                artifactStorageInfo: {
+                    primary: '/api/organizations/{org}/artifacts/artifact_version/{artifactId}/manage/storage/info?chat_conversation_uuid={uuid}',
+                    fallback: '/api/organizations/{org}/artifacts/artifact_version/{artifactId}/manage/storage/info'
+                },
+                // HAR-verified 2026-03-16: file preview (generated file content)
+                filePreview: {
+                    primary: '/api/{org}/files/{fileId}/preview',
+                    fallback: '/api/{org}/files/{fileId}/preview'
                 }
             },
             patterns: {
