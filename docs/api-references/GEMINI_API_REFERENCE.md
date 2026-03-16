@@ -1536,7 +1536,31 @@ date: Fri, 21 Feb 2026 00:18:35 GMT
 
 ---
 
-**Document Version:** 1.0.0  
-**Last Updated:** 2026-02-21  
+**Document Version:** 1.1.0  
+**Last Updated:** 2026-03-16  
 **Maintained By:** OmniExporter AI Development Team
+
+---
+
+## Addendum: v5.3.0 Enrichments (2026-03-16)
+
+### Citation / Source URL Extraction
+
+The conversation detail response (`hNvQHb` RPC) includes citation metadata in the response candidate arrays. The adapter now walks the candidate metadata to extract source URLs:
+
+```
+response_candidate[N] → metadata array → citation_sources[]
+```
+
+Each citation source contains:
+
+```json
+{
+  "url": "https://example.com/article",
+  "title": "Article Title",
+  "snippet": "Relevant excerpt..."
+}
+```
+
+These are mapped to the standard `sources` array in the exported entry, enabling bookmark blocks in Notion export and clickable links in other export formats.
 

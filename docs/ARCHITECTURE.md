@@ -85,3 +85,43 @@ User clicks "Save to Notion"
 3. Add `matches` entry in `manifest.json` `content_scripts`
 4. Add the domain to `host_permissions` in `manifest.json`
 5. Add the platform URL builder to `PLATFORM_URLS` in `popup.js` and `options.js`
+
+---
+
+## Utilities
+
+### NotionBlockBuilder (`src/utils/notion-block-builder.js`)
+
+A self-contained module that converts markdown content and structured conversation data into rich [Notion API block](https://developers.notion.com/reference/block) objects. It is loaded by the background service worker and the popup/options UI scripts.
+
+**Key responsibilities:**
+
+| Function | Purpose |
+|----------|---------|
+| `buildNotionBlocks(entries, platform, metadata)` | Main entry point – turns an array of Q&A entries into Notion blocks |
+| `markdownToBlocks(markdown)` | Parses markdown into heading, code, list, quote, divider, and paragraph blocks |
+| `parseInlineMarkdown(text)` | Converts bold, italic, inline code, and links into `rich_text` annotations |
+| `extractToolCallBlocks(markdown)` | Detects `` ```tool_call:name `` fences and wraps them in collapsible toggle blocks |
+| `extractEntryContent(entry)` | Extracts answer text and sources from platform-specific entry shapes |
+| `chunkText(text, limit)` | Splits long text at the Notion 2 000-char `rich_text` limit |
+
+See [docs/NOTION_EXPORT.md](NOTION_EXPORT.md) for the full Notion export guide.
+
+---
+
+## Adapter Enrichment Pipeline
+
+Each platform adapter now follows a two-phase enrichment pipeline:
+
+1. **Thread list** – `getThreads()` returns lightweight metadata including model name, mode, and timestamps.
+2. **Thread detail** – `getThreadDetail()` fetches the full conversation and extracts rich content (citations, media items, knowledge cards, file assets).
+
+The enrichment additions per adapter:
+
+| Adapter | List-phase fields | Detail-phase fields |
+|---------|-------------------|---------------------|
+| Perplexity | `display_model`, `mode`, `search_focus` | `media_items`, `knowledge_cards`, `inline_images`, `pending_followups` |
+| ChatGPT | `default_model_slug`, `gizmo_id`, `create_time` | `multimodal_text`, `file_asset_pointer` content types |
+| Gemini | — | Citation/source URLs from candidate metadata |
+| Grok | Model name from conversation metadata | — |
+| DeepSeek | `model`, `agent_mode` from session info | — |
