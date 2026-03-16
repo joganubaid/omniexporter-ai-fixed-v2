@@ -215,7 +215,9 @@ var NotionOAuth = {
                 throw new Error(`Rate limited. Please try again in ${retryAfter} seconds.`);
             }
             const error = await response.json().catch(() => ({}));
-            throw new Error(`Token exchange failed: ${error.error || response.statusText || 'Unknown error'}`);
+            // Mask detailed API error messages to prevent information disclosure
+            const safeError = error.error_code || 'unknown_error';
+            throw new Error(`Token exchange failed (${safeError}). Please try again.`);
         }
 
         const tokens = await response.json().catch(() => null);
@@ -523,7 +525,8 @@ var NotionOAuth = {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(`API Error: ${err.message || response.statusText || 'Unknown error'}`);
+                _logOAuth('error', 'API Error details', { status: response.status, message: err.message });
+                throw new Error(`Connection test failed (HTTP ${response.status}). Please check your token.`);
             }
 
             const data = await response.json().catch(() => null);
@@ -576,7 +579,8 @@ var NotionOAuth = {
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
-            throw new Error(`Upload failed: ${err.message || response.statusText || 'Unknown error'}`);
+            _logOAuth('error', 'Upload error details', { status: response.status, message: err.message });
+            throw new Error(`Upload failed (HTTP ${response.status}). Please check your configuration.`);
         }
 
         return await response.json().catch(() => {

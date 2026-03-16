@@ -18,6 +18,7 @@ const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
     // Cache for Bearer token
     _accessToken: null,
     _tokenExpiry: 0,
+    _tokenFetchPromise: null, // Dedup concurrent token fetches
 
     extractUuid: (url) => {
         return platformConfig.extractUuid('ChatGPT', url);
@@ -41,35 +42,46 @@ const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
             return ChatGPTAdapter._accessToken;
         }
 
-        try {
-            const response = await fetch('https://chatgpt.com/api/auth/session', {
-                credentials: 'include',
-                headers: {
-                    'Accept': 'application/json',
-                    'Cache-Control': 'no-cache'
-                }
-            });
-
-            if (!response.ok) {
-                console.warn('[ChatGPT] Session API returned:', response.status);
-                return null;
-            }
-
-            const data = await response.json().catch((e) => { console.warn('[ChatGPT] Failed to parse session response:', e.message); return null; });
-            if (data && data.accessToken) {
-                ChatGPTAdapter._accessToken = data.accessToken;
-                // Token typically expires in ~1 hour; cache for 55 minutes
-                ChatGPTAdapter._tokenExpiry = Date.now() + 55 * 60 * 1000;
-                console.log('[ChatGPT] ✓ Bearer token acquired');
-                return data.accessToken;
-            }
-
-            console.warn('[ChatGPT] No accessToken in session response');
-            return null;
-        } catch (e) {
-            console.error('[ChatGPT] Failed to fetch access token:', e.message);
-            return null;
+        // Dedup concurrent token fetch requests
+        if (ChatGPTAdapter._tokenFetchPromise) {
+            return ChatGPTAdapter._tokenFetchPromise;
         }
+
+        ChatGPTAdapter._tokenFetchPromise = (async () => {
+            try {
+                const response = await fetch('https://chatgpt.com/api/auth/session', {
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+
+                if (!response.ok) {
+                    console.warn('[ChatGPT] Session API returned:', response.status);
+                    return null;
+                }
+
+                const data = await response.json().catch((e) => { console.warn('[ChatGPT] Failed to parse session response:', e.message); return null; });
+                if (data && data.accessToken) {
+                    ChatGPTAdapter._accessToken = data.accessToken;
+                    // Token typically expires in ~1 hour; cache for 55 minutes
+                    ChatGPTAdapter._tokenExpiry = Date.now() + 55 * 60 * 1000;
+                    console.log('[ChatGPT] ✓ Bearer token acquired');
+                    return data.accessToken;
+                }
+
+                console.warn('[ChatGPT] No accessToken in session response');
+                return null;
+            } catch (e) {
+                console.error('[ChatGPT] Failed to fetch access token:', e.message);
+                return null;
+            } finally {
+                ChatGPTAdapter._tokenFetchPromise = null;
+            }
+        })();
+
+        return ChatGPTAdapter._tokenFetchPromise;
     },
 
     // ============================================

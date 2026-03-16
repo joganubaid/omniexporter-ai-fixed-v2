@@ -125,8 +125,16 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
                     ? `${GrokAdapter.apiBase}/conversations?pageSize=50&pageToken=${encodeURIComponent(pageToken)}`
                     : `${GrokAdapter.apiBase}/conversations?pageSize=50`;
 
-                const response = await GrokAdapter._fetchWithRetry(url);
-                const data = await response.json();
+                let response, data;
+                try {
+                    response = await GrokAdapter._fetchWithRetry(url);
+                    data = await response.json();
+                } catch (pageError) {
+                    console.warn(`[Grok] Page ${pageNum} fetch failed:`, pageError.message);
+                    // Break pagination on error but return what we have so far
+                    break;
+                }
+
                 const chats = data.conversations || data.data || data.items || [];
 
                 for (const chat of chats) {

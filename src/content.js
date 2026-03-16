@@ -426,6 +426,9 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
 
         // Use Perplexity API directly with offset
         if (adapter.name === 'Perplexity') {
+            if (typeof platformConfig === 'undefined') {
+                throw new Error('platformConfig not loaded');
+            }
             const endpoint = platformConfig.buildEndpoint('Perplexity', 'listThreads');
             const baseUrl = platformConfig.getBaseUrl('Perplexity');
             const url = `${baseUrl}${endpoint}`;
@@ -483,6 +486,12 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         // ENTERPRISE: ChatGPT with native offset support + anti-bot headers
         else if (adapter.name === 'ChatGPT') {
             try {
+                if (typeof platformConfig === 'undefined') {
+                    throw new Error('platformConfig not loaded');
+                }
+                if (typeof ChatGPTAdapter === 'undefined') {
+                    throw new Error('ChatGPTAdapter not loaded');
+                }
                 const baseUrl = platformConfig.getBaseUrl('ChatGPT');
                 const endpoint = platformConfig.buildEndpoint('ChatGPT', 'conversations');
                 // HAR parameters: offset=0&limit=28&order=updated&is_archived=false&is_starred=false
@@ -553,7 +562,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                     if (i >= limit) return;
                     const href = item.closest('a')?.getAttribute('href') || '';
                     const uuid = href.match(/\/app\/([a-zA-Z0-9_-]+)/)?.[1];
-                    if (uuid) {
+                    if (uuid && SecurityUtils.isValidUuid(uuid)) {
                         threads.push({
                             uuid,
                             title: item.textContent?.trim() || 'Gemini Chat',

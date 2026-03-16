@@ -858,6 +858,11 @@ async function recordSyncJob(total, success, failed, attempted = total) {
 // MESSAGE HANDLERS
 // ============================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // SEC: Only accept messages from this extension's own content scripts
+    if (sender.id !== chrome.runtime.id) {
+        return false;
+    }
+
     // Handle logs from content scripts
     if (request.type === "LOGGER_STORE_LOG") {
         if (typeof Logger !== 'undefined' && Logger.receiveLog) {

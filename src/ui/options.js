@@ -894,11 +894,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const connectionMonitorInterval = setInterval(monitorConnectionStatus, 10000);
 
         // Phase 6: Memory leak fix - cleanup interval on page unload
-        window.addEventListener('beforeunload', () => {
+        // Use both beforeunload and pagehide for maximum reliability
+        const cleanupInterval = () => {
             if (connectionMonitorInterval) {
                 clearInterval(connectionMonitorInterval);
             }
-        });
+        };
+        window.addEventListener('beforeunload', cleanupInterval);
+        window.addEventListener('pagehide', cleanupInterval);
     } else {
         log('Waiting for AI platform connection...', 'info');
     }

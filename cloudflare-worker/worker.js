@@ -14,6 +14,30 @@ const ALLOWED_ORIGINS = new Set([
     // 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
 ]);
 
+// Rate limiting: track requests per IP (in-memory, resets on worker restart)
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per minute per IP
+const rateLimitMap = new Map();
+
+function isRateLimited(ip) {
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip);
+    if (!entry) {
+        rateLimitMap.set(ip, { count: 1, windowStart: now });
+        return false;
+    }
+    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+        // Reset window
+        rateLimitMap.set(ip, { count: 1, windowStart: now });
+        return false;
+    }
+    entry.count++;
+    if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+        return true;
+    }
+    return false;
+}
+
 function getCorsHeaders(request) {
     const origin = request.headers.get('Origin') || '';
 
@@ -63,6 +87,21 @@ export default {
             return new Response(JSON.stringify({ status: 'ok', service: 'omniexporter-oauth' }), {
                 headers: { ...getCorsHeaders(request), 'Content-Type': 'application/json' }
             });
+        }
+
+        // Rate limiting for POST endpoints
+        if (request.method === 'POST') {
+            const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+            if (isRateLimited(clientIp)) {
+                return new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), {
+                    status: 429,
+                    headers: {
+                        ...getCorsHeaders(request),
+                        'Content-Type': 'application/json',
+                        'Retry-After': '60'
+                    }
+                });
+            }
         }
 
         // Token exchange endpoint
@@ -116,8 +155,9 @@ async function handleTokenExchange(request, env) {
         if (!tokenResponse.ok) {
             console.error('Notion token exchange failed:', tokenData);
             return jsonResponse({
-                error: tokenData.error || 'Token exchange failed',
-                error_description: tokenData.error_description
+                error: 'Token exchange failed',
+                // Do not expose raw API error details to the client
+                error_code: tokenData.error || 'unknown_error'
             }, tokenResponse.status, request);
         }
 

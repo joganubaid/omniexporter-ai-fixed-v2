@@ -28,6 +28,7 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     _cacheTimestamp: 0,
     _cacheTTL: 300000, // MIN-10 FIX: 5 minute cache (was 1 minute — too short for paginated access)
     _cachedToken: null, // PERF-2 FIX: In-memory token cache to avoid localStorage scan on every call
+    _tokenFetchPromise: null, // Dedup concurrent API token fetches
 
     /**
      * Extract conversation UUID from the current page URL.
@@ -137,31 +138,42 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     // HAR-VERIFIED: Token is also returned by /api/v0/users/current as biz_data.token
     // Use this as ultimate async fallback when _getAuthToken() returns null
     _fetchTokenFromAPI: async () => {
-        try {
-            const resp = await fetch('https://chat.deepseek.com/api/v0/users/current', {
-                credentials: 'include',
-                headers: {
-                    'Accept': 'application/json',
-                    'x-client-platform': 'web',
-                    'x-client-version': '1.7.0',
-                    'x-client-locale': 'en_US',
-                    'x-app-version': '20241129.1'
-                }
-            });
-            if (!resp.ok) return null;
-            const data = await resp.json();
-            const token = data?.data?.biz_data?.token || data?.biz_data?.token;
-            if (token) {
-                console.log('[DeepSeek] Token retrieved from /users/current API');
-                // SEC-3 FIX: Cache in-memory only — do NOT write back to localStorage.
-                // Any injected script on the same origin can read localStorage.
-                DeepSeekAdapter._cachedToken = token;
-            }
-            return token || null;
-        } catch (e) {
-            console.warn('[DeepSeek] Could not fetch token from API:', e.message);
-            return null;
+        // Dedup concurrent API token fetch requests
+        if (DeepSeekAdapter._tokenFetchPromise) {
+            return DeepSeekAdapter._tokenFetchPromise;
         }
+
+        DeepSeekAdapter._tokenFetchPromise = (async () => {
+            try {
+                const resp = await fetch('https://chat.deepseek.com/api/v0/users/current', {
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json',
+                        'x-client-platform': 'web',
+                        'x-client-version': '1.7.0',
+                        'x-client-locale': 'en_US',
+                        'x-app-version': '20241129.1'
+                    }
+                });
+                if (!resp.ok) return null;
+                const data = await resp.json();
+                const token = data?.data?.biz_data?.token || data?.biz_data?.token;
+                if (token) {
+                    console.log('[DeepSeek] Token retrieved from /users/current API');
+                    // SEC-3 FIX: Cache in-memory only — do NOT write back to localStorage.
+                    // Any injected script on the same origin can read localStorage.
+                    DeepSeekAdapter._cachedToken = token;
+                }
+                return token || null;
+            } catch (e) {
+                console.warn('[DeepSeek] Could not fetch token from API:', e.message);
+                return null;
+            } finally {
+                DeepSeekAdapter._tokenFetchPromise = null;
+            }
+        })();
+
+        return DeepSeekAdapter._tokenFetchPromise;
     },
 
     // ============================================

@@ -125,7 +125,8 @@ root.ExportManager = class ExportManager {
             if (entry.sources && entry.sources.length > 0) {
                 md += `### 📚 Sources\n\n`;
                 entry.sources.forEach((source, i) => {
-                    md += `${i + 1}. [${source.title || source.url}](${source.url})\n`;
+                    const safeUrl = this._sanitizeUrl(source.url);
+                    md += `${i + 1}. [${source.title || source.url}](${safeUrl})\n`;
                 });
                 md += '\n';
             }
@@ -331,7 +332,9 @@ root.ExportManager = class ExportManager {
                 <div class="sources">
                     <div class="sources-label">📚 Sources</div>`;
                 entry.sources.forEach((source, i) => {
-                    html += `<a href="${source.url}" target="_blank">${i + 1}. ${this.escapeHtml(source.title || source.url)}</a>`;
+                    // SEC: Sanitize URL to prevent javascript: injection in href
+                    const safeUrl = this._sanitizeUrl(source.url);
+                    html += `<a href="${this.escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${i + 1}. ${this.escapeHtml(source.title || source.url)}</a>`;
                 });
                 html += `</div>`;
             }
@@ -472,6 +475,20 @@ root.ExportManager = class ExportManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Sanitize URL to prevent javascript: and data: injection in href attributes.
+     * Only allows http: and https: protocols.
+     */
+    static _sanitizeUrl(url) {
+        if (!url || typeof url !== 'string') return '';
+        const trimmed = url.trim();
+        // Only allow http(s) URLs — block javascript:, data:, vbscript:, etc.
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
+        // Relative URLs are safe
+        if (trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) return trimmed;
+        return '';
     }
 
     // ============================================
