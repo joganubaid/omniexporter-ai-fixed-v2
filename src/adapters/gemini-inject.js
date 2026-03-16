@@ -113,10 +113,12 @@
                 return { token: window.WIZ_global_data.SNlM0e };
             }
 
-            // Fallback: Search in page scripts
-            const scripts = document.querySelectorAll('script');
+            // Fallback: Search in inline page scripts (exclude external/injected scripts)
+            const scripts = document.querySelectorAll('script:not([src])');
             for (const script of scripts) {
-                const match = script.textContent?.match(/"SNlM0e":"([^"]+)"/);
+                const content = script.textContent;
+                if (!content || !content.includes('SNlM0e')) continue;
+                const match = content.match(/"SNlM0e":"([^"]+)"/);
                 if (match) return { token: match[1] };
             }
 
@@ -276,6 +278,7 @@
             this.originalOpen = null;
             this.originalSend = null;
             this.capturedData = [];
+            this.MAX_CAPTURED = 200; // Prevent unbounded memory growth
         }
 
         start() {
@@ -300,6 +303,10 @@
                 if (url && url.includes('/_/BardChatUi/data/')) {
                     xhr.addEventListener('load', function () {
                         try {
+                            // Evict oldest entries when buffer is full
+                            if (self.capturedData.length >= self.MAX_CAPTURED) {
+                                self.capturedData.splice(0, Math.floor(self.MAX_CAPTURED / 2));
+                            }
                             self.capturedData.push({
                                 url,
                                 method: xhr._omni_method,

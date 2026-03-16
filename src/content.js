@@ -178,11 +178,15 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                     if (request.type === "EXTRACT_CONTENT") {
                         await handleExtraction(adapter, sendResponse);
                     } else if (request.type === "EXTRACT_CONTENT_BY_UUID") {
+                        if (!request.payload?.uuid) {
+                            sendResponse({ success: false, error: 'Missing UUID in payload' });
+                            return;
+                        }
                         await handleExtractionByUuid(adapter, request.payload.uuid, sendResponse);
                     } else if (request.type === "GET_THREAD_LIST") {
-                        await handleGetThreadList(adapter, request.payload, sendResponse);
+                        await handleGetThreadList(adapter, request.payload || {}, sendResponse);
                     } else if (request.type === "GET_THREAD_LIST_OFFSET") {
-                        await handleGetThreadListOffset(adapter, request.payload, sendResponse);
+                        await handleGetThreadListOffset(adapter, request.payload || {}, sendResponse);
                     } else if (request.type === "GET_SPACES") {
                         await handleGetSpaces(adapter, sendResponse);
                     } else if (request.type === "GET_PLATFORM_INFO") {
@@ -202,6 +206,9 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                             sendResponse({ success: false, error: exportErr.message });
                         }
                         return; // sendResponse already called
+                    } else {
+                        // Unknown message type — respond immediately so the caller doesn't hang.
+                        sendResponse({ success: false, error: `Unknown message type: ${request.type}` });
                     }
                 } catch (error) {
                     sendResponse({ success: false, error: error.message });
@@ -597,6 +604,11 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
             }
         }
         // ENTERPRISE: Use getAllThreads if adapter supports it (for complete Load All)
+        else if (adapter.getThreadsWithOffset) {
+            // Claude and any adapter with offset-based pagination support
+            const result = await adapter.getThreadsWithOffset(offset, limit);
+            sendResponse({ success: true, data: result });
+        }
         else if (payload.loadAll && adapter.getAllThreads) {
             const threads = await adapter.getAllThreads();
             sendResponse({

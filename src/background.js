@@ -147,7 +147,7 @@ function getPlatformUrl(platform, uuid) {
         'ChatGPT': `https://chatgpt.com/c/${uuid}`,
         'Claude': `https://claude.ai/chat/${uuid}`,
         'Gemini': `https://gemini.google.com/app/${uuid}`,
-        'Grok': `https://grok.com/conversation/${uuid}`,
+        'Grok': `https://grok.com/chat/${uuid}`,
         'DeepSeek': `https://chat.deepseek.com/c/${uuid}`
     };
     // MIN-2 FIX: Return null for unknown platform instead of silently returning Perplexity URL.
@@ -165,6 +165,10 @@ async function acquireSyncLock() {
         console.log('[Sync] Another sync is in progress (in-memory), skipping');
         return false;
     }
+    // TOCTOU FIX: Set in-memory flag BEFORE async storage read to prevent
+    // two simultaneous alarm callbacks from both passing the check.
+    globalSyncInProgress = true;
+
     // Cross-restart check: verify storage state wasn’t left dirty by a crashed SW
     const { syncInProgress, syncStartTime } = await chrome.storage.local.get(['syncInProgress', 'syncStartTime']);
     if (syncInProgress) {
@@ -172,11 +176,11 @@ async function acquireSyncLock() {
         // If lock is older than 10 minutes, treat as stale and override
         if (age < 10 * 60 * 1000) {
             console.log('[Sync] Sync in progress per storage (age: ' + Math.round(age/1000) + 's), skipping');
+            globalSyncInProgress = false; // Reset since we're not proceeding
             return false;
         }
         console.warn('[Sync] Stale lock detected (' + Math.round(age/60000) + 'min), overriding');
     }
-    globalSyncInProgress = true;
     await chrome.storage.local.set({ syncInProgress: true, syncStartTime: Date.now() });
     return true;
 }
@@ -363,7 +367,9 @@ async function performAutoSync() {
         try {
             authToken = await NotionOAuth.getActiveToken();
         } catch (error) {
-            console.log("[AutoSync] Skipped: Notion auth missing", error.message);
+            Logger.warn('AutoSync', 'Notion auth missing — skipped sync', { error: error.message });
+            // Track auth failure so the badge/UI can reflect the issue
+            await trackFailure({ uuid: '_auth_', reason: 'Notion auth: ' + error.message, platform: 'Notion' });
             await releaseSyncLock();
             return;
         }
@@ -396,7 +402,9 @@ async function performAutoSync() {
 
             // BUG-7 FIX: Iterate all open AI tabs instead of only the first.
             // Build a map of platform -> tab so each platform is processed once per run.
+            // Prefer tabs whose URL includes a conversation/chat path over landing pages.
             const platformTabMap = new Map();
+            const chatPathPatterns = ['/c/', '/chat/', '/conversation/', '/thread/'];
             for (const t of tabs) {
                 const p = t.url.includes('perplexity') ? 'Perplexity'
                     : t.url.includes('chatgpt') || t.url.includes('openai') ? 'ChatGPT'
@@ -405,7 +413,13 @@ async function performAutoSync() {
                     : t.url.includes('grok') || t.url.includes('x.com') ? 'Grok'
                     : t.url.includes('deepseek') ? 'DeepSeek'
                     : null;
-                if (p && !platformTabMap.has(p)) platformTabMap.set(p, t);
+                if (!p) continue;
+                const isOnChatPage = chatPathPatterns.some(pat => t.url.includes(pat));
+                const existing = platformTabMap.get(p);
+                // Replace if no tab yet, or if new tab is on a chat page and old one isn't
+                if (!existing || (isOnChatPage && !chatPathPatterns.some(pat => existing.url.includes(pat)))) {
+                    platformTabMap.set(p, t);
+                }
             }
 
             // REAL-2 FIX: Single shared Set lives outside the platform loop.
@@ -495,10 +509,23 @@ async function performAutoSync() {
                 for (const thread of batch) {
                     try {
                         const detailResponse = await new Promise((resolve) => {
+                            const timeout = setTimeout(() => {
+                                console.warn(`[AutoSync] Timeout extracting thread ${thread.uuid}`);
+                                resolve(null);
+                            }, 30000);
+
                             chrome.tabs.sendMessage(tab.id, {
                                 type: 'EXTRACT_CONTENT_BY_UUID',
                                 payload: { uuid: thread.uuid }
-                            }, resolve);
+                            }, (response) => {
+                                clearTimeout(timeout);
+                                if (chrome.runtime.lastError) {
+                                    console.warn('[AutoSync] sendMessage error:', chrome.runtime.lastError.message);
+                                    resolve(null);
+                                } else {
+                                    resolve(response);
+                                }
+                            });
                         });
 
                         if (!detailResponse || !detailResponse.success) {
@@ -540,6 +567,12 @@ async function performAutoSync() {
 
                 // Brief pause between batches
                 await new Promise(r => setTimeout(r, 2000));
+
+                // SW SUSPENSION FIX: Persist exportedUuids after each batch so progress
+                // isn't lost if Chrome suspends the Service Worker mid-sync.
+                await chrome.storage.local.set({
+                    exportedUuids: Array.from(sharedExportedUuids)
+                });
             }
 
             // Update checkpoint
@@ -835,7 +868,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // REAL-4 FIX: trackFailure now writes to BOTH:
 //   'failures' (array, for Activity Log display)
-//   'syncFailures' (object uuid→count, for retry logic reads)
+//   'syncFailures' (object platform→{uuid→count}, for retry logic reads)
 async function trackFailure(failure) {
     const [{ failures = [] }, { syncFailures = {} }] = await Promise.all([
         chrome.storage.local.get('failures'),
@@ -845,8 +878,17 @@ async function trackFailure(failure) {
     failures.push({ ...failure, timestamp: new Date().toISOString() });
     if (failures.length > 100) failures.shift();
 
-    // Increment retry counter for this UUID
-    syncFailures[failure.uuid] = (syncFailures[failure.uuid] || 0) + 1;
+    // Increment retry counter using platform-scoped key so performAutoSync retry
+    // logic can read syncFailures[platform] as a {uuid→count} map.
+    if (failure.platform) {
+        if (typeof syncFailures[failure.platform] !== 'object' || syncFailures[failure.platform] === null) {
+            syncFailures[failure.platform] = {};
+        }
+        syncFailures[failure.platform][failure.uuid] = (syncFailures[failure.platform][failure.uuid] || 0) + 1;
+    } else {
+        // Fallback for callers that don't supply a platform (backwards compat)
+        syncFailures[failure.uuid] = (syncFailures[failure.uuid] || 0) + 1;
+    }
 
     await chrome.storage.local.set({ failures, syncFailures });
 }

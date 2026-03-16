@@ -904,7 +904,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Event Listeners - Header
-    document.getElementById('autoSyncToggle').addEventListener('click', toggleAutoSync);
+    document.getElementById('autoSyncToggle')?.addEventListener('click', toggleAutoSync);
 
     // OAuth UI events
     document.querySelectorAll('input[name="notionAuthMethod"]').forEach((input) => {
@@ -928,7 +928,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     // Platform selector events
-    document.getElementById('platformSelector').addEventListener('change', (e) => {
+    document.getElementById('platformSelector')?.addEventListener('change', (e) => {
         const selectedTabId = parseInt(e.target.value);
         if (selectedTabId) {
             aiPlatformTabId = selectedTabId;
@@ -942,30 +942,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    document.getElementById('refreshPlatformsBtn').addEventListener('click', () => {
+    document.getElementById('refreshPlatformsBtn')?.addEventListener('click', () => {
         log('Refreshing platforms...', 'info');
         updatePlatformSelector();
     });
 
     // Event Listeners - Thread List
-    document.getElementById('selectAllBtn').addEventListener('click', selectAllThreads);
-    document.getElementById('refreshHistory').addEventListener('click', () => fetchHistory(1));
-    document.getElementById('prevPageBtn').addEventListener('click', () => changePage(-1));
-    document.getElementById('nextPageBtn').addEventListener('click', () => changePage(1));
-    document.getElementById('loadAllBtn').addEventListener('click', loadAllThreads);
-    document.getElementById('historySearch').addEventListener('input', debounce(handleSearch));
+    document.getElementById('selectAllBtn')?.addEventListener('click', selectAllThreads);
+    document.getElementById('refreshHistory')?.addEventListener('click', () => fetchHistory(1));
+    document.getElementById('prevPageBtn')?.addEventListener('click', () => changePage(-1));
+    document.getElementById('nextPageBtn')?.addEventListener('click', () => changePage(1));
+    document.getElementById('loadAllBtn')?.addEventListener('click', loadAllThreads);
+    document.getElementById('historySearch')?.addEventListener('input', debounce(handleSearch));
 
     // Event Listeners - Bulk Actions
-    document.getElementById('bulkExportBtn').addEventListener('click', bulkSyncToNotion);
-    document.getElementById('bulkMdBtn').addEventListener('click', bulkExportMarkdown);
-    document.getElementById('exportAllBtn').addEventListener('click', exportAllThreads);
-    document.getElementById('clearCacheBtn').addEventListener('click', clearExportedCache);
+    document.getElementById('bulkExportBtn')?.addEventListener('click', bulkSyncToNotion);
+    document.getElementById('bulkMdBtn')?.addEventListener('click', bulkExportMarkdown);
+    document.getElementById('exportAllBtn')?.addEventListener('click', exportAllThreads);
+    document.getElementById('clearCacheBtn')?.addEventListener('click', clearExportedCache);
 
     // Event Listeners - Settings
-    document.getElementById('saveAllSettings').addEventListener('click', saveAllSettings);
-    document.getElementById('testNotionBtn').addEventListener('click', testNotionConnection);
-    document.getElementById('downloadLogsBtn').addEventListener('click', downloadLogsAsJson);
-    document.getElementById('clearLogs').addEventListener('click', clearAllData);
+    document.getElementById('saveAllSettings')?.addEventListener('click', saveAllSettings);
+    document.getElementById('testNotionBtn')?.addEventListener('click', testNotionConnection);
+    document.getElementById('downloadLogsBtn')?.addEventListener('click', downloadLogsAsJson);
+    document.getElementById('clearLogs')?.addEventListener('click', clearAllData);
 
     // Phase 2: Offline Detection
     window.addEventListener('online', () => log('🌐 Back online!', 'success'));
@@ -1012,7 +1012,7 @@ function initSubtabs() {
 
             // Update subtab content
             document.querySelectorAll('.subtab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById(`subtab-${subtabId}`).classList.add('active');
+            document.getElementById(`subtab-${subtabId}`)?.classList.add('active');
         });
     });
 }
@@ -1024,6 +1024,7 @@ function initDataSourceRadio() {
     document.querySelectorAll('input[name="dataSource"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             const spaceSelector = document.getElementById('spaceSelector');
+            if (!spaceSelector) return;
             if (e.target.value === 'spaces') {
                 spaceSelector.classList.remove('hidden');
             } else {
@@ -1037,6 +1038,8 @@ function initDataSourceRadio() {
 function initDateFilter() {
     const checkbox = document.getElementById('dateFilterEnabled');
     const input = document.getElementById('dateFilterValue');
+
+    if (!checkbox || !input) return;
 
     checkbox.addEventListener('change', () => {
         input.disabled = !checkbox.checked;
@@ -1229,17 +1232,17 @@ async function testNotionConnection() {
         if (response.ok) {
             const data = await response.json();
             const dbTitle = data.title?.[0]?.plain_text || 'Database';
-            resultEl.innerHTML = `✅ Connected: "${dbTitle}"`;
+            resultEl.innerHTML = `✅ Connected: "${escapeHtml(dbTitle)}"`;
             resultEl.style.color = 'var(--success)';
             log(`Notion connection successful: ${dbTitle}`, 'success');
         } else {
             const error = await response.json();
-            resultEl.innerHTML = `❌ ${error.message || 'Connection failed'}`;
+            resultEl.innerHTML = `❌ ${escapeHtml(error.message || 'Connection failed')}`;
             resultEl.style.color = 'var(--error)';
             log(`Notion connection failed: ${error.message}`, 'error');
         }
     } catch (err) {
-        resultEl.innerHTML = `❌ ${err.message}`;
+        resultEl.innerHTML = `❌ ${escapeHtml(err.message)}`;
         resultEl.style.color = 'var(--error)';
         log(`Notion test error: ${err.message}`, 'error');
     } finally {
@@ -1410,7 +1413,7 @@ async function fetchHistory(page = 1) {
         });
     } catch (e) {
         console.error("[OmniExporter] Error boundary caught fetchHistory error:", e);
-        listEl.innerHTML = `<div class="loader">Error: ${e.message}</div>`;
+        listEl.innerHTML = `<div class="loader">Error: ${escapeHtml(e.message)}</div>`;
     }
 }
 
@@ -2011,7 +2014,7 @@ async function syncToNotion(data) {
         const notionUrl = 'https://api.notion.com/v1/pages';
 
         const response = await withRetry(async () => {
-            return await notionRateLimiter.throttle(async () => {
+            const res = await notionRateLimiter.throttle(async () => {
                 return await fetch(notionUrl, {
                     method: 'POST',
                     headers: {
@@ -2026,6 +2029,11 @@ async function syncToNotion(data) {
                     })
                 });
             });
+            // Throw on rate-limit / service-unavailable so withRetry will back off and retry
+            if (res.status === 429 || res.status === 503) {
+                throw new Error(`Rate limited (${res.status})`);
+            }
+            return res;
         });
 
         if (!response.ok) {
@@ -2333,7 +2341,7 @@ function log(message, type = 'info') {
     const item = document.createElement('div');
     item.className = `log-item log-${type}`;
     const time = new Date().toLocaleTimeString();
-    item.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+    item.innerHTML = `<span class="log-time">[${time}]</span> ${escapeHtml(message)}`;
     container.insertBefore(item, container.firstChild);
 
     while (container.children.length > 100) {
@@ -2607,7 +2615,7 @@ async function loadLogEntries() {
         });
     } catch (e) {
         console.error('Failed to load log entries:', e);
-        container.innerHTML = `<div class="log-empty-state">Error loading logs: ${e.message}</div>`;
+        container.innerHTML = `<div class="log-empty-state">Error loading logs: ${escapeHtml(e.message)}</div>`;
     }
 }
 

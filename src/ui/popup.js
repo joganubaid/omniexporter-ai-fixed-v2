@@ -599,7 +599,7 @@ async function syncToNotionAPI(data, apiKey, dbId) {
     const properties = await buildNotionProperties(data, dbId, apiKey, entries);
 
     const response = await withRetry(async () => {
-        return await notionRateLimiter.throttle(async () => {
+        const res = await notionRateLimiter.throttle(async () => {
             return await fetch('https://api.notion.com/v1/pages', {
                 method: 'POST',
                 headers: {
@@ -614,6 +614,11 @@ async function syncToNotionAPI(data, apiKey, dbId) {
                 })
             });
         });
+        // Throw on rate-limit / service-unavailable so withRetry will back off and retry
+        if (res.status === 429 || res.status === 503) {
+            throw new Error(`Rate limited (${res.status})`);
+        }
+        return res;
     });
 
     if (!response.ok) {
