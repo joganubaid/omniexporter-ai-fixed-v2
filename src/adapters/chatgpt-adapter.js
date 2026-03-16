@@ -578,7 +578,8 @@ function transformChatGPTData(data) {
                     } else if (p && typeof p === 'object') {
                         // Handle structured parts (image metadata, file references, etc.)
                         if (p.content_type === 'image_asset_pointer') {
-                            textParts.push(`🖼️ [Image: ${p.metadata?.dalle?.prompt || 'generated image'}]`);
+                            const desc = p.metadata?.dalle?.prompt || p.asset_pointer || p.id || 'generated image';
+                            textParts.push(`🖼️ [Image: ${desc}]`);
                         } else if (p.text) {
                             textParts.push(p.text);
                         }
