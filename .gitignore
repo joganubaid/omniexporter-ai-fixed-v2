@@ -30,9 +30,8 @@ repos.txt
 *_response.json
 *_pretty.json
 *_debug.json
-*.har
-perplexityhar.txt
 
+perplexityhar.txt
 
 
 # Development/test scripts — not part of the extension
