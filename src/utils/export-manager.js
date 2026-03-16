@@ -414,7 +414,7 @@ root.ExportManager = class ExportManager {
 
         // CSV escape: wrap in quotes and double any internal quotes
         const csvEscape = (text) => {
-            if (!text) return '""';
+            if (text === null || text === undefined) return '""';
             const str = String(text).replace(/"/g, '""');
             return `"${str}"`;
         };
