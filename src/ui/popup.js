@@ -575,12 +575,8 @@ async function syncToNotionAPI(data, apiKey, dbId) {
             let answer = '';
             if (entry.blocks && Array.isArray(entry.blocks)) {
                 entry.blocks.forEach(block => {
-                    if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                        if (block.markdown_block.answer) {
-                            answer += block.markdown_block.answer + '\n\n';
-                        } else if (block.markdown_block.chunks) {
-                            answer += block.markdown_block.chunks.join('\n') + '\n\n';
-                        }
+                    if (block.markdown_block) {
+                        answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                     }
                 });
             }
@@ -747,12 +743,8 @@ function formatToMarkdown(data) {
         let answer = '';
         if (entry.blocks && Array.isArray(entry.blocks)) {
             entry.blocks.forEach(block => {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    if (block.markdown_block.answer) {
-                        answer += block.markdown_block.answer + '\n\n';
-                    } else if (block.markdown_block.chunks) {
-                        answer += block.markdown_block.chunks.join('\n') + '\n\n';
-                    }
+                if (block.markdown_block) {
+                    answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                 }
             });
         }

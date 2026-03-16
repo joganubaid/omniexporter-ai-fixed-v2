@@ -168,3 +168,48 @@ Because platform APIs require live sessions, add a **manual health checklist** t
 
 - Add shared test fixtures for export validation
 - Expand UI tests for clickability and selection
+
+---
+
+## Final Production Readiness Checklist
+
+### Answer Extraction Consistency
+All three Notion sync paths (background.js, popup.js, options.js) must extract answers
+identically from block structures. The canonical pattern:
+```javascript
+if (block.markdown_block) {
+    answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
+}
+```
+- ✅ background.js — handles all `markdown_block` regardless of `intended_usage`
+- ✅ popup.js — updated to match background.js (was filtering on `intended_usage === 'ask_text'` only)
+- ✅ options.js — `ResilientDataExtractor.extractAnswer` updated to accumulate all blocks
+- ✅ ExportManager.extractAnswer — handles both `intended_usage` and generic blocks
+
+### HAR Data Security
+- ✅ `*.har` added to `.gitignore`
+- ✅ HAR files removed from git tracking (contain session data, 352MB total)
+
+### Platform Adapters — HAR-Verified Features
+| Platform   | Thread List | Detail | Model | Thinking | Tool Use | Attachments | Citations |
+|------------|:-----------:|:------:|:-----:|:--------:|:--------:|:-----------:|:---------:|
+| ChatGPT    | ✅          | ✅     | ✅    | —        | ✅       | ✅          | ✅        |
+| Claude     | ✅          | ✅     | ✅    | ✅       | ✅       | ✅          | —         |
+| Perplexity | ✅          | ✅     | ✅    | —        | —        | —           | ✅        |
+| Gemini     | ✅          | ✅     | ✅    | —        | —        | —           | ✅        |
+| Grok       | ✅          | ✅     | ✅    | —        | —        | —           | ✅        |
+| DeepSeek   | ✅          | ✅     | ✅    | ✅       | —        | —           | —         |
+
+### Cloudflare Worker
+- ✅ CORS restricted to known chrome-extension:// origins
+- ✅ Rate limiting (10 req/min per IP)
+- ✅ Safe error code mapping (only known Notion error codes forwarded)
+- ✅ PKCE code_verifier support
+- ✅ Only required fields returned from token exchange
+
+### Notion Sync
+- ✅ NotionBlockBuilder used when available (background, popup, options)
+- ✅ Fallback block generation consistent across all sync paths
+- ✅ 100-block batch limit respected with continuation batches
+- ✅ Rate limiting with 350ms delays between batches
+- ✅ Database schema introspection for dynamic property mapping

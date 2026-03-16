@@ -31,6 +31,9 @@ repos.txt
 *_pretty.json
 *_debug.json
 
+# HAR files — contain sensitive user session data and are very large
+*.har
+
 perplexityhar.txt
 
 

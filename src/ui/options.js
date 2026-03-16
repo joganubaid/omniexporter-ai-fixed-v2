@@ -256,19 +256,22 @@ class ResilientDataExtractor {
      * Extract answer from entry with multiple fallback strategies
      */
     static extractAnswer(entry) {
-        // Strategy 1: Perplexity blocks structure
+        // Strategy 1: blocks structure (Perplexity, ChatGPT, Claude, Grok)
         if (entry.blocks && Array.isArray(entry.blocks)) {
+            let answer = '';
             for (const block of entry.blocks) {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    const answer = block.markdown_block.answer ||
+                // Handle blocks with markdown_block (all platforms use this structure)
+                if (block.markdown_block) {
+                    const content = block.markdown_block.answer ||
                         (block.markdown_block.chunks || []).join('\n');
-                    if (answer) return answer;
+                    if (content) answer += content + '\n\n';
                 }
                 // Alternative block types
                 if (block.text_block?.content) {
-                    return block.text_block.content;
+                    answer += block.text_block.content + '\n\n';
                 }
             }
+            if (answer.trim()) return answer.trim();
         }
 
         // Strategy 2: Direct properties
@@ -1919,12 +1922,8 @@ async function syncToNotion(data) {
 
                 if (entry.blocks && Array.isArray(entry.blocks)) {
                     entry.blocks.forEach(block => {
-                        if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                            if (block.markdown_block.answer) {
-                                answer += block.markdown_block.answer + '\n\n';
-                            } else if (block.markdown_block.chunks && Array.isArray(block.markdown_block.chunks)) {
-                                answer += block.markdown_block.chunks.join('\n') + '\n\n';
-                            }
+                        if (block.markdown_block) {
+                            answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                         }
                         if (block.intended_usage === 'web_results' && block.web_result_block) {
                             const webResults = block.web_result_block.web_results || [];
@@ -2460,12 +2459,8 @@ function formatToMarkdown(data) {
         let answer = '';
         if (entry.blocks && Array.isArray(entry.blocks)) {
             entry.blocks.forEach(block => {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    if (block.markdown_block.answer) {
-                        answer += block.markdown_block.answer + '\n\n';
-                    } else if (block.markdown_block.chunks) {
-                        answer += block.markdown_block.chunks.join('\n') + '\n\n';
-                    }
+                if (block.markdown_block) {
+                    answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                 }
             });
         }
