@@ -30,7 +30,7 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                 threadDetail: {
                     primary: '/rest/thread/{uuid}', // VERIFIED: 2026-03-16
                     fallback: '/api/threads/{uuid}', // FALLBACK
-                    params: (version) => `?with_parent_info=true&with_schematized_response=true&version=${version}&source=default`
+                    params: (version) => `?with_parent_info=true&with_schematized_response=true&supported_block_use_cases=ask_text,web_results,media_items,knowledge_cards,inline_images,pending_followups&version=${version}&source=default`
                 },
                 spaces: {
                     primary: '/rest/collections/list_user_collections', // VERIFIED: 2026-03-16 by HAR (was /rest/collections/list)
