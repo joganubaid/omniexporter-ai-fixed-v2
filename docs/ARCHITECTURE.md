@@ -64,7 +64,7 @@ User clicks "Save to Notion"
 | `auth/notion-oauth.js` | OAuth2 token management (authorize, store, re-auth) |
 | `cloudflare-worker/worker.js` | Token exchange worker (keeps client secret safe) |
 | `src/adapters/*.js` | One file per AI platform |
-| `src/utils/export-manager.js` | Export to Markdown, HTML, JSON, PDF |
+| `src/utils/export-manager.js` | Export to Markdown, HTML, JSON, PDF, TXT, CSV — with rich content extraction |
 | `src/utils/logger.js` | Buffered, filterable debug logger |
 | `src/utils/network-interceptor.js` | Passive XHR/Fetch sniffer for chat list auto-detection |
 | `src/platform-config.js` | Platform URLs, UUID patterns, API base paths |
@@ -89,6 +89,10 @@ User clicks "Save to Notion"
 ---
 
 ## Utilities
+
+### ExportManager — `_extractEntryMeta()` (`src/utils/export-manager.js`)
+
+A shared helper method used by all export formats to extract platform-agnostic rich metadata from any adapter's entry format. It normalizes sources, media items, knowledge cards, attachments, and related questions from heterogeneous block structures (e.g., Perplexity `web_results`, `media_items`, `knowledge_cards` blocks) as well as entry-level `sources`, `citations`, and `attachments` arrays. This ensures every export format has consistent access to the same enriched data regardless of the originating platform.
 
 ### NotionBlockBuilder (`src/utils/notion-block-builder.js`)
 

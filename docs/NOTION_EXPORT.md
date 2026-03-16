@@ -211,6 +211,35 @@ const blocks = NotionBlockBuilder.buildNotionBlocks(
 
 ---
 
+## Troubleshooting
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| **Block limit errors** | Notion API only accepts 100 children per request | `appendBlocksToPage()` handles pagination automatically — blocks are sent in batches of 100 |
+| **Truncated content** | Content over 2 000 characters in a single `rich_text` field | `chunkText()` auto-splits at the 2 000-char boundary; no action needed |
+| **Missing rich content** | `NotionBlockBuilder` not loaded (e.g., `typeof NotionBlockBuilder === 'undefined'`) | Falls back to basic paragraph blocks. Ensure `notion-block-builder.js` is listed in `manifest.json` scripts |
+| **Empty pages** | Adapter returned an empty `entries` array | Verify the conversation has content; re-open the conversation tab and retry export |
+
+---
+
+## Export Format Comparison
+
+How each export format handles rich content types:
+
+| Content Type | Notion | Markdown | HTML | TXT | CSV | JSON |
+|--------------|--------|----------|------|-----|-----|------|
+| Thinking blocks | 💭 Purple callout | `> 💭` blockquote | Collapsible purple `<details>` | Plain text section | — | `thinking` field |
+| Tool calls | 🔧 Collapsible toggle | `` ```tool_call:name `` fence | Collapsible blue `<details>` | `[TOOL CALL]` section | — | `tool_calls` array |
+| Tool results | ✅/❌ Green/red callout | `> **Tool result:**` quote | Green/red `<div>` | `[TOOL RESULT]` section | — | `tool_results` array |
+| Code blocks | `code` block with language | Fenced `` ``` `` with language | `<pre><code>` with language label | Indented text | — | Raw markdown |
+| Sources | 🔖 Bookmark blocks (max 15) | Numbered links | Clickable link list | `[SOURCES]` section | Semicolon-separated | `sources` array |
+| Knowledge cards | 📋 Callout blocks | 📋 Section with titles | Green card `<div>` | `[KNOWLEDGE CARDS]` section | — | `knowledgeCards` array |
+| Attachments | 📎 Toggle blocks | 📎 Section with file info | Yellow badge `<span>` | `[ATTACHMENTS]` section | — | `attachments` array |
+| Related questions | 🔗 Bulleted list | 🔗 Bulleted list | Link list section | `[RELATED QUESTIONS]` section | — | `relatedQuestions` array |
+| Media items | 🖼️ Image/embed blocks | 🖼️ Section with URLs | `<img>` / embed | `[MEDIA]` section | — | `media` array |
+
+---
+
 ## Public API
 
 The module exposes the following functions via `window.NotionBlockBuilder` (or `globalThis.NotionBlockBuilder`):

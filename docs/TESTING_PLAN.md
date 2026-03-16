@@ -11,7 +11,7 @@
 - Content script messaging and normalization
 - Platform adapters (thread list + detail extraction)
 - UI popup + dashboard interactions
-- Export formats (Markdown, JSON, HTML, TXT, PDF)
+- Export formats (Markdown, JSON, HTML, TXT, PDF, CSV)
 - Notion OAuth + database + page upload
 - Logging, interception, and storage limits
 
@@ -66,8 +66,13 @@
  - Loading and success toasts appear
 
 ### Export Manager (src/utils/export-manager.js)
-- Markdown, JSON, HTML, TXT, PDF output matches expected structure
+- Markdown, JSON, HTML, TXT, PDF, CSV output matches expected structure
 - Metadata present (title, date, url, source)
+- `_extractEntryMeta` correctly extracts sources, media, knowledge cards, attachments
+- Thinking blocks render in all formats (collapsible in HTML, blockquote in MD, text in TXT)
+- Tool calls render as collapsible blocks in HTML and toggle blocks in Notion
+- CSV includes Model column
+- Rich content (sources, attachments, knowledge cards, related questions) present in all export formats
 
 ### Notion OAuth + Sync
 - OAuth configuration and token storage
