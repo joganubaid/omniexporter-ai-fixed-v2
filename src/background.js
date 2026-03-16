@@ -41,6 +41,12 @@ try {
     console.error("[OmniExporter] Failed to load auth/notion-oauth.js:", e);
 }
 
+try {
+    importScripts('utils/notion-block-builder.js');
+} catch (e) {
+    console.warn("[OmniExporter] notion-block-builder.js not found — using basic block generation");
+}
+
 // Initialize logger for background script
 Logger.init().then(() => {
     Logger.info('System', 'OmniExporter AI Service Worker Active');
@@ -712,41 +718,53 @@ async function syncToNotion(data, settings) {
                 properties['Exported'] = { date: { start: new Date().toISOString().split('T')[0] } };
         }
 
-        children.push({
-            type: "callout",
-            callout: {
-                icon: { emoji: "🤖" },
-                color: "blue_background",
-                rich_text: [{ type: "text", text: { content: `Auto-synced from ${data.platform || 'AI'} at ${new Date().toLocaleString()}` } }]
-            }
-        });
-        children.push({ type: "divider", divider: {} });
+        // Use rich block builder if available, otherwise fall back to basic blocks
+        if (typeof NotionBlockBuilder !== 'undefined') {
+            const richBlocks = NotionBlockBuilder.buildNotionBlocks(entries, data.platform || 'AI', {
+                title: data.title,
+                url: getPlatformUrl(data.platform, data.uuid),
+                model: data.detail?.model || '',
+                exportDate: new Date().toISOString().split('T')[0]
+            });
+            richBlocks.forEach(b => children.push(b));
+        } else {
+            // Fallback: basic block generation (pre-v5.3 behavior)
+            children.push({
+                type: "callout",
+                callout: {
+                    icon: { emoji: "🤖" },
+                    color: "blue_background",
+                    rich_text: [{ type: "text", text: { content: `Auto-synced from ${data.platform || 'AI'} at ${new Date().toLocaleString()}` } }]
+                }
+            });
+            children.push({ type: "divider", divider: {} });
 
-        entries.slice(0, 5).forEach((entry) => {
-            const query = entry.query || entry.query_str || '';
-            if (query) {
-                children.push({
-                    type: "heading_2",
-                    heading_2: { rich_text: [{ type: "text", text: { content: query.slice(0, 2000) } }] }
-                });
-            }
-            let answer = '';
-            if (entry.blocks && Array.isArray(entry.blocks)) {
-                entry.blocks.forEach(block => {
-                    if (block.markdown_block) {
-                        answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
-                    }
-                });
-            }
-            if (!answer.trim()) answer = entry.answer || entry.text || '';
+            entries.forEach((entry) => {
+                const query = entry.query || entry.query_str || '';
+                if (query) {
+                    children.push({
+                        type: "heading_2",
+                        heading_2: { rich_text: [{ type: "text", text: { content: query.slice(0, 2000) } }] }
+                    });
+                }
+                let answer = '';
+                if (entry.blocks && Array.isArray(entry.blocks)) {
+                    entry.blocks.forEach(block => {
+                        if (block.markdown_block) {
+                            answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
+                        }
+                    });
+                }
+                if (!answer.trim()) answer = entry.answer || entry.text || '';
 
-            if (answer.trim()) {
-                children.push({
-                    type: "paragraph",
-                    paragraph: { rich_text: [{ type: "text", text: { content: answer.slice(0, 1900) } }] }
-                });
-            }
-        });
+                if (answer.trim()) {
+                    children.push({
+                        type: "paragraph",
+                        paragraph: { rich_text: [{ type: "text", text: { content: answer.slice(0, 1900) } }] }
+                    });
+                }
+            });
+        }
 
         console.log('[AutoSync] Creating page with', children.length, 'blocks');
 
