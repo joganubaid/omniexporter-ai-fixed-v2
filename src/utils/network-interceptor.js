@@ -202,9 +202,9 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
         try {
             let items = Array.isArray(data) ? data :
                 (data?.data || data?.list || data?.conversations || data?.threads || data?.chats || []);
-            // Guard: if the resolved value is a plain object (e.g. {} when data.data is an
-            // empty object), .map() would throw TypeError.  Wrap it in an array so the
-            // subsequent .filter() silently drops it.
+            // Guard: if the resolved value is not an array (e.g. a plain object when data.data
+            // is an empty object or non-list structure), .map() would throw a TypeError.
+            // Normalize such cases to an empty array so map/filter operate safely and yield no items.
             if (!Array.isArray(items)) items = [];
 
             return items.map(item => ({
