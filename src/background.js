@@ -47,6 +47,12 @@ try {
     console.warn("[OmniExporter] notion-block-builder.js not found — using basic block generation");
 }
 
+try {
+    importScripts('utils/shared-utils.js');
+} catch (e) {
+    console.warn("[OmniExporter] shared-utils.js not found — some utilities may be unavailable");
+}
+
 // Initialize logger for background script
 Logger.init().then(() => {
     Logger.info('System', 'OmniExporter AI Service Worker Active');
@@ -144,20 +150,21 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // ============================================
 // PHASE 7: RESILIENT DATA EXTRACTOR (for background.js)
 // ============================================
-// ============================================
-// PLATFORM URL GENERATOR
-// ============================================
-function getPlatformUrl(platform, uuid) {
-    const urls = {
-        'Perplexity': `https://www.perplexity.ai/search/${uuid}`,
-        'ChatGPT': `https://chatgpt.com/c/${uuid}`,
-        'Claude': `https://claude.ai/chat/${uuid}`,
-        'Gemini': `https://gemini.google.com/app/${uuid}`,
-        'Grok': `https://grok.com/chat/${uuid}`,
-        'DeepSeek': `https://chat.deepseek.com/c/${uuid}`
-    };
-    // MIN-2 FIX: Return null for unknown platform instead of silently returning Perplexity URL.
-    return urls[platform] || null;
+// getPlatformUrl is now provided by shared-utils.js
+// Fallback definition if shared-utils.js failed to load
+if (typeof getPlatformUrl === 'undefined') {
+    console.warn('[OmniExporter] getPlatformUrl not loaded from shared-utils.js, using fallback');
+    function getPlatformUrl(platform, uuid) {
+        const urls = {
+            'Perplexity': `https://www.perplexity.ai/search/${uuid}`,
+            'ChatGPT': `https://chatgpt.com/c/${uuid}`,
+            'Claude': `https://claude.ai/chat/${uuid}`,
+            'Gemini': `https://gemini.google.com/app/${uuid}`,
+            'Grok': `https://grok.com/chat/${uuid}`,
+            'DeepSeek': `https://chat.deepseek.com/c/${uuid}`
+        };
+        return urls[platform] || null;
+    }
 }
 
 // FIX #3: Sync lock is now validated against chrome.storage on every acquire.
@@ -898,8 +905,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
         return true; // Will respond asynchronously
     } else if (request.type === "TRIGGER_SYNC") {
-        performAutoSync();
-        sendResponse({ success: true });
+        // BUG-3 FIX: Properly await sync and return actual result
+        // Previously called performAutoSync() without awaiting and immediately sent success: true
+        // Now we await the sync and return the actual result
+        performAutoSync()
+            .then(result => {
+                sendResponse({ success: true, data: result });
+            })
+            .catch(error => {
+                console.error('[BG] TRIGGER_SYNC failed:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+        return true; // Will respond asynchronously
     }
     return false;
 });

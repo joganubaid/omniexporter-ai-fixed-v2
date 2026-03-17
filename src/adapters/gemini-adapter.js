@@ -244,20 +244,50 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
 
     // ============================================
     // ENTERPRISE: Get ALL threads (Load All feature)
+    // BUG-4 FIX: Loop with cursor pagination instead of single page fetch
     // ============================================
     getAllThreads: async function (progressCallback = null) {
         try {
-            const result = await this.getThreads(1, 100);
+            const allThreads = [];
+            const seenUuids = new Set();
+            let cursor = null;
+            let hasMore = true;
+            let pageNum = 0;
 
-            // Update cache
-            GeminiAdapter._allThreadsCache = result.threads;
-            GeminiAdapter._cacheTimestamp = Date.now();
+            while (hasMore && pageNum < 100) { // Safety limit of 100 pages
+                pageNum++;
+                console.log(`[Gemini] Fetching page ${pageNum}, cursor=${cursor || 'none'}`);
 
-            if (progressCallback) {
-                progressCallback(result.threads.length, false);
+                const result = await this.getThreads(pageNum, 100, cursor);
+
+                // Add unique threads to allThreads
+                for (const thread of result.threads) {
+                    if (!seenUuids.has(thread.uuid)) {
+                        seenUuids.add(thread.uuid);
+                        allThreads.push(thread);
+                    }
+                }
+
+                hasMore = result.hasMore && result.nextCursor;
+                cursor = result.nextCursor;
+
+                if (progressCallback) {
+                    progressCallback(allThreads.length, hasMore);
+                }
+
+                // Exit if no more pages
+                if (!hasMore) break;
+
+                // Add a small delay between pages to avoid rate limiting
+                await new Promise(r => setTimeout(r, 300));
             }
 
-            return result.threads;
+            // Update cache
+            GeminiAdapter._allThreadsCache = allThreads;
+            GeminiAdapter._cacheTimestamp = Date.now();
+
+            console.log(`[Gemini] getAllThreads complete: ${allThreads.length} conversations`);
+            return allThreads;
         } catch (error) {
             console.error('[Gemini] getAllThreads failed:', error);
             throw error;

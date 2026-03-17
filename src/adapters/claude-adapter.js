@@ -104,6 +104,7 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     // ENTERPRISE: Get ALL threads (Load All feature)
     // HAR-VERIFIED 2026-03-16: Uses chat_conversations_v2 for richer metadata
     // BUG-6/PERF-1 FIX: Fetch in pages instead of one massive request.
+    // BUG-7 FIX: Track v2 and v1 pagination independently to avoid resetting progress
     // ============================================
     getAllThreads: async function (progressCallback = null) {
         try {
@@ -113,17 +114,29 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
             const allThreads = [];
             const seenUuids = new Set();
             let hasMore = true;
-            let pageNum = 0;
 
             // Try v2 endpoint first for richer metadata
             let useV2 = true;
             let v2Cursor = null;
+            let v2PageNum = 0;
+
+            // V1 pagination state (only used after v2 fails)
+            let v1PageNum = 0;
+            const PAGE_SIZE = 50;
 
             while (hasMore) {
-                pageNum++;
-                if (pageNum > 200) {
-                    console.warn('[Claude] Reached max page limit, stopping pagination');
-                    break;
+                if (useV2) {
+                    v2PageNum++;
+                    if (v2PageNum > 200) {
+                        console.warn('[Claude] Reached max page limit, stopping pagination');
+                        break;
+                    }
+                } else {
+                    v1PageNum++;
+                    if (v1PageNum > 200) {
+                        console.warn('[Claude] Reached max page limit, stopping pagination');
+                        break;
+                    }
                 }
 
                 let pageUrl;
@@ -136,8 +149,7 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
                     }
                 } else {
                     // Fallback to v1 pagination
-                    const PAGE_SIZE = 50;
-                    const offset = (pageNum - 1) * PAGE_SIZE;
+                    const offset = (v1PageNum - 1) * PAGE_SIZE;
                     const endpoint = platformConfig.buildEndpoint('Claude', 'conversations', { org: orgId });
                     pageUrl = `${baseUrl}${endpoint}?limit=${PAGE_SIZE}&offset=${offset}&sort=updated_at&order=desc`;
                 }
@@ -171,14 +183,15 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
                             v2Cursor = page[page.length - 1].uuid;
                         }
                     } else if (useV2) {
-                        // V2 failed, fall back to v1
+                        // BUG-7 FIX: V2 failed, fall back to v1
+                        // Don't reset progress - start v1 from where we left off
                         console.warn('[Claude] chat_conversations_v2 response unexpected, falling back to v1');
+                        console.log(`[Claude] Collected ${allThreads.length} threads from v2, continuing with v1`);
                         useV2 = false;
-                        pageNum = 0; // Reset for v1 pagination
+                        v1PageNum = 0; // Start v1 from first page
                         continue;
                     } else {
                         // V1 response format: array of conversations
-                        const PAGE_SIZE = 50;
                         const page = Array.isArray(data) ? data : [];
                         for (const t of page) {
                             if (!seenUuids.has(t.uuid)) {
@@ -194,11 +207,11 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
                         hasMore = page.length === PAGE_SIZE;
                     }
                 } catch (e) {
-                    if (useV2 && pageNum === 1) {
-                        // V2 endpoint not available, fall back to v1
+                    if (useV2 && v2PageNum === 1) {
+                        // BUG-7 FIX: V2 endpoint not available on first page, fall back to v1
                         console.warn('[Claude] chat_conversations_v2 failed, falling back to v1:', e.message);
                         useV2 = false;
-                        pageNum = 0;
+                        v1PageNum = 0;
                         continue;
                     }
                     throw e;

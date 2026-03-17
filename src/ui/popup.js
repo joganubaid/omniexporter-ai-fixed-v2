@@ -38,19 +38,28 @@ let currentPlatform = "Unknown";
 let selectedExportFormat = "markdown";
 
 // ============================================
-// SHARED PLATFORM URL MAP (Bug 2/7 fix)
+// PLATFORM URL BUILDER (from shared-utils.js)
+// BUG-2 FIX: Use shared getPlatformUrl function
+// Fallback if shared-utils.js is not loaded
 // ============================================
-const PLATFORM_URLS = {
-    'Perplexity': uuid => `https://www.perplexity.ai/search/${uuid}`,
-    'ChatGPT':    uuid => `https://chatgpt.com/c/${uuid}`,
-    'Claude':     uuid => `https://claude.ai/chat/${uuid}`,
-    'Gemini':     uuid => `https://gemini.google.com/app/${uuid}`,
-    'Grok':       uuid => `https://grok.com/chat/${uuid}`,
-    'DeepSeek':   uuid => `https://chat.deepseek.com/a/chat/s/${uuid}`,
-};
-function getPlatformUrl(platform, uuid) {
-    const builder = PLATFORM_URLS[platform] || PLATFORM_URLS['Perplexity'];
-    return builder(uuid || '');
+if (typeof getPlatformUrl === 'undefined') {
+    console.warn('[Popup] getPlatformUrl not loaded from shared-utils.js, using fallback');
+    function getPlatformUrl(platform, uuid) {
+        const urls = {
+            'Perplexity': (uuid) => `https://www.perplexity.ai/search/${uuid}`,
+            'ChatGPT': (uuid) => `https://chatgpt.com/c/${uuid}`,
+            'Claude': (uuid) => `https://claude.ai/chat/${uuid}`,
+            'Gemini': (uuid) => `https://gemini.google.com/app/${uuid}`,
+            'Grok': (uuid) => `https://grok.com/chat/${uuid}`,
+            'DeepSeek': (uuid) => `https://chat.deepseek.com/c/${uuid}`
+        };
+        const builder = urls[platform];
+        if (!builder) {
+            console.warn(`[Popup] Unknown platform: ${platform}`);
+            return null;
+        }
+        return builder(uuid || '');
+    }
 }
 
 // ============================================

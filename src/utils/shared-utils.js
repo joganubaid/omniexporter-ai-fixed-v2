@@ -232,3 +232,40 @@ async function withRetry(fn, maxRetries = RETRY_MAX_ATTEMPTS, baseDelayMs = RETR
     }
     throw lastError;
 }
+
+// ============================================
+// PLATFORM URL GENERATOR (Shared Utility)
+// BUG-2 FIX: Consolidated from background.js and popup.js
+// Returns null for unknown platforms instead of fallback
+// ============================================
+const PlatformUrlBuilder = {
+    // Platform URL templates
+    _urls: {
+        'Perplexity': (uuid) => `https://www.perplexity.ai/search/${uuid}`,
+        'ChatGPT': (uuid) => `https://chatgpt.com/c/${uuid}`,
+        'Claude': (uuid) => `https://claude.ai/chat/${uuid}`,
+        'Gemini': (uuid) => `https://gemini.google.com/app/${uuid}`,
+        'Grok': (uuid) => `https://grok.com/chat/${uuid}`,
+        'DeepSeek': (uuid) => `https://chat.deepseek.com/c/${uuid}`
+    },
+
+    /**
+     * Build a platform-specific URL for a conversation UUID
+     * @param {string} platform - Platform name (Perplexity, ChatGPT, etc.)
+     * @param {string} uuid - Conversation UUID
+     * @returns {string|null} URL or null if platform is unknown
+     */
+    buildUrl(platform, uuid) {
+        const builder = this._urls[platform];
+        if (!builder) {
+            console.warn(`[PlatformUrlBuilder] Unknown platform: ${platform}`);
+            return null;
+        }
+        return builder(uuid || '');
+    }
+};
+
+// Legacy function for backward compatibility
+function getPlatformUrl(platform, uuid) {
+    return PlatformUrlBuilder.buildUrl(platform, uuid);
+}
