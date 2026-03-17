@@ -26,8 +26,9 @@ if (typeof Logger === 'undefined') {
     };
 }
 
-// config.js is gitignored — may not exist on fresh clone
-// Extension uses defaults from auth/notion-oauth.js if config.js is missing
+// config.js is a root-level, committed configuration file.
+// The extension still falls back to defaults from auth/notion-oauth.js if config.js is missing
+// (for example, in custom builds or constrained deployment environments).
 // NOTE: background.js lives at src/background.js, so the service-worker URL is
 // chrome-extension://{id}/src/background.js.  importScripts() paths resolve relative
 // to that URL, so 'config.js' would look for src/config.js (wrong).
