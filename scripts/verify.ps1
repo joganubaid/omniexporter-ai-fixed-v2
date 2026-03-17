@@ -50,6 +50,10 @@ $ct = Get-Content "src/content.js" -Raw
 $ga = Get-Content "src/adapters/gemini-adapter.js" -Raw
 $em = Get-Content "src/utils/export-manager.js" -Raw
 $mf = Get-Content "manifest.json" -Raw
+# Also load popup.js and options.js — sync logic is duplicated there and
+# regressions reintroduced in those files must not pass this check silently.
+$pu = Get-Content "src/ui/popup.js" -Raw
+$op = Get-Content "src/ui/options.js" -Raw
 
 # Alarm
 if ($bg -match "periodInMinutes: 0\.4") { Fail "REGRESSION: alarm still 0.4 min (should be 1)" }
@@ -131,7 +135,9 @@ Section "LAYER 5 — Message Routing Completeness"
 $sentTypes = [System.Collections.Generic.List[string]]::new()
 $allMessageJs = Get-ChildItem -Recurse -Filter "*.js" -Path "src","auth" | ForEach-Object { Get-Content $_.FullName -Raw }
 $allMessageText = $allMessageJs -join "`n"
-[regex]::Matches($allMessageText, "type: '([A-Z_]+)'") | ForEach-Object { $sentTypes.Add($_.Groups[1].Value) }
+# Match both single-quoted and double-quoted type values so that e.g.
+# { type: "GET_THREAD_LIST_OFFSET" } is not invisible to this check.
+[regex]::Matches($allMessageText, "type:\s*['""]([A-Z_]+)['""]") | ForEach-Object { $sentTypes.Add($_.Groups[1].Value) }
 $handledTypes = [System.Collections.Generic.List[string]]::new()
 [regex]::Matches($ct, "request\.type\s*===\s*['""]([A-Z_]+)['""]") | ForEach-Object { $handledTypes.Add($_.Groups[1].Value) }
 

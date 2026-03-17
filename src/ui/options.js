@@ -2976,6 +2976,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     window.displayTestHistory();
 
+    // Clear All Logs — Test Runner section (was duplicate id; now clearAllLogsDevtools)
+    document.getElementById('clearAllLogsDevtools')?.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to clear ALL logs? This cannot be undone.')) {
+            await Logger.secureClear?.() || await chrome.storage.local.remove(['omniLogs', 'logEntries', 'testHistory', 'debugLogs']);
+            alert('All logs cleared securely!');
+            location.reload();
+        }
+    });
+
     // Clear All Logs
     document.getElementById('clearAllLogs')?.addEventListener('click', async () => {
         if (confirm('Are you sure you want to clear ALL logs? This cannot be undone.')) {

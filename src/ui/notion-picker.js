@@ -160,7 +160,7 @@ class NotionPicker {
         content.innerHTML = `
             <div class="notion-picker-list">
                 ${databases.map(db => `
-                    <div class="notion-picker-item" data-id="${db.id}" data-title="${db.title}">
+                    <div class="notion-picker-item" data-id="${this.escapeHtml(db.id)}" data-title="${this.escapeHtml(db.title)}">
                         <span class="item-icon">${db.icon}</span>
                         <div class="item-info">
                             <span class="item-title">${this.escapeHtml(db.title)}</span>

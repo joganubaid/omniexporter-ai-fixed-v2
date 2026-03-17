@@ -15,12 +15,16 @@
     // Only run on Gemini pages
     if (!window.location.hostname.includes('gemini.google.com')) return;
 
-    // Prevent duplicate injection
-    if (document.getElementById('omni-gemini-interceptor')) return;
+    // Prevent duplicate injection.
+    // The previous guard used document.getElementById('omni-gemini-interceptor'), but the
+    // script removes itself from the DOM (this.remove()) after loading, so the ID is always
+    // absent and the guard never fired — allowing duplicate injection on every SPA navigation.
+    // A persistent window flag is used instead so it survives the DOM removal.
+    if (window.__omniGeminiInterceptorInjected) return;
+    window.__omniGeminiInterceptorInjected = true;
 
     try {
         const script = document.createElement('script');
-        script.id = 'omni-gemini-interceptor';
         script.src = chrome.runtime.getURL('src/adapters/gemini-page-interceptor.js');
         script.onload = function () {
             console.log('[GeminiAdapter] Page interceptor injected successfully');
@@ -28,10 +32,13 @@
         };
         script.onerror = function () {
             console.warn('[GeminiAdapter] Failed to inject page interceptor');
+            // Reset flag on failure so a retry can succeed on next navigation
+            window.__omniGeminiInterceptorInjected = false;
         };
         (document.head || document.documentElement).appendChild(script);
     } catch (e) {
         console.warn('[GeminiAdapter] Injection error:', e.message);
+        window.__omniGeminiInterceptorInjected = false;
     }
 })();
 

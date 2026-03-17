@@ -28,8 +28,12 @@ if (typeof Logger === 'undefined') {
 
 // config.js is gitignored — may not exist on fresh clone
 // Extension uses defaults from auth/notion-oauth.js if config.js is missing
+// NOTE: background.js lives at src/background.js, so the service-worker URL is
+// chrome-extension://{id}/src/background.js.  importScripts() paths resolve relative
+// to that URL, so 'config.js' would look for src/config.js (wrong).
+// The root-level config.js must be referenced as '../config.js'.
 try {
-    importScripts('config.js');
+    importScripts('../config.js');
 } catch (e) {
     console.warn("[OmniExporter] config.js not found — using default configuration. Copy config.example.js to config.js to customize.");
 }
