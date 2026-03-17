@@ -1406,7 +1406,9 @@ async function fetchHistory(page = 1) {
                 }
 
                 threadData = page === 1 ? newThreads : [...threadData, ...newThreads];
-                hasMoreThreads = response.data.has_next !== false && newThreads.length === itemsPerPage;
+                // BUG-1 FIX: Check hasMore (which adapters actually return) instead of has_next
+                // has_next is never set, so undefined !== false is always true
+                hasMoreThreads = response.data.hasMore === true && newThreads.length === itemsPerPage;
                 currentPage = page;
 
                 const start = (currentPage - 1) * itemsPerPage;
@@ -1679,7 +1681,10 @@ function validateExportOperation(type, count, isPremium = false) {
     return { allowed: true, limitInfo: { isLimited: false } };
 }
 
-async function syncSingleThread(thread, forceReExport = false) {
+async function syncSingleThread(thread, forceReExport = false, retryCount = 0) {
+    // BUG-4 FIX: Add depth limit to prevent stack overflow on repeated rate limits
+    const MAX_RETRIES = 3;
+
     syncStatusMap[thread.uuid] = 'syncing';
 
     try {
@@ -1734,14 +1739,18 @@ async function syncSingleThread(thread, forceReExport = false) {
             // Phase 4: Use ErrorRecovery for smart handling
             const recovery = await ErrorRecovery.handleExportError(msgError, { thread });
 
-            if (recovery.retry && recovery.delay) {
-                log(recovery.message, 'warning');
+            // BUG-4 FIX: Check retry count before recursing
+            if (recovery.retry && recovery.delay && retryCount < MAX_RETRIES) {
+                log(`${recovery.message} (attempt ${retryCount + 1}/${MAX_RETRIES})`, 'warning');
                 await new Promise(r => setTimeout(r, recovery.delay));
-                return syncSingleThread(thread, forceReExport); // Retry
+                return syncSingleThread(thread, forceReExport, retryCount + 1); // Retry with incremented count
             }
 
             syncStatusMap[thread.uuid] = 'failed';
-            reportFailure(thread.uuid, recovery.message || msgError.message, thread.title);
+            const failureMsg = retryCount >= MAX_RETRIES
+                ? `Max retries (${MAX_RETRIES}) exceeded: ${recovery.message || msgError.message}`
+                : recovery.message || msgError.message;
+            reportFailure(thread.uuid, failureMsg, thread.title);
         }
     } catch (e) {
         syncStatusMap[thread.uuid] = 'failed';

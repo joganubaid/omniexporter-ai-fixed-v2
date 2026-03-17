@@ -893,20 +893,29 @@ root.ExportManager = class ExportManager {
             return placeholder;
         });
 
+        // BUG-8 FIX: Extract block elements before wrapping in <p> to avoid invalid HTML
+        const blockElements = [];
+
         // Handle thinking blocks: > 💭 **Thinking:** → collapsible <details>
         html = html.replace(/(?:^|\n)(?:&gt; 💭[\s\S]*?)(?=\n[^&]|\n$|$)/gm, (block) => {
+            const index = blockElements.length;
+            const placeholder = `::BLOCK_${index}::`;
             const lines = block.split('\n').map(l => l.replace(/^&gt;\s?/, ''));
             const content = lines.join('\n').replace(/💭\s*\*\*Thinking:\*\*\s*/, '');
-            return `\n<details class="thinking-block"><summary>💭 Thinking</summary><p>${content.trim()}</p></details>\n`;
+            blockElements.push(`<details class="thinking-block"><summary>💭 Thinking</summary><p>${content.trim()}</p></details>`);
+            return `\n${placeholder}\n`;
         });
 
         // Handle tool result blocks: > **Tool result:** → styled div
         html = html.replace(/(?:^|\n)(?:&gt; \*\*Tool (result|error):\*\*[\s\S]*?)(?=\n[^&]|\n$|$)/gm, (block, type) => {
+            const index = blockElements.length;
+            const placeholder = `::BLOCK_${index}::`;
             const lines = block.split('\n').map(l => l.replace(/^&gt;\s?/, ''));
             const content = lines.join('\n').replace(/\*\*Tool (result|error):\*\*\s*/, '');
             const cls = type === 'error' ? 'tool-result error' : 'tool-result';
             const icon = type === 'error' ? '❌' : '✅';
-            return `\n<div class="${cls}">${icon} ${content.trim()}</div>\n`;
+            blockElements.push(`<div class="${cls}">${icon} ${content.trim()}</div>`);
+            return `\n${placeholder}\n`;
         });
 
         // Inline code
@@ -932,6 +941,20 @@ root.ExportManager = class ExportManager {
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+
+            // Skip placeholder lines
+            if (line.trim().match(/^::(?:CODEBLOCK|BLOCK)_\d+::$/)) {
+                // Close any open list before block element
+                if (currentListType === 'ul') {
+                    processedLines.push('</ul>');
+                    currentListType = null;
+                } else if (currentListType === 'ol') {
+                    processedLines.push('</ol>');
+                    currentListType = null;
+                }
+                processedLines.push(line);
+                continue;
+            }
 
             let match = line.match(/^(\d+)\. (.+)$/); // ordered list
             if (match) {
@@ -980,18 +1003,45 @@ root.ExportManager = class ExportManager {
 
         html = processedLines.join('\n');
 
-        // Wrap entire content in a paragraph so inserted breaks are well-formed
-        html = `<p>${html}</p>`;
+        // BUG-8 FIX: Don't wrap block element placeholders in <p> tags
+        // Split by block placeholders and process each segment
+        const segments = html.split(/(::(?:CODEBLOCK|BLOCK)_\d+::)/);
+        const finalSegments = segments.map((segment, idx) => {
+            // Even indices are content, odd indices are placeholders
+            if (segment.match(/^::(?:CODEBLOCK|BLOCK)_\d+::$/)) {
+                // This is a placeholder - don't wrap in <p>
+                return segment;
+            }
 
-        // Paragraph breaks (double newline not inside pre/ul/li)
-        html = html.replace(/([^>])\n\n([^<])/g, '$1</p><p>$2');
+            // This is content - wrap in <p> and handle breaks
+            let content = segment;
 
-        // Single line breaks -> <br>
-        html = html.replace(/([^>\n])\n([^<\n])/g, '$1<br>$2');
+            // Skip empty segments
+            if (!content.trim()) return '';
+
+            // Wrap in paragraph
+            content = `<p>${content}</p>`;
+
+            // Paragraph breaks (double newline not inside pre/ul/li)
+            content = content.replace(/([^>])\n\n([^<])/g, '$1</p><p>$2');
+
+            // Single line breaks -> <br>
+            content = content.replace(/([^>\n])\n([^<\n])/g, '$1<br>$2');
+
+            return content;
+        });
+
+        html = finalSegments.join('');
 
         // Restore fenced code blocks
         codeBlocks.forEach((block, index) => {
             const placeholder = `::CODEBLOCK_${index}::`;
+            html = html.replace(placeholder, block);
+        });
+
+        // Restore block elements
+        blockElements.forEach((block, index) => {
+            const placeholder = `::BLOCK_${index}::`;
             html = html.replace(placeholder, block);
         });
 

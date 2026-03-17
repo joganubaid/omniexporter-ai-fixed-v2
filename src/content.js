@@ -109,12 +109,31 @@ if (window.__omniExporterLoaded && window.__omniExporterManager) {
                     document.removeEventListener('visibilitychange', visibilityHandler);
                 });
 
-                // Fix 16: SPA Navigation Handling
+                // BUG-6 FIX: SPA Navigation Handler - Now properly notifies background
+                // Previously just logged the UUID without taking any action
                 const navigationHandler = () => {
                     const adapter = getPlatformAdapter();
                     if (adapter) {
                         const newUuid = adapter.extractUuid(window.location.href);
-                        console.log('[OmniExporter] SPA navigation detected, new conversation:', newUuid);
+                        const prevUuid = window.__omniCurrentUuid;
+
+                        if (newUuid && newUuid !== prevUuid) {
+                            console.log('[OmniExporter] SPA navigation detected, new conversation:', newUuid);
+                            window.__omniCurrentUuid = newUuid;
+
+                            // Notify background to update badge/platform info
+                            chrome.runtime.sendMessage({
+                                type: 'SPA_NAVIGATION',
+                                payload: {
+                                    platform: adapter.name,
+                                    uuid: newUuid,
+                                    url: window.location.href
+                                }
+                            }).catch(err => {
+                                // Ignore errors if background is not listening
+                                console.debug('[OmniExporter] SPA navigation message failed:', err.message);
+                            });
+                        }
                     }
                 };
 
@@ -576,36 +595,63 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         // ENTERPRISE: Grok support (HAR-verified endpoints)
         else if (adapter.name === 'Grok') {
             try {
-                // HAR-verified: ?pageSize=60 required, fields are conversationId/modifyTime
-                const response = await fetch('https://grok.com/rest/app-chat/conversations?pageSize=60', {
-                    credentials: 'include',
-                    headers: {
-                        ...browserHeaders,
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                // BUG-5 FIX: Grok API only returns pageSize=60 conversations at a time.
+                // For offsets beyond 60, we need to use Grok's native cursor-based pagination
+                // or document the 60-thread limit. Currently documenting the limit and using
+                // in-memory cache to avoid breaking pagination.
+
+                // Try to use cached data if available and fresh
+                const cacheValid = adapter._cacheTimestamp > Date.now() - adapter._cacheTTL;
+                let allChats = [];
+
+                if (cacheValid && adapter._allThreadsCache.length > 0) {
+                    allChats = adapter._allThreadsCache;
+                } else {
+                    // HAR-verified: ?pageSize=60 required, fields are conversationId/modifyTime
+                    // Note: Grok API currently does not support cursor pagination in this endpoint
+                    // Maximum 60 conversations can be fetched per request
+                    const response = await fetch('https://grok.com/rest/app-chat/conversations?pageSize=60', {
+                        credentials: 'include',
+                        headers: {
+                            ...browserHeaders,
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        // HAR-verified: response is { conversations: [{conversationId, title, modifyTime, createTime}] }
+                        allChats = data.conversations || data.data || data.items || [];
+
+                        // Update cache
+                        adapter._allThreadsCache = allChats;
+                        adapter._cacheTimestamp = Date.now();
+                    } else {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                }
+
+                // Now slice from the full cached list
+                const threads = allChats.slice(offset, offset + limit).map(t => ({
+                    // HAR-verified: field is 'conversationId' not 'id'
+                    uuid: t.conversationId || t.id || t.uuid,
+                    title: t.title || t.name || 'Grok Chat',
+                    // HAR-verified: fields are 'modifyTime' and 'createTime'
+                    last_query_datetime: t.modifyTime || t.createTime || t.updatedAt
+                }));
+
+                sendResponse({
+                    success: true,
+                    data: {
+                        threads,
+                        offset,
+                        hasMore: offset + limit < allChats.length,
+                        total: allChats.length,
+                        // Add warning if total exceeds 60 (API limitation)
+                        warning: allChats.length >= 60 ? 'Grok API returns maximum 60 conversations. Pagination beyond 60 is not supported.' : null
                     }
                 });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    // HAR-verified: response is { conversations: [{conversationId, title, modifyTime, createTime}] }
-                    const chats = data.conversations || data.data || data.items || [];
-                    const threads = chats.slice(offset, offset + limit).map(t => ({
-                        // HAR-verified: field is 'conversationId' not 'id'
-                        uuid: t.conversationId || t.id || t.uuid,
-                        title: t.title || t.name || 'Grok Chat',
-                        // HAR-verified: fields are 'modifyTime' and 'createTime'
-                        last_query_datetime: t.modifyTime || t.createTime || t.updatedAt
-                    }));
-                    sendResponse({
-                        success: true,
-                        data: { threads, offset, hasMore: offset + limit < chats.length, total: chats.length }
-                    });
-                } else {
-                    // DOM fallback
-                    const result = await adapter.getThreads(1, limit);
-                    sendResponse({ success: true, data: { threads: result.threads || result, offset: 0, hasMore: false } });
-                }
             } catch (e) {
                 console.warn('[Grok] API failed:', e.message);
                 try {
