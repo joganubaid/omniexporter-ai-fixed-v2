@@ -827,6 +827,10 @@ async function syncToNotion(data, settings) {
         if (children.length > 100) {
             for (let i = 100; i < children.length; i += 100) {
                 const batch = children.slice(i, i + 100);
+                // BUG-2 FIX: Flatten toggle blocks before PATCH - Notion API doesn't accept nested children in PATCH
+                const flattenedBatch = typeof NotionBlockBuilder !== 'undefined' && NotionBlockBuilder.flattenToggleBlocks
+                    ? NotionBlockBuilder.flattenToggleBlocks(batch)
+                    : batch;
                 await new Promise(r => setTimeout(r, 350)); // Notion rate limit
                 try {
                     const patchResp = await notionFetchWithBackoff(
@@ -834,7 +838,7 @@ async function syncToNotion(data, settings) {
                         {
                             method: 'PATCH',
                             headers: notionHeaders,
-                            body: JSON.stringify({ children: batch })
+                            body: JSON.stringify({ children: flattenedBatch })
                         }
                     );
                     if (!patchResp.ok) {
