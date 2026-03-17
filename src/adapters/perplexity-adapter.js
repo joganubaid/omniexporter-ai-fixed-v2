@@ -154,22 +154,37 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
 // entire paginated detail fetch.
 async function _perplexityFetchWithRetry(url, options = {}, maxRetries = 3) {
     let lastError;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             const response = await fetch(url, options);
             if (response.status === 429 || response.status >= 500) {
-                const retryAfter = response.headers.get('Retry-After');
-                const delay = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt) * 1000;
-                console.warn(`[Perplexity] HTTP ${response.status} on attempt ${attempt + 1}, retrying in ${delay}ms`);
-                await new Promise(r => setTimeout(r, delay));
+                const retryAfterHeader = response.headers.get('Retry-After');
+                let delayMs;
+                if (retryAfterHeader != null) {
+                    const retryAfterSeconds = parseFloat(retryAfterHeader);
+                    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+                        delayMs = retryAfterSeconds * 1000;
+                    }
+                }
+                if (!delayMs || !Number.isFinite(delayMs) || delayMs <= 0) {
+                    delayMs = Math.pow(2, attempt) * 1000;
+                }
                 lastError = new Error(`HTTP ${response.status}`);
-                continue;
+                if (attempt < maxRetries - 1) {
+                    console.warn(`[Perplexity] HTTP ${response.status} on attempt ${attempt + 1}, retrying in ${delayMs}ms`);
+                    await new Promise(r => setTimeout(r, delayMs));
+                    continue;
+                } else {
+                    break;
+                }
             }
             return response;
         } catch (e) {
             lastError = e;
-            if (attempt < maxRetries) {
+            if (attempt < maxRetries - 1) {
                 await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+            } else {
+                break;
             }
         }
     }
