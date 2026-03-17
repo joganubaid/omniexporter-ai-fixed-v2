@@ -388,7 +388,15 @@ const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
 
                 if (entries.length > 0) {
                     console.log(`[ChatGPT] ✓ API success: ${entries.length} entries for ${uuid}`);
-                    return { uuid, entries, title: data.title || 'ChatGPT Chat', platform: 'ChatGPT' };
+                    return {
+                        uuid,
+                        entries,
+                        title: data.title || 'ChatGPT Chat',
+                        platform: 'ChatGPT',
+                        model: data.default_model_slug || '',
+                        gizmo_id: data.gizmo_id || '',
+                        create_time: data.create_time || null
+                    };
                 }
             } catch (error) {
                 console.warn(`[ChatGPT] Endpoint ${endpoint} failed:`, error.message);
@@ -540,15 +548,73 @@ function transformChatGPTData(data) {
         }
 
         // Helper to safely extract text content
+        // HAR-VERIFIED 2026-03-16: Handles tool calls, code interpreter, DALL-E, and browsing results
         const extractContent = (msg) => {
-            // Fix #5: Skip known non-text content types (blocklist approach)
             const contentType = msg.content?.content_type;
-            const skipTypes = ['model_editable_context', 'system_error', 'tether_browsing_display', 'tether_quote'];
+            // Skip only truly non-exportable system types
+            const skipTypes = ['model_editable_context', 'system_error'];
             if (contentType && skipTypes.includes(contentType)) {
                 return '';
             }
+
+            // Handle tool/function call results with structured output
+            if (contentType === 'code' && msg.content?.text) {
+                // Code interpreter execution result
+                return `\n\`\`\`\n${msg.content.text}\n\`\`\`\n`;
+            }
+
+            if (contentType === 'execution_output' && msg.content?.text) {
+                return `\n> **Code output:**\n\`\`\`\n${msg.content.text}\n\`\`\`\n`;
+            }
+
+            if (contentType === 'tether_browsing_display' && msg.content?.result) {
+                // Browsing result — include source URL and snippet
+                const result = msg.content.result;
+                return `\n> 🌐 **Browsing:** ${result.title || ''}\n> ${result.url || ''}\n> ${result.snippet || ''}\n`;
+            }
+
+            if (contentType === 'tether_quote' && msg.content?.text) {
+                // Quote from browsing — include as blockquote
+                return `\n> 📝 ${msg.content.text}\n`;
+            }
+
+            // Multimodal text content (text mixed with images/files)
+            if (contentType === 'multimodal_text' && msg.content?.parts) {
+                const parts = [];
+                for (const p of msg.content.parts) {
+                    if (typeof p === 'string') {
+                        parts.push(p);
+                    } else if (p && typeof p === 'object') {
+                        if (p.content_type === 'image_asset_pointer') {
+                            const desc = p.metadata?.dalle?.prompt || 'Generated image';
+                            parts.push(`🖼️ [Image: ${desc}]`);
+                        } else if (p.content_type === 'file_asset_pointer') {
+                            const fileName = p.metadata?.file_name || p.name || 'Uploaded file';
+                            parts.push(`📎 [File: ${fileName}]`);
+                        } else if (p.text) {
+                            parts.push(p.text);
+                        }
+                    }
+                }
+                return parts.join('\n');
+            }
+
             if (msg.content?.parts && Array.isArray(msg.content.parts)) {
-                return msg.content.parts.filter(p => typeof p === 'string').join('\n');
+                const textParts = [];
+                for (const p of msg.content.parts) {
+                    if (typeof p === 'string') {
+                        textParts.push(p);
+                    } else if (p && typeof p === 'object') {
+                        // Handle structured parts (image metadata, file references, etc.)
+                        if (p.content_type === 'image_asset_pointer') {
+                            const desc = p.metadata?.dalle?.prompt || 'Generated image';
+                            textParts.push(`🖼️ [Image: ${desc}]`);
+                        } else if (p.text) {
+                            textParts.push(p.text);
+                        }
+                    }
+                }
+                return textParts.join('\n');
             }
             if (msg.content?.text) return msg.content.text;
             if (typeof msg.content === 'string') return msg.content;

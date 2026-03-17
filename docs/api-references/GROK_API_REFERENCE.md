@@ -251,3 +251,22 @@ Common statuses observed:
 - `GROK_ANALYSIS_SUMMARY.md`
 - `src/adapters/grok-adapter.js`
 - `src/platform-config.js`
+
+---
+
+## Addendum: v5.3.0 Enrichments (2026-03-16)
+
+### Model Extraction from `conversations_v2` Metadata
+
+The `conversations_v2` endpoint returns metadata for each conversation that now includes the model name:
+
+```json
+{
+  "conversation_id": "abc-123",
+  "title": "My chat",
+  "model": "grok-2",
+  "create_time": "2026-03-16T12:00:00Z"
+}
+```
+
+The adapter extracts the `model` field from the conversation metadata and includes it in the exported thread object for use in Notion export metadata callouts and JSON export.

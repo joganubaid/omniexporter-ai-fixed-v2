@@ -536,64 +536,67 @@ async function saveToNotion() {
 // Sync to Notion API
 async function syncToNotionAPI(data, apiKey, dbId) {
     const entries = data.detail?.entries || [];
-    const children = [];
+    let children = [];
 
-    // Add metadata header
-    children.push({
-        type: "callout",
-        callout: {
-            icon: { emoji: "🤖" },
-            color: "blue_background",
-            rich_text: [{
-                type: "text",
-                text: { content: `Exported from ${currentPlatform} on ${new Date().toLocaleString()}` }
-            }]
-        }
-    });
-    children.push({ type: "divider", divider: {} });
+    // Use rich block builder if available, otherwise fall back to basic blocks
+    if (typeof NotionBlockBuilder !== 'undefined') {
+        children = NotionBlockBuilder.buildNotionBlocks(entries, currentPlatform || 'AI', {
+            title: data.title,
+            url: data.url || '',
+            model: data.detail?.model || '',
+            exportDate: new Date().toISOString().split('T')[0]
+        });
+    } else {
+        // Fallback: basic block generation
+        children.push({
+            type: "callout",
+            callout: {
+                icon: { emoji: "🤖" },
+                color: "blue_background",
+                rich_text: [{
+                    type: "text",
+                    text: { content: `Exported from ${currentPlatform} on ${new Date().toLocaleString()}` }
+                }]
+            }
+        });
+        children.push({ type: "divider", divider: {} });
 
-    // Add each Q&A entry
-    entries.forEach((entry, index) => {
-        const query = entry.query || entry.query_str || '';
-        if (query) {
-            children.push({
-                type: "heading_2",
-                heading_2: {
-                    rich_text: [{ type: "text", text: { content: `🙋 ${query}`.slice(0, 2000) } }]
-                }
-            });
-        }
-
-        // Extract answer
-        let answer = '';
-        if (entry.blocks && Array.isArray(entry.blocks)) {
-            entry.blocks.forEach(block => {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    if (block.markdown_block.answer) {
-                        answer += block.markdown_block.answer + '\n\n';
-                    } else if (block.markdown_block.chunks) {
-                        answer += block.markdown_block.chunks.join('\n') + '\n\n';
-                    }
-                }
-            });
-        }
-        if (!answer.trim()) answer = entry.answer || entry.text || '';
-
-        // Add answer (chunked)
-        if (answer.trim()) {
-            const chunks = splitTextForNotion(answer.trim(), 1900);
-            chunks.forEach(chunk => {
+        entries.forEach((entry, index) => {
+            const query = entry.query || entry.query_str || '';
+            if (query) {
                 children.push({
-                    type: "paragraph",
-                    paragraph: { rich_text: [{ type: "text", text: { content: chunk } }] }
+                    type: "heading_2",
+                    heading_2: {
+                        rich_text: [{ type: "text", text: { content: `🙋 ${query}`.slice(0, 2000) } }]
+                    }
                 });
-            });
-        }
+            }
 
-        if (index < entries.length - 1) {
-            children.push({ type: "divider", divider: {} });
-        }
-    });
+            let answer = '';
+            if (entry.blocks && Array.isArray(entry.blocks)) {
+                entry.blocks.forEach(block => {
+                    if (block.markdown_block) {
+                        answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
+                    }
+                });
+            }
+            if (!answer.trim()) answer = entry.answer || entry.text || '';
+
+            if (answer.trim()) {
+                const chunks = splitTextForNotion(answer.trim(), 1900);
+                chunks.forEach(chunk => {
+                    children.push({
+                        type: "paragraph",
+                        paragraph: { rich_text: [{ type: "text", text: { content: chunk } }] }
+                    });
+                });
+            }
+
+            if (index < entries.length - 1) {
+                children.push({ type: "divider", divider: {} });
+            }
+        });
+    }
 
     // Create Notion page with dynamic properties and throttling
     const properties = await buildNotionProperties(data, dbId, apiKey, entries);
@@ -740,12 +743,8 @@ function formatToMarkdown(data) {
         let answer = '';
         if (entry.blocks && Array.isArray(entry.blocks)) {
             entry.blocks.forEach(block => {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    if (block.markdown_block.answer) {
-                        answer += block.markdown_block.answer + '\n\n';
-                    } else if (block.markdown_block.chunks) {
-                        answer += block.markdown_block.chunks.join('\n') + '\n\n';
-                    }
+                if (block.markdown_block) {
+                    answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                 }
             });
         }

@@ -150,7 +150,7 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                     headers: {
                         'Accept': 'application/json',
                         'x-client-platform': 'web',
-                        'x-client-version': '1.7.0',
+                        'x-client-version': '1.7.1',
                         'x-client-locale': 'en_US',
                         'x-app-version': '20241129.1'
                     }
@@ -459,24 +459,45 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         // HAR-VERIFIED (2026-02-17): DeepSeek messages do NOT use a 'content' field.
         // Real structure: { role, fragments: [{type:"text",content:"..."},...], ... }
         // content field is always empty string ""; real text is in fragments[].content
+        // HAR-VERIFIED 2026-03-16: DeepSeek R1 uses <think>...</think> tags for reasoning
         const dsExtractContent = (msg) => {
             try {
                 // PRIMARY: fragments array (HAR-verified real structure)
-                // fragments = [{type: "text", content: "..."}, ...]
+                // fragments = [{type: "text", content: "..."}, {type: "thinking", content: "..."}, ...]
                 if (Array.isArray(msg.fragments) && msg.fragments.length > 0) {
-                    const parts = msg.fragments
-                        .map(f => {
-                            // Each fragment: {type, content, thinking?, ...}
-                            const text = f?.content ?? f?.text ?? f?.body ?? f?.value ?? '';
-                            return typeof text === 'string' ? text : '';
-                        })
-                        .filter(Boolean);
-                    if (parts.length > 0) return parts.join('').trim();
+                    const parts = [];
+                    for (const f of msg.fragments) {
+                        const text = f?.content ?? f?.text ?? f?.body ?? f?.value ?? '';
+                        const fragText = typeof text === 'string' ? text : '';
+                        if (!fragText) continue;
+
+                        // Handle thinking/reasoning fragments separately
+                        if (f?.type === 'thinking' || f?.type === 'reasoning') {
+                            parts.push(`\n> 💭 **Thinking:**\n> ${fragText.replace(/\n/g, '\n> ')}\n`);
+                        } else {
+                            parts.push(fragText);
+                        }
+                    }
+                    if (parts.length > 0) {
+                        let result = parts.join('').trim();
+                        // Handle inline <think> tags in content (DeepSeek R1 format)
+                        result = result.replace(/<think>([\s\S]*?)<\/think>/g, (_, thinkContent) => {
+                            return `\n> 💭 **Thinking:**\n> ${thinkContent.trim().replace(/\n/g, '\n> ')}\n`;
+                        });
+                        return result;
+                    }
                 }
 
                 // SECONDARY: content field (may be non-empty in some API versions)
                 const raw = msg.content ?? msg.text ?? msg.message ?? '';
-                if (typeof raw === 'string' && raw.trim()) return raw.trim();
+                if (typeof raw === 'string' && raw.trim()) {
+                    // Handle <think> tags in raw content too
+                    let result = raw.trim();
+                    result = result.replace(/<think>([\s\S]*?)<\/think>/g, (_, thinkContent) => {
+                        return `\n> 💭 **Thinking:**\n> ${thinkContent.trim().replace(/\n/g, '\n> ')}\n`;
+                    });
+                    return result;
+                }
                 if (Array.isArray(raw) && raw.length > 0) {
                     return raw.map(b => (typeof b === 'string' ? b : (b?.text ?? b?.content ?? ''))).filter(Boolean).join('\n').trim();
                 }
@@ -566,7 +587,9 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                     ?? `DeepSeek Thread ${uuid.slice(0, 8)}`;
 
                 console.log(`[DeepSeek] ✓ Done: ${entries.length} Q&A pairs, title="${title}"`);
-                return { uuid, title, platform: 'DeepSeek', entries };
+                // Extract model from session info if available
+                const model = sessionInfo?.model || sessionInfo?.agent_mode || data?.data?.model || '';
+                return { uuid, title, platform: 'DeepSeek', model: model || 'DeepSeek', entries };
 
             } catch (e) {
                 console.warn(`[DeepSeek] Endpoint ${endpoint} failed: ${e.message}`);

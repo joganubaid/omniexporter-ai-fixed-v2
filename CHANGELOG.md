@@ -5,6 +5,85 @@ All notable changes to OmniExporter AI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] - 2026-03-16
+
+### ✨ New Features
+
+- **`_extractEntryMeta()` utility** — New shared method in `ExportManager` that extracts platform-agnostic rich metadata from any adapter's entry format:
+  - Sources (from Perplexity `web_results` blocks and entry-level `sources`/`citations`, deduplicated)
+  - Media items (from Perplexity `media_items` blocks)
+  - Knowledge cards (from Perplexity `knowledge_cards` blocks)
+  - Attachments (from entry-level `attachments` array)
+  - Related questions (from entry-level `related_questions` / `pending_followups`)
+
+### 📦 Export Format Enhancements
+
+- **Markdown**
+  - Sources from blocks are now included (deduplicated), rendered as numbered links
+  - Attachments section (📎) with file name and type
+  - Knowledge cards section (📋) with card titles and descriptions
+  - Media items section (🖼️) with media URLs
+  - Related questions section (🔗) as a bulleted list
+- **HTML**
+  - Thinking blocks render as collapsible purple `<details>` elements
+  - Tool calls render as collapsible blue `<details>` elements
+  - Tool results render as green `<div>`, tool errors as red `<div>`
+  - Code blocks display language labels
+  - Attachment badges (yellow background)
+  - Knowledge cards (green cards)
+  - Related questions section
+  - `_markdownToHtml()` now handles `tool_call:name` fenced blocks and thinking block quotes
+- **TXT**
+  - New `[ATTACHMENTS]`, `[KNOWLEDGE CARDS]`, `[RELATED QUESTIONS]` sections per entry
+- **CSV**
+  - Added `Model` column
+  - Uses `_extractEntryMeta()` for consistent source extraction
+- **JSON**
+  - Each entry now includes `model`, `attachments`, `media`, `knowledgeCards`, `relatedQuestions`
+  - Schema version updated to 5.3.0
+- **PDF** — Inherits all HTML improvements automatically
+
+### 🔧 Improvements
+
+- **`extractAnswer()`** — Now handles generic `markdown_block` without `intended_usage` (improves Claude/other platform support)
+
+---
+
+## [5.3.0] - 2026-03-16
+
+### ✨ New Features
+
+- **NotionBlockBuilder** (`src/utils/notion-block-builder.js`) — New utility that converts markdown to rich Notion API blocks
+  - Supported block types: code, heading 1-3, bulleted_list_item, numbered_list_item, quote, divider, paragraph, callout, bookmark, toggle
+  - Inline markdown parsing: bold, italic, inline code, links → Notion `rich_text` annotations
+  - Tool calls (`` ```tool_call:name `` fences) → collapsible toggle blocks with JSON code child
+  - Thinking blocks (`> 💭`) → purple callout blocks
+  - Tool results/errors → green/red callout blocks
+  - Sources → deduplicated bookmark blocks (max 15 per entry)
+  - Metadata callout at the top of each page with platform icon, model name, and export date
+  - Automatic text chunking at the Notion 2 000-char `rich_text` limit
+
+### 🔧 Adapter Enrichments
+
+- **Perplexity adapter** — Extract `media_items`, `knowledge_cards`, `inline_images`, `pending_followups` from thread detail; pass `display_model`, `mode`, `search_focus` from thread list
+- **ChatGPT adapter** — Extract `default_model_slug`, `gizmo_id`, `create_time` from conversation root; handle `multimodal_text` and `file_asset_pointer` content types
+- **Gemini adapter** — Extract citation/source URLs from response candidate metadata arrays
+- **Grok adapter** — Extract model name from `conversations_v2` metadata
+- **DeepSeek adapter** — Extract `model` and `agent_mode` from session info
+
+### ⚙️ Platform Config
+
+- **Perplexity** `threadDetail` endpoint now requests `supported_block_use_cases=ask_text,web_results,media_items,knowledge_cards,inline_images,pending_followups`
+
+### 📚 Documentation
+
+- Created `docs/NOTION_EXPORT.md` — Comprehensive guide to the Notion rich block export feature
+- Updated `docs/ARCHITECTURE.md` — Added NotionBlockBuilder utility section and adapter enrichment pipeline table
+- Updated all platform API references with v5.3.0 addendum sections
+- Updated `docs/platforms/README_PERPLEXITY_DOCS.md` with new content extraction details
+
+---
+
 ## [Unreleased] - 2026-02-21
 
 ### 📚 Documentation
@@ -288,7 +367,8 @@ This release focuses on fixing the three non-working platforms (ChatGPT, Gemini,
 
 ## Version History
 
-- **5.1.0** - Security hardening, architecture restructure, documentation overhaul (Current)
+- **5.4.0** - Export format enhancements, rich content extraction (Current)
+- **5.3.0** - NotionBlockBuilder, adapter enrichments, Notion rich export
 - **5.0.0** - Platform fixes, OAuth2, logos
 - **4.2.0** - Multi-platform support, dashboard
 - **4.0.0** - Enterprise features, auto-sync

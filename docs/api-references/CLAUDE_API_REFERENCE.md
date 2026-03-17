@@ -2003,6 +2003,23 @@ Always iterate through `msg.content` array and handle each type appropriately.
 
 ---
 
-**Document Version:** 1.0.0  
-**Last Updated:** 2026-02-21  
+**Document Version:** 1.1.0  
+**Last Updated:** 2026-03-16  
 **Maintained By:** OmniExporter AI Development Team
+
+---
+
+## Addendum: v5.3.0 Enrichments (2026-03-16)
+
+### NotionBlockBuilder Integration for Rich Notion Export
+
+Claude conversations exported to Notion now use the `NotionBlockBuilder` utility (`src/utils/notion-block-builder.js`) to produce rich block output instead of plain-text page content. This enables:
+
+- **Thinking blocks** → Purple callout blocks with 💭 icon
+- **Tool calls** → Collapsible toggle blocks with JSON code inside
+- **Tool results** → Green/red callout blocks (✅ success / ❌ error)
+- **Code fences** → Syntax-highlighted Notion code blocks
+- **Markdown formatting** → Bold, italic, inline code, and link annotations
+- **Sources / citations** → Bookmark blocks with clickable URLs
+
+The integration is transparent — the adapter returns entries in the standard format and `NotionBlockBuilder.buildNotionBlocks()` handles the conversion at export time.

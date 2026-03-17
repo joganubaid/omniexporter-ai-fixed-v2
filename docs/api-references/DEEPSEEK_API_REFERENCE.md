@@ -895,3 +895,33 @@ Authentication:
 ---
 
 **Note:** This documentation is based on reverse-engineering browser network traffic. DeepSeek may update their API without notice. Always validate against current implementation.
+
+---
+
+## Addendum: v5.3.0 Enrichments (2026-03-16)
+
+### Model and Agent Mode Extraction from Session Info
+
+The `/api/v0/chat_session/fetch_page` response includes session-level metadata that the adapter now extracts:
+
+```json
+{
+  "biz_data": {
+    "chat_sessions": [
+      {
+        "id": "session-abc",
+        "title": "My chat",
+        "model": "deepseek-chat",
+        "agent_mode": "general"
+      }
+    ]
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `model` | The DeepSeek model used for the session (e.g., `deepseek-chat`, `deepseek-coder`) |
+| `agent_mode` | The agent mode active during the session (e.g., `general`, `coder`) |
+
+Both fields are included in the exported thread metadata.

@@ -1104,6 +1104,36 @@ function extractMessages(mapping) {
 
 ---
 
+---
+
+## Addendum: v5.3.0 Enrichments (2026-03-16)
+
+### Model Extraction from `default_model_slug`
+
+The conversation detail response includes a `default_model_slug` field at the conversation root:
+
+```json
+{
+  "title": "My conversation",
+  "default_model_slug": "gpt-4o",
+  "gizmo_id": "g-abc123",
+  "create_time": 1710000000.0
+}
+```
+
+The adapter now extracts `default_model_slug`, `gizmo_id`, and `create_time` from the conversation object and includes them in the exported metadata.
+
+### New Content Types: `multimodal_text` and `file_asset_pointer`
+
+The tree-based `mapping` object may contain message parts with these additional content types:
+
+| Content Type | Description | Handling |
+|-------------|-------------|----------|
+| `multimodal_text` | Rich text that may include embedded image references | Text content is extracted; image references are preserved as metadata |
+| `file_asset_pointer` | Reference to an uploaded file asset | File name and asset ID are extracted for display |
+
+These are processed during message tree traversal alongside the existing `text` content type.
+
 **End of ChatGPT API Reference**
 
 *This document was generated through systematic analysis of chatgpt.har (112,148 lines) and validation against the existing chatgpt-adapter.js implementation. All findings are HAR-verified with specific examples and line references.*

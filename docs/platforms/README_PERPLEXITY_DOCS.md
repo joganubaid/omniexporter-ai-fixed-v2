@@ -92,3 +92,30 @@ Blocked Requests: 22 (analytics only)
 - See Debugging Guide section in PERPLEXITY_API_REFERENCE.md
 - Use browser DevTools to inspect headers and cookies
 - Re-run HAR analysis if API version changes
+
+---
+
+## 🆕 v5.3.0 Content Extraction Enhancements (2026-03-16)
+
+### Rich Block Types
+
+The adapter now requests and extracts additional block use cases from the thread detail endpoint:
+
+| Block Type | Description |
+|-----------|-------------|
+| `media_items` | Embedded images, videos, and media attachments |
+| `knowledge_cards` | Structured knowledge panels with entity data |
+| `inline_images` | Images rendered inline within the response text |
+| `pending_followups` | AI-generated follow-up question suggestions |
+
+These are requested via the `supported_block_use_cases` query parameter alongside the existing `ask_text` and `web_results` types.
+
+### Model Metadata in Thread List
+
+The thread list endpoint now surfaces model information:
+
+- **`display_model`** — The model name shown in the Perplexity UI (e.g., `llama-3.1-sonar-large-128k-online`)
+- **`mode`** — Query mode (`copilot`, `default`, etc.)
+- **`search_focus`** — Search scope (`internet`, `academic`, `writing`, etc.)
+
+These fields are included in exported thread metadata and used in Notion export callout blocks.

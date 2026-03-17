@@ -605,6 +605,7 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
                     // turn[3][0][0] = [candidateId, [answerText], ...metadata...]
                     // turn[3][0][0][1][0] = full markdown answer
                     let answer = '';
+                    let citations = [];
                     if (Array.isArray(turn[3]) && Array.isArray(turn[3][0]) && Array.isArray(turn[3][0][0])) {
                         const candidate = turn[3][0][0];
 
@@ -627,13 +628,44 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
                                 if (modelMatch) model = modelMatch[1];
                             } catch (e) { /* ignore */ }
                         }
+
+                        // Extract citation sources from candidate metadata
+                        // Citations appear as arrays of [title, url, snippet] in deep positions
+                        try {
+                            const candidateStr = JSON.stringify(candidate);
+                            // Look for URL patterns in the response metadata
+                            const urlMatches = candidateStr.match(/\["([^"]+)","(https?:\/\/[^"]+)","([^"]*)"\]/g);
+                            if (urlMatches) {
+                                for (const m of urlMatches) {
+                                    try {
+                                        const parsed = JSON.parse(m);
+                                        if (parsed[1] && parsed[1].startsWith('http')) {
+                                            citations.push({
+                                                name: parsed[0] || parsed[1],
+                                                url: parsed[1]
+                                            });
+                                        }
+                                    } catch (e) { /* skip */ }
+                                }
+                            }
+                        } catch (e) { /* ignore citation extraction errors */ }
                     }
 
                     if (query && answer) {
-                        entries.push({
+                        const entryObj = {
                             query: query.trim(),
                             answer: answer.trim()
-                        });
+                        };
+                        // Attach citations if found
+                        if (citations.length > 0) {
+                            entryObj.citations = citations;
+                            // Append sources to the answer for export
+                            const sourceText = citations.map(c =>
+                                `> 🔗 [${c.name}](${c.url})`
+                            ).join('\n');
+                            entryObj.answer += '\n\n**Sources:**\n' + sourceText;
+                        }
+                        entries.push(entryObj);
                     }
                 } catch (e) {
                     console.warn('[Gemini] Failed to parse turn:', e.message);

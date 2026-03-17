@@ -124,18 +124,61 @@ root.ExportManager = class ExportManager {
                 md += `${query}\n\n`;
             }
 
+            // Attachments (Claude file uploads)
+            const meta = this._extractEntryMeta(entry);
+            if (meta.attachments.length > 0) {
+                meta.attachments.forEach(att => {
+                    const name = att.file_name || att.fileName || 'file';
+                    md += `> 📎 **Attachment:** ${name}\n`;
+                });
+                md += '\n';
+            }
+
             let answer = this.extractAnswer(entry);
             if (answer.trim()) {
                 md += `### 🤖 Answer\n\n`;
                 md += `${answer.trim()}\n\n`;
             }
 
-            // Add sources if available
-            if (entry.sources && entry.sources.length > 0) {
+            // Sources (from blocks or entry-level)
+            if (meta.sources.length > 0) {
                 md += `### 📚 Sources\n\n`;
-                entry.sources.forEach((source, i) => {
+                const seen = {};
+                meta.sources.forEach((source, i) => {
+                    if (seen[source.url]) return;
+                    seen[source.url] = true;
                     const safeUrl = this._sanitizeUrl(source.url);
                     md += `${i + 1}. [${source.title || source.url}](${safeUrl})\n`;
+                });
+                md += '\n';
+            }
+
+            // Knowledge cards
+            if (meta.knowledgeCards.length > 0) {
+                md += `### 📋 Knowledge Cards\n\n`;
+                meta.knowledgeCards.forEach(card => {
+                    md += `> **${card.title}**`;
+                    if (card.description) md += `: ${card.description}`;
+                    md += '\n';
+                });
+                md += '\n';
+            }
+
+            // Media items
+            if (meta.media.length > 0) {
+                md += `### 🖼️ Media\n\n`;
+                meta.media.forEach(m => {
+                    const safeUrl = this._sanitizeUrl(m.url);
+                    if (safeUrl) md += `![${m.alt || 'Image'}](${safeUrl})\n`;
+                });
+                md += '\n';
+            }
+
+            // Related questions
+            if (meta.relatedQuestions.length > 0) {
+                md += `### 🔗 Related Questions\n\n`;
+                meta.relatedQuestions.slice(0, 5).forEach(q => {
+                    if (q) md += `- ${q}\n`;
                 });
                 md += '\n';
             }
@@ -155,26 +198,37 @@ root.ExportManager = class ExportManager {
             meta: {
                 exportedAt: new Date().toISOString(),
                 platform: platform,
-                version: (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || '5.2.0', // Missing 32 fix: use manifest version
+                version: (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || '5.2.0',
                 tool: 'OmniExporter AI'
             },
             conversation: {
                 uuid: data.uuid || null,
                 title: data.title || 'Untitled Chat',
                 spaceName: data.spaceName || null,
+                model: data.model || null,
                 createdAt: data.detail?.entries?.[0]?.created_datetime || null,
                 updatedAt: data.detail?.entries?.[0]?.updated_datetime || null
             },
-            entries: (data.detail?.entries || []).map((entry, index) => ({
-                index: index + 1,
-                query: entry.query || entry.query_str || '',
-                answer: this.extractAnswer(entry),
-                sources: entry.sources || [],
-                metadata: {
-                    createdAt: entry.created_datetime || null,
-                    updatedAt: entry.updated_datetime || null
-                }
-            }))
+            entries: (data.detail?.entries || []).map((entry, index) => {
+                const entryMeta = this._extractEntryMeta(entry);
+                const result = {
+                    index: index + 1,
+                    query: entry.query || entry.query_str || '',
+                    answer: this.extractAnswer(entry),
+                    sources: entryMeta.sources,
+                    metadata: {
+                        createdAt: entry.created_datetime || null,
+                        updatedAt: entry.updated_datetime || null,
+                        model: entry.display_model || entry.model || null
+                    }
+                };
+                // Include rich content when available
+                if (entryMeta.attachments.length > 0) result.attachments = entryMeta.attachments;
+                if (entryMeta.media.length > 0) result.media = entryMeta.media;
+                if (entryMeta.knowledgeCards.length > 0) result.knowledgeCards = entryMeta.knowledgeCards;
+                if (entryMeta.relatedQuestions.length > 0) result.relatedQuestions = entryMeta.relatedQuestions;
+                return result;
+            })
         };
 
         return JSON.stringify(exportData, null, 2);
@@ -301,6 +355,104 @@ root.ExportManager = class ExportManager {
         .sources a:hover {
             text-decoration: underline;
         }
+        .thinking-block {
+            background: #f3e8ff;
+            border-left: 4px solid #a855f7;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-style: italic;
+            color: #6b21a8;
+        }
+        .thinking-block summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #7c3aed;
+            font-style: normal;
+        }
+        .tool-call {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 12px 0;
+        }
+        .tool-call summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #2563eb;
+        }
+        .tool-result {
+            background: #ecfdf5;
+            border-left: 4px solid #10b981;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 8px 0;
+        }
+        .tool-result.error {
+            background: #fef2f2;
+            border-left-color: #ef4444;
+        }
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 12px 0;
+        }
+        .code-block .lang-label {
+            display: block;
+            color: #94a3b8;
+            font-size: 11px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .inline-code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.9em;
+            color: #0f172a;
+        }
+        .attachment-badge {
+            display: inline-block;
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            margin: 4px 4px 4px 0;
+        }
+        .knowledge-card {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin: 8px 0;
+        }
+        .knowledge-card strong { color: #166534; }
+        .related-questions {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+        .related-questions-label {
+            font-size: 12px;
+            color: #6366f1;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .related-questions li {
+            color: #475569;
+            padding: 2px 0;
+        }
         .footer {
             text-align: center;
             padding: 20px;
@@ -324,28 +476,60 @@ root.ExportManager = class ExportManager {
         entries.forEach((entry, index) => {
             const query = entry.query || entry.query_str || '';
             const answer = this.extractAnswer(entry);
+            const meta = this._extractEntryMeta(entry);
 
             html += `
             <div class="entry">
                 <div class="question">
                     <div class="question-label">🙋 Question ${index + 1}</div>
                     ${this.escapeHtml(query)}
-                </div>
+                </div>`;
+
+            // Attachments
+            if (meta.attachments.length > 0) {
+                meta.attachments.forEach(att => {
+                    const name = att.file_name || att.fileName || 'file';
+                    html += `<span class="attachment-badge">📎 ${this.escapeHtml(name)}</span>`;
+                });
+            }
+
+            html += `
                 <div class="answer">
                     <div class="answer-label">${platformIcon} Answer</div>
                     <div class="answer-content">${this._markdownToHtml(answer)}</div>
                 </div>`;
 
-            if (entry.sources && entry.sources.length > 0) {
+            // Sources (from blocks or entry-level)
+            if (meta.sources.length > 0) {
                 html += `
                 <div class="sources">
                     <div class="sources-label">📚 Sources</div>`;
-                entry.sources.forEach((source, i) => {
-                    // SEC: Sanitize URL to prevent javascript: injection in href
+                const seen = {};
+                meta.sources.forEach((source, i) => {
+                    if (seen[source.url]) return;
+                    seen[source.url] = true;
                     const safeUrl = this._sanitizeUrl(source.url);
                     html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${i + 1}. ${this.escapeHtml(source.title || source.url)}</a>`;
                 });
                 html += `</div>`;
+            }
+
+            // Knowledge cards
+            if (meta.knowledgeCards.length > 0) {
+                meta.knowledgeCards.forEach(card => {
+                    html += `<div class="knowledge-card"><strong>${this.escapeHtml(card.title)}</strong>`;
+                    if (card.description) html += `<p>${this.escapeHtml(card.description)}</p>`;
+                    html += `</div>`;
+                });
+            }
+
+            // Related questions
+            if (meta.relatedQuestions.length > 0) {
+                html += `<div class="related-questions"><div class="related-questions-label">🔗 Related Questions</div><ul>`;
+                meta.relatedQuestions.slice(0, 5).forEach(q => {
+                    if (q) html += `<li>${this.escapeHtml(q)}</li>`;
+                });
+                html += `</ul></div>`;
             }
 
             html += `</div>`;
@@ -381,16 +565,51 @@ root.ExportManager = class ExportManager {
         entries.forEach((entry, index) => {
             const query = entry.query || entry.query_str || '';
             const answer = this.extractAnswer(entry);
+            const meta = this._extractEntryMeta(entry);
 
             txt += `[QUESTION ${index + 1}]\n`;
             txt += `${query}\n\n`;
+
+            // Attachments
+            if (meta.attachments.length > 0) {
+                txt += `[ATTACHMENTS]\n`;
+                meta.attachments.forEach(att => {
+                    txt += `  📎 ${att.file_name || att.fileName || 'file'}\n`;
+                });
+                txt += '\n';
+            }
+
             txt += `[ANSWER]\n`;
             txt += `${answer.trim()}\n\n`;
 
-            if (entry.sources && entry.sources.length > 0) {
+            // Sources (from blocks or entry-level)
+            if (meta.sources.length > 0) {
                 txt += `[SOURCES]\n`;
-                entry.sources.forEach((source, i) => {
+                const seen = {};
+                meta.sources.forEach((source, i) => {
+                    if (seen[source.url]) return;
+                    seen[source.url] = true;
                     txt += `  ${i + 1}. ${source.title || 'Link'}: ${source.url}\n`;
+                });
+                txt += '\n';
+            }
+
+            // Knowledge cards
+            if (meta.knowledgeCards.length > 0) {
+                txt += `[KNOWLEDGE CARDS]\n`;
+                meta.knowledgeCards.forEach(card => {
+                    txt += `  ${card.title}`;
+                    if (card.description) txt += ` - ${card.description}`;
+                    txt += '\n';
+                });
+                txt += '\n';
+            }
+
+            // Related questions
+            if (meta.relatedQuestions.length > 0) {
+                txt += `[RELATED QUESTIONS]\n`;
+                meta.relatedQuestions.slice(0, 5).forEach(q => {
+                    if (q) txt += `  - ${q}\n`;
                 });
                 txt += '\n';
             }
@@ -415,18 +634,25 @@ root.ExportManager = class ExportManager {
         // CSV escape: wrap in quotes and double any internal quotes
         const csvEscape = (text) => {
             if (text === null || text === undefined) return '""';
-            const str = String(text).replace(/"/g, '""');
+            let str = String(text);
+            // Mitigate CSV/Excel formula injection: prefix dangerous leading characters
+            if (/^[=+\-@]/.test(str)) {
+                str = "'" + str;
+            }
+            str = str.replace(/"/g, '""');
             return `"${str}"`;
         };
 
         // Header row
         let csv = '\uFEFF'; // BOM for Excel UTF-8 compat
-        csv += 'Index,Platform,Title,Question,Answer,Sources,Date\n';
+        csv += 'Index,Platform,Title,Question,Answer,Sources,Model,Date\n';
 
         entries.forEach((entry, index) => {
             const query = entry.query || entry.query_str || '';
             const answer = this.extractAnswer(entry).replace(/\n+/g, ' ').trim();
-            const sources = (entry.sources || []).map(s => s.url || s.title || '').join('; ');
+            const meta = this._extractEntryMeta(entry);
+            const sources = meta.sources.map(s => s.url || s.title || '').join('; ');
+            const model = entry.display_model || entry.model || '';
             const date = entry.updated_datetime || entry.created_datetime || '';
 
             csv += [
@@ -436,6 +662,7 @@ root.ExportManager = class ExportManager {
                 csvEscape(query),
                 csvEscape(answer),
                 csvEscape(sources),
+                csvEscape(model),
                 csvEscape(date)
             ].join(',') + '\n';
         });
@@ -471,17 +698,34 @@ root.ExportManager = class ExportManager {
     // ============================================
     // UTILITY FUNCTIONS
     // ============================================
+
+    /**
+     * Extract the full answer content from a conversation entry.
+     * Handles all platform-specific formats:
+     *   - Perplexity blocks (ask_text, web_results, media_items, knowledge_cards)
+     *   - Claude content blocks (text, tool_use, tool_result, local_resource)
+     *   - DeepSeek thinking blocks (<think> tags, thinking/reasoning fragments)
+     *   - ChatGPT multimodal_text, file_asset_pointer, code interpreter
+     *   - Generic answer/text fallback
+     */
     static extractAnswer(entry) {
         let answer = '';
 
+        // Handle Perplexity/Claude block-based entries
         if (entry.blocks && Array.isArray(entry.blocks)) {
             entry.blocks.forEach(block => {
+                // ask_text blocks contain the main answer markdown
                 if (block.intended_usage === 'ask_text' && block.markdown_block) {
                     if (block.markdown_block.answer) {
                         answer += block.markdown_block.answer + '\n\n';
                     } else if (block.markdown_block.chunks) {
                         answer += block.markdown_block.chunks.join('\n') + '\n\n';
                     }
+                }
+                // Generic markdown_block without intended_usage (some platforms)
+                if (!block.intended_usage && block.markdown_block) {
+                    const content = block.markdown_block.answer || (block.markdown_block.chunks || []).join('\n') || '';
+                    if (content) answer += content + '\n\n';
                 }
             });
         }
@@ -491,6 +735,84 @@ root.ExportManager = class ExportManager {
         }
 
         return answer;
+    }
+
+    /**
+     * Extract rich metadata from an entry, including:
+     *   - sources/citations
+     *   - media items (images, videos)
+     *   - knowledge cards
+     *   - related questions
+     *   - attachments
+     * Returns { sources, media, knowledgeCards, relatedQuestions, attachments }
+     */
+    static _extractEntryMeta(entry) {
+        const meta = {
+            sources: [],
+            media: [],
+            knowledgeCards: [],
+            relatedQuestions: [],
+            attachments: []
+        };
+
+        // Sources from blocks (Perplexity web_results)
+        if (entry.blocks && Array.isArray(entry.blocks)) {
+            entry.blocks.forEach(block => {
+                if (block.intended_usage === 'web_results' && block.web_result_block) {
+                    const webResults = block.web_result_block.web_results || [];
+                    webResults.forEach(wr => {
+                        if (wr.url) {
+                            meta.sources.push({ url: wr.url, title: wr.name || wr.title || wr.url });
+                        }
+                    });
+                }
+                // Perplexity media_items
+                if (block.intended_usage === 'media_items' && block.media_items_block) {
+                    (block.media_items_block.media_items || []).forEach(item => {
+                        meta.media.push({
+                            type: item.type || 'image',
+                            url: item.url || item.image_url || '',
+                            alt: item.alt || item.title || ''
+                        });
+                    });
+                }
+                // Perplexity knowledge_cards
+                if (block.intended_usage === 'knowledge_cards' && block.knowledge_card_block) {
+                    (block.knowledge_card_block.cards || [block.knowledge_card_block]).forEach(card => {
+                        meta.knowledgeCards.push({
+                            title: card.title || card.name || '',
+                            description: card.description || card.snippet || '',
+                            url: card.url || ''
+                        });
+                    });
+                }
+            });
+        }
+
+        // Entry-level sources
+        if (meta.sources.length === 0 && entry.sources && Array.isArray(entry.sources)) {
+            meta.sources = entry.sources.map(s => ({ url: s.url || '', title: s.title || s.name || s.url || '' }));
+        }
+
+        // Citations (Gemini, generic)
+        if (meta.sources.length === 0 && entry.citations && Array.isArray(entry.citations)) {
+            meta.sources = entry.citations.map(s =>
+                typeof s === 'string' ? { url: s, title: s } : { url: s.url || '', title: s.title || s.name || s.url || '' }
+            );
+        }
+
+        // Related questions
+        const relQ = entry.related_queries || entry.related_questions || [];
+        if (relQ.length > 0) {
+            meta.relatedQuestions = relQ.map(q => typeof q === 'string' ? q : (q.text || q.query || ''));
+        }
+
+        // Attachments (Claude)
+        if (entry.attachments && Array.isArray(entry.attachments)) {
+            meta.attachments = entry.attachments.filter(a => a.file_name || a.fileName || a.extracted_content);
+        }
+
+        return meta;
     }
 
     static generateFilename(title, extension) {
@@ -539,8 +861,10 @@ root.ExportManager = class ExportManager {
     }
 
     // ============================================
-    // MISSING-1: Minimal inline markdown-to-HTML converter
+    // Minimal inline markdown-to-HTML converter
     // No external dependencies — handles the most common markdown patterns in AI responses.
+    // Supports: fenced code, inline code, bold, italic, headings, lists,
+    //           thinking blocks (💭), tool_call fenced blocks, blockquotes
     // ============================================
     static _markdownToHtml(text) {
         if (!text) return '';
@@ -548,11 +872,41 @@ root.ExportManager = class ExportManager {
 
         // Extract fenced code blocks and replace them with placeholders
         const codeBlocks = [];
-        html = html.replace(/```([\s\S]*?)```/g, (_, code) => {
+        // Handle tool_call:name fenced blocks → collapsible detail element
+        html = html.replace(/```tool_call:([^\n]*)\n([\s\S]*?)```/g, (_, toolName, body) => {
             const index = codeBlocks.length;
             const placeholder = `::CODEBLOCK_${index}::`;
-            codeBlocks.push(`<pre class="code-block"><code>${code.trimEnd()}</code></pre>`);
+            const name = toolName.trim() || 'unknown';
+            codeBlocks.push(
+                `<details class="tool-call"><summary>🔧 Tool: ${name}</summary>` +
+                `<pre class="code-block"><span class="lang-label">json</span><code>${body.trimEnd()}</code></pre></details>`
+            );
             return placeholder;
+        });
+
+        // Standard fenced code blocks with optional language label
+        html = html.replace(/```(\S*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+            const index = codeBlocks.length;
+            const placeholder = `::CODEBLOCK_${index}::`;
+            const langLabel = lang ? `<span class="lang-label">${lang}</span>` : '';
+            codeBlocks.push(`<pre class="code-block">${langLabel}<code>${code.trimEnd()}</code></pre>`);
+            return placeholder;
+        });
+
+        // Handle thinking blocks: > 💭 **Thinking:** → collapsible <details>
+        html = html.replace(/(?:^|\n)(?:&gt; 💭[\s\S]*?)(?=\n[^&]|\n$|$)/gm, (block) => {
+            const lines = block.split('\n').map(l => l.replace(/^&gt;\s?/, ''));
+            const content = lines.join('\n').replace(/💭\s*\*\*Thinking:\*\*\s*/, '');
+            return `\n<details class="thinking-block"><summary>💭 Thinking</summary><p>${content.trim()}</p></details>\n`;
+        });
+
+        // Handle tool result blocks: > **Tool result:** → styled div
+        html = html.replace(/(?:^|\n)(?:&gt; \*\*Tool (result|error):\*\*[\s\S]*?)(?=\n[^&]|\n$|$)/gm, (block, type) => {
+            const lines = block.split('\n').map(l => l.replace(/^&gt;\s?/, ''));
+            const content = lines.join('\n').replace(/\*\*Tool (result|error):\*\*\s*/, '');
+            const cls = type === 'error' ? 'tool-result error' : 'tool-result';
+            const icon = type === 'error' ? '❌' : '✅';
+            return `\n<div class="${cls}">${icon} ${content.trim()}</div>\n`;
         });
 
         // Inline code

@@ -256,19 +256,22 @@ class ResilientDataExtractor {
      * Extract answer from entry with multiple fallback strategies
      */
     static extractAnswer(entry) {
-        // Strategy 1: Perplexity blocks structure
+        // Strategy 1: blocks structure (Perplexity, ChatGPT, Claude, Grok)
         if (entry.blocks && Array.isArray(entry.blocks)) {
+            let answer = '';
             for (const block of entry.blocks) {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    const answer = block.markdown_block.answer ||
+                // Handle blocks with markdown_block (all platforms use this structure)
+                if (block.markdown_block) {
+                    const content = block.markdown_block.answer ||
                         (block.markdown_block.chunks || []).join('\n');
-                    if (answer) return answer;
+                    if (content) answer += content + '\n\n';
                 }
                 // Alternative block types
                 if (block.text_block?.content) {
-                    return block.text_block.content;
+                    answer += block.text_block.content + '\n\n';
                 }
             }
+            if (answer.trim()) return answer.trim();
         }
 
         // Strategy 2: Direct properties
@@ -1873,144 +1876,142 @@ async function syncToNotion(data) {
     try {
         // Build content blocks from conversation entries
         const entries = data.detail?.entries || [];
-        const children = [];
+        let children = [];
 
         console.log('[OmniExporter] syncToNotion - entries:', entries.length);
 
-        // Add metadata header
-        children.push({
-            type: "callout",
-            callout: {
-                icon: { emoji: "🤖" },
-                color: "blue_background",
-                rich_text: [{
-                    type: "text",
-                    text: { content: `Exported from ${currentPlatform} on ${new Date().toLocaleString()}` }
-                }]
-            }
-        });
-        children.push({ type: "divider", divider: {} });
+        // Use rich block builder if available, otherwise fall back to basic blocks
+        if (typeof NotionBlockBuilder !== 'undefined') {
+            children = NotionBlockBuilder.buildNotionBlocks(entries, currentPlatform || 'AI', {
+                title: data.title,
+                url: data.url || '',
+                model: data.detail?.model || '',
+                exportDate: new Date().toISOString().split('T')[0]
+            });
+        } else {
+            // Fallback: basic block generation
+            children.push({
+                type: "callout",
+                callout: {
+                    icon: { emoji: "🤖" },
+                    color: "blue_background",
+                    rich_text: [{
+                        type: "text",
+                        text: { content: `Exported from ${currentPlatform} on ${new Date().toLocaleString()}` }
+                    }]
+                }
+            });
+            children.push({ type: "divider", divider: {} });
 
-        // Add each Q&A entry
-        entries.forEach((entry, index) => {
-            // Question/Query
-            const query = entry.query || entry.query_str || '';
-            if (query) {
-                children.push({
-                    type: "heading_2",
-                    heading_2: {
-                        rich_text: [{
-                            type: "text",
-                            text: { content: `🙋 ${query}`.slice(0, 2000) }
-                        }]
-                    }
-                });
-            }
-
-            // Answer extraction - handle Perplexity's block structure
-            let answer = '';
-            let sources = [];
-
-            if (entry.blocks && Array.isArray(entry.blocks)) {
-                entry.blocks.forEach(block => {
-                    if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                        if (block.markdown_block.answer) {
-                            answer += block.markdown_block.answer + '\n\n';
-                        } else if (block.markdown_block.chunks && Array.isArray(block.markdown_block.chunks)) {
-                            answer += block.markdown_block.chunks.join('\n') + '\n\n';
+            entries.forEach((entry, index) => {
+                const query = entry.query || entry.query_str || '';
+                if (query) {
+                    children.push({
+                        type: "heading_2",
+                        heading_2: {
+                            rich_text: [{
+                                type: "text",
+                                text: { content: `🙋 ${query}`.slice(0, 2000) }
+                            }]
                         }
-                    }
-                    if (block.intended_usage === 'web_results' && block.web_result_block) {
-                        const webResults = block.web_result_block.web_results || [];
-                        webResults.forEach(wr => {
-                            if (wr.url && wr.name) {
-                                sources.push({ name: wr.name, url: wr.url });
+                    });
+                }
+
+                let answer = '';
+                let sources = [];
+
+                if (entry.blocks && Array.isArray(entry.blocks)) {
+                    entry.blocks.forEach(block => {
+                        if (block.markdown_block) {
+                            answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
+                        }
+                        if (block.intended_usage === 'web_results' && block.web_result_block) {
+                            const webResults = block.web_result_block.web_results || [];
+                            webResults.forEach(wr => {
+                                if (wr.url && wr.name) {
+                                    sources.push({ name: wr.name, url: wr.url });
+                                }
+                            });
+                        }
+                    });
+                }
+
+                if (!answer.trim()) {
+                    answer = entry.answer || entry.text || '';
+                }
+
+                if (answer.trim()) {
+                    const chunks = splitTextIntoChunks(answer.trim(), 1900);
+                    chunks.forEach(chunk => {
+                        children.push({
+                            type: "paragraph",
+                            paragraph: {
+                                rich_text: [{
+                                    type: "text",
+                                    text: { content: chunk }
+                                }]
                             }
                         });
-                    }
-                });
-            }
+                    });
+                }
 
-            // Fallback for simple format
-            if (!answer.trim()) {
-                answer = entry.answer || entry.text || '';
-            }
-
-            // Add answer paragraphs (chunked for Notion's 2000 char limit)
-            if (answer.trim()) {
-                const chunks = splitTextIntoChunks(answer.trim(), 1900);
-                chunks.forEach(chunk => {
+                if (sources.length > 0) {
                     children.push({
-                        type: "paragraph",
-                        paragraph: {
+                        type: "heading_3",
+                        heading_3: {
                             rich_text: [{
                                 type: "text",
-                                text: { content: chunk }
+                                text: { content: "📚 Sources" }
                             }]
                         }
                     });
-                });
-            }
 
-            // Add sources as bulleted list
-            if (sources.length > 0) {
-                children.push({
-                    type: "heading_3",
-                    heading_3: {
-                        rich_text: [{
-                            type: "text",
-                            text: { content: "📚 Sources" }
-                        }]
-                    }
-                });
+                    const uniqueSources = sources.filter((s, i, arr) => i === arr.findIndex(x => x.url === s.url));
+                    uniqueSources.slice(0, 10).forEach(source => {
+                        children.push({
+                            type: "bulleted_list_item",
+                            bulleted_list_item: {
+                                rich_text: [{
+                                    type: "text",
+                                    text: {
+                                        content: source.name.slice(0, 200),
+                                        link: { url: source.url }
+                                    }
+                                }]
+                            }
+                        });
+                    });
+                }
 
-                const uniqueSources = sources.filter((s, i, arr) => i === arr.findIndex(x => x.url === s.url));
-                uniqueSources.slice(0, 10).forEach(source => {
+                if (entry.related_queries && entry.related_queries.length > 0) {
                     children.push({
-                        type: "bulleted_list_item",
-                        bulleted_list_item: {
+                        type: "heading_3",
+                        heading_3: {
                             rich_text: [{
                                 type: "text",
-                                text: {
-                                    content: source.name.slice(0, 200),
-                                    link: { url: source.url }
-                                }
+                                text: { content: "🔗 Related Questions" }
                             }]
                         }
                     });
-                });
-            }
 
-            // Add related questions if available
-            if (entry.related_queries && entry.related_queries.length > 0) {
-                children.push({
-                    type: "heading_3",
-                    heading_3: {
-                        rich_text: [{
-                            type: "text",
-                            text: { content: "🔗 Related Questions" }
-                        }]
-                    }
-                });
-
-                entry.related_queries.slice(0, 5).forEach(q => {
-                    children.push({
-                        type: "bulleted_list_item",
-                        bulleted_list_item: {
-                            rich_text: [{
-                                type: "text",
-                                text: { content: q.slice(0, 200) }
-                            }]
-                        }
+                    entry.related_queries.slice(0, 5).forEach(q => {
+                        children.push({
+                            type: "bulleted_list_item",
+                            bulleted_list_item: {
+                                rich_text: [{
+                                    type: "text",
+                                    text: { content: q.slice(0, 200) }
+                                }]
+                            }
+                        });
                     });
-                });
-            }
+                }
 
-            // Add divider between entries
-            if (index < entries.length - 1) {
-                children.push({ type: "divider", divider: {} });
-            }
-        });
+                if (index < entries.length - 1) {
+                    children.push({ type: "divider", divider: {} });
+                }
+            });
+        }
 
         // Create page in Notion database with dynamic properties and throttling
         const properties = await buildNotionProperties(data, dbId, apiKey, entries);
@@ -2458,12 +2459,8 @@ function formatToMarkdown(data) {
         let answer = '';
         if (entry.blocks && Array.isArray(entry.blocks)) {
             entry.blocks.forEach(block => {
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    if (block.markdown_block.answer) {
-                        answer += block.markdown_block.answer + '\n\n';
-                    } else if (block.markdown_block.chunks) {
-                        answer += block.markdown_block.chunks.join('\n') + '\n\n';
-                    }
+                if (block.markdown_block) {
+                    answer += (block.markdown_block.answer || block.markdown_block.chunks?.join('\n') || '') + '\n\n';
                 }
             });
         }
