@@ -666,9 +666,16 @@ async function syncToNotionAPI(data, apiKey, dbId) {
                         );
                     });
                     if (patchResp.status === 429 || patchResp.status >= 500) {
-                        const retryAfter = patchResp.headers.get('Retry-After');
-                        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 2000;
-                        await new Promise(r => setTimeout(r, delay));
+                        const retryAfterHeader = patchResp.headers.get('Retry-After');
+                        let delayMs = 2000; // default fallback delay in ms
+                        if (retryAfterHeader != null) {
+                            const retryAfterSeconds = Number.parseFloat(retryAfterHeader);
+                            if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+                                // Convert to ms and ensure we don't go below our default fallback
+                                delayMs = Math.max(retryAfterSeconds * 1000, 2000);
+                            }
+                        }
+                        await new Promise(r => setTimeout(r, delayMs));
                         throw new Error(`Notion rate limit (${patchResp.status}) on PATCH batch ${i}`);
                     }
                     if (!patchResp.ok) {
