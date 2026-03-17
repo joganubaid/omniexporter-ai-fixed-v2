@@ -237,6 +237,9 @@ globalThis.Logger = globalThis.Logger || ({
                 if (typeof value === 'string' && value.length > 500) {
                     return value.substring(0, 500) + '...[truncated]';
                 }
+                // Preserve undefined as null so callers can see which keys were set but undefined
+                // (JSON.stringify normally drops undefined fields entirely, hiding debug info)
+                if (value === undefined) return null;
                 return value;
             }));
 

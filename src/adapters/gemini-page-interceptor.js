@@ -75,8 +75,10 @@
                     try {
                         const innerPayload = JSON.parse(item[1]);
                         // innerPayload[1] is the message limit (usually 10 or 20)
+                        // Only update if the current limit is below the target —
+                        // guards against Gemini already sending limit=50 (21–99 range was skipped before)
                         if (Array.isArray(innerPayload) && innerPayload.length > 1 &&
-                            typeof innerPayload[1] === 'number' && innerPayload[1] <= 20) {
+                            typeof innerPayload[1] === 'number' && innerPayload[1] < CONFIG.newLimit) {
                             log(`Changing message limit from ${innerPayload[1]} to ${CONFIG.newLimit}`);
                             innerPayload[1] = CONFIG.newLimit;
                             item[1] = JSON.stringify(innerPayload);

@@ -120,10 +120,9 @@ export default {
             return handleTokenExchange(request, env);
         }
 
-        // Token refresh endpoint
-        if (url.pathname === '/api/notion/refresh' && request.method === 'POST') {
-            return handleTokenRefresh(request, env);
-        }
+        // Token refresh endpoint — intentionally removed.
+        // Notion does not issue refresh tokens; the extension performs a full re-auth flow.
+        // The extension's refreshAccessToken() calls authorize() directly and never hits this path.
 
         return new Response('Not Found', { status: 404, headers: getCorsHeaders(request) });
     }
@@ -193,10 +192,6 @@ async function handleTokenExchange(request, env) {
     }
 }
 
-async function handleTokenRefresh(request, env) {
-    // Notion doesn't support refresh tokens yet, but this is here for future use
-    return jsonResponse({ error: 'Refresh not supported by Notion API' }, 501, request);
-}
 
 function jsonResponse(data, status = 200, request = null) {
     const headers = request ? getCorsHeaders(request) : corsHeaders;

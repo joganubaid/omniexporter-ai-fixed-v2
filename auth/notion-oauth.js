@@ -113,6 +113,9 @@ var NotionOAuth = {
                 async (redirectUrl) => {
                     if (chrome.runtime.lastError) {
                         _logOAuth('error', 'Auth flow error', { error: chrome.runtime.lastError.message });
+                        // Clean up stored state/PKCE on cancellation — they would otherwise
+                        // persist in storage indefinitely (PKCE verifier has no expiry).
+                        chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                         reject(new Error(chrome.runtime.lastError.message));
                         return;
                     }
@@ -125,11 +128,13 @@ var NotionOAuth = {
                         const returnedState = url.searchParams.get('state');
 
                         if (error) {
+                            chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                             reject(new Error(`OAuth error: ${error}`));
                             return;
                         }
 
                         if (!code) {
+                            chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                             reject(new Error('No authorization code received'));
                             return;
                         }
@@ -139,12 +144,14 @@ var NotionOAuth = {
                         // short-circuit let a null returnedState bypass the check entirely.
                         // Also guard against stored state being undefined (null !== undefined is true).
                         if (!returnedState || !stored.notion_oauth_state || returnedState !== stored.notion_oauth_state) {
+                            chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                             reject(new Error('OAuth state mismatch. Please try again.'));
                             return;
                         }
 
                         const stateCreated = stored.notion_oauth_state_created || 0;
                         if (Date.now() - stateCreated > 10 * 60 * 1000) {
+                            chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                             reject(new Error('OAuth state expired. Please try again.'));
                             return;
                         }
@@ -156,6 +163,8 @@ var NotionOAuth = {
                         await chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                         resolve(tokens);
                     } catch (error) {
+                        // Clean up on any unexpected failure
+                        chrome.storage.local.remove(['notion_oauth_state', 'notion_oauth_state_created', 'notion_oauth_code_verifier']);
                         reject(error);
                     }
                 }

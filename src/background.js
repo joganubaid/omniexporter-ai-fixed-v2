@@ -26,10 +26,15 @@ if (typeof Logger === 'undefined') {
     };
 }
 
-// config.js is gitignored — may not exist on fresh clone
-// Extension uses defaults from auth/notion-oauth.js if config.js is missing
+// config.js is a root-level, committed configuration file.
+// The extension still falls back to defaults from auth/notion-oauth.js if config.js is missing
+// (for example, in custom builds or constrained deployment environments).
+// NOTE: background.js lives at src/background.js, so the service-worker URL is
+// chrome-extension://{id}/src/background.js.  importScripts() paths resolve relative
+// to that URL, so 'config.js' would look for src/config.js (wrong).
+// The root-level config.js must be referenced as '../config.js'.
 try {
-    importScripts('config.js');
+    importScripts('../config.js');
 } catch (e) {
     console.warn("[OmniExporter] config.js not found — using default configuration. Copy config.example.js to config.js to customize.");
 }
@@ -472,20 +477,16 @@ async function performAutoSync() {
             // This catches threads that failed in PREVIOUS runs (may not appear in current API results).
             const platformThreadUuids = new Set(threads.map(t => t.uuid));
             const { syncFailures = {} } = await chrome.storage.local.get('syncFailures');
-            // Derive platform-scoped failures:
-            // - If syncFailures[platform] is an object of { uuid -> count }, use that.
-            // - Else, if syncFailures is a flat { uuid -> count }, restrict to UUIDs
-            //   that belong to this platform's threads to avoid cross-platform retries.
+            // Derive platform-scoped failures.
+            // syncFailures[platform] is always a {uuid→count} object (trackFailure writes it that way).
+            // Previously there was a legacy root-level flat {uuid→count} path; that was fixed in
+            // trackFailure() — root-level keys now go into syncFailures['_unknown'].
             let platformFailures = {};
             const maybePlatformFailures = syncFailures && typeof syncFailures[platform] === 'object'
                 ? syncFailures[platform]
                 : null;
             if (maybePlatformFailures && Object.values(maybePlatformFailures).every(v => typeof v === 'number')) {
                 platformFailures = maybePlatformFailures;
-            } else if (syncFailures && Object.values(syncFailures).every(v => typeof v === 'number')) {
-                platformFailures = Object.fromEntries(
-                    Object.entries(syncFailures).filter(([uuid]) => platformThreadUuids.has(uuid))
-                );
             }
             // Build retry list: UUIDs for this platform that are NOT yet exported, attempt count < 3
             const retryUuids = Object.entries(platformFailures)
@@ -575,6 +576,11 @@ async function performAutoSync() {
                         failedCount++;
                         totalFailedCount++;
                         console.error(`[AutoSync] Error syncing ${thread.uuid}:`, e);
+                        // Show red badge on auth errors so user knows they need to log in.
+                        if (e.message && e.message.includes('Authentication required')) {
+                            chrome.action.setBadgeText({ text: '🔒' });
+                            chrome.action.setBadgeBackgroundColor({ color: '#ef4444' }); // red
+                        }
                     }
                 }
 
@@ -956,8 +962,15 @@ async function trackFailure(failure) {
             syncFailures[failure.platform] = Object.fromEntries(sorted);
         }
     } else {
-        // Fallback for callers that don't supply a platform (backwards compat)
-        syncFailures[failure.uuid] = (syncFailures[failure.uuid] || 0) + 1;
+        // No platform supplied — write under a dedicated '_unknown' namespace so we don't
+        // pollute the root with numeric UUID keys.  performAutoSync reads syncFailures[platform]
+        // as a {uuid→count} object; a root-level numeric key would pass the
+        // Object.values().every(v => typeof v === 'number') check and corrupt every platform's
+        // retry map.
+        if (!syncFailures['_unknown'] || typeof syncFailures['_unknown'] !== 'object') {
+            syncFailures['_unknown'] = {};
+        }
+        syncFailures['_unknown'][failure.uuid] = (syncFailures['_unknown'][failure.uuid] || 0) + 1;
     }
 
     await chrome.storage.local.set({ failures, syncFailures });

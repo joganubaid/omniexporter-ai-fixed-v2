@@ -351,6 +351,15 @@ const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
                 if (!content.trim()) return;
 
                 if (sender === 'human' || sender === 'user') {
+                    // If two human messages appear consecutively (no assistant turn in between),
+                    // flush the previous query as its own entry so it isn't silently dropped.
+                    if (currentQuery) {
+                        entries.push({
+                            query_str: currentQuery,
+                            query: currentQuery,
+                            blocks: [{ intended_usage: 'ask_text', markdown_block: { answer: '' } }]
+                        });
+                    }
                     currentQuery = content.trim();
                 } else if ((sender === 'assistant' || sender === 'grok' || sender === 'ai') && currentQuery) {
                     entries.push({

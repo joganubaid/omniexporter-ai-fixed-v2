@@ -1,7 +1,12 @@
 # OmniExporter AI Git Ignore
 
 # Config with secrets - never commit!
-config.js
+# NOTE: config.js itself IS committed with safe placeholder defaults so that the
+# <script src="../../config.js"> tags in popup.html and options.html always resolve,
+# and importScripts('../config.js') in background.js does not silently fail.
+# Developers replace the placeholder values with their own credentials locally.
+# If you have created a personal config.js with real credentials, add a local
+# .git/info/exclude entry or use `git update-index --assume-unchanged config.js`.
 
 # Node modules (for Cloudflare Worker)
 node_modules/

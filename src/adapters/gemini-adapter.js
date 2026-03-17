@@ -15,12 +15,16 @@
     // Only run on Gemini pages
     if (!window.location.hostname.includes('gemini.google.com')) return;
 
-    // Prevent duplicate injection
-    if (document.getElementById('omni-gemini-interceptor')) return;
+    // Prevent duplicate injection.
+    // The previous guard used document.getElementById('omni-gemini-interceptor'), but the
+    // script removes itself from the DOM (this.remove()) after loading, so the ID is always
+    // absent and the guard never fired — allowing duplicate injection on every SPA navigation.
+    // A persistent window flag is used instead so it survives the DOM removal.
+    if (window.__omniGeminiInterceptorInjected) return;
+    window.__omniGeminiInterceptorInjected = true;
 
     try {
         const script = document.createElement('script');
-        script.id = 'omni-gemini-interceptor';
         script.src = chrome.runtime.getURL('src/adapters/gemini-page-interceptor.js');
         script.onload = function () {
             console.log('[GeminiAdapter] Page interceptor injected successfully');
@@ -28,10 +32,13 @@
         };
         script.onerror = function () {
             console.warn('[GeminiAdapter] Failed to inject page interceptor');
+            // Reset flag on failure so a retry can succeed on next navigation
+            window.__omniGeminiInterceptorInjected = false;
         };
         (document.head || document.documentElement).appendChild(script);
     } catch (e) {
         console.warn('[GeminiAdapter] Injection error:', e.message);
+        window.__omniGeminiInterceptorInjected = false;
     }
 })();
 
@@ -43,10 +50,13 @@ const GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
     pendingRequests: new Map(),
     isReady: false,
     interceptorReady: false,
-    // Cache session params to avoid repeated postMessage calls
+    // Cache session params to avoid repeated postMessage calls.
+    // TTL is 60 s — short enough that a Gemini deploy (which changes the `bl` build-label)
+    // won't leave stale params cached for long and cause 404s on every batchexecute call.
+    // The cache is also invalidated explicitly when a batchexecute call returns 404.
     _sessionParamsCache: null,
     _sessionParamsCacheTime: 0,
-    _sessionParamsCacheTTL: 300000, // 5 minutes
+    _sessionParamsCacheTTL: 60000, // 60 seconds (was 5 minutes)
 
     init() {
         // REAL-9 FIX: Mark as initialized immediately so the outer guard works correctly
@@ -205,7 +215,7 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     /**
      * Extract conversation UUID from the current page URL.
      * @param {string} url - The full page URL
-     * @returns {string} The extracted UUID, or a timestamp-based fallback
+     * @returns {string} The extracted UUID, or a stable fallback (never timestamp-based)
      */
     extractUuid: (url) => {
         // Try platformConfig patterns first
@@ -219,7 +229,11 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
         if (appMatch) return appMatch[1];
         const gemMatch = url.match(/gemini\.google\.com\/gem\/([a-zA-Z0-9_-]+)/);
         if (gemMatch) return gemMatch[1];
-        return 'gemini_' + Date.now();
+        // Return a stable empty string instead of `'gemini_' + Date.now()`.
+        // A timestamp-based fallback created a new UUID on every extractUuid() call,
+        // so the same conversation produced a different ID each time — defeating the
+        // deduplication logic and creating a new Notion page on every export attempt.
+        return '';
     },
 
     // ============================================

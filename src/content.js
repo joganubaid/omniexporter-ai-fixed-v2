@@ -5,14 +5,28 @@
 // ── RE-INJECTION GUARD ────────────────────────────────────────────────────────
 // On extension reload, Chrome re-injects scripts into active tabs.
 // We need to re-register listeners but avoid "const already declared" errors.
+//
+// Guard checks ONLY __omniExporterLoaded.  The previous dual-check
+// (__omniExporterLoaded && __omniExporterManager) had a subtle bug: if the
+// script crashed after setting __omniExporterLoaded = true but before reaching
+// "window.__omniExporterManager = manager" at the bottom, the guard always
+// evaluated false and the broken script re-ran on every subsequent injection,
+// crashing again and again in an infinite loop.
 
-// If already loaded, just re-register the message listener
-if (window.__omniExporterLoaded && window.__omniExporterManager) {
-    window.__omniExporterManager.initialize();
-    console.log('[OmniExporter] Re-registered message listener after reload');
+// If already loaded, re-register the message listener (if manager is ready)
+if (window.__omniExporterLoaded) {
+    if (window.__omniExporterManager) {
+        window.__omniExporterManager.initialize();
+        console.log('[OmniExporter] Re-registered message listener after reload');
+    } else {
+        // Manager never initialised (previous run crashed) — skip re-execution to
+        // avoid looping.  A page reload is required to fully recover.
+        console.warn('[OmniExporter] Previous initialisation crashed; skipping re-injection. Reload the page to recover.');
+    }
     // Don't execute the rest of the file
 } else {
-    // Mark as loaded
+    // Mark as loaded immediately so any mid-script crash doesn't cause an infinite
+    // re-injection loop (the guard above will catch __omniExporterLoaded = true and bail out).
     window.__omniExporterLoaded = true;
 
     // Initialize Logger for content script
@@ -305,7 +319,8 @@ function normalizeEntries(detail, platform) {
                 if (block?.markdown_block?.answer) {
                     answer += block.markdown_block.answer + '\n\n';
                 } else if (block?.markdown_block?.chunks) {
-                    answer += block.markdown_block.chunks.join('\n') + '\n\n';
+                    const chunks = block.markdown_block.chunks;
+                    answer += (Array.isArray(chunks) ? chunks.join('\n') : String(chunks)) + '\n\n';
                 }
             });
         }

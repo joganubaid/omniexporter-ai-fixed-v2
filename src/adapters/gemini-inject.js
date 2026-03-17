@@ -228,10 +228,13 @@
                     this.traverseForConversations(item, results);
                 }
             } else {
-                // Check if this looks like a conversation
-                if (obj.conversationId || obj.id || obj.uuid) {
+                // Only match objects that have a Gemini-specific conversationId field.
+                // Previously this also matched any object with a generic `id` or `uuid` field,
+                // producing hundreds of false positives from analytics/config/i18n data in
+                // window.__INITIAL_DATA__ (virtually every sub-object has an id property).
+                if (obj.conversationId) {
                     results.push({
-                        uuid: obj.conversationId || obj.id || obj.uuid,
+                        uuid: obj.conversationId,
                         title: obj.title || obj.name || 'Untitled',
                         platform: 'Gemini'
                     });
@@ -271,88 +274,15 @@
     }
 
     // ============================================
-    // XHR INTERCEPTOR (Optional - for API capture)
-    // ============================================
-    class XHRInterceptor {
-        constructor() {
-            this.originalOpen = null;
-            this.originalSend = null;
-            this.capturedData = [];
-            this.MAX_CAPTURED = 200; // Prevent unbounded memory growth
-        }
-
-        start() {
-            if (this.originalOpen) return;
-
-            this.originalOpen = XMLHttpRequest.prototype.open;
-            this.originalSend = XMLHttpRequest.prototype.send;
-
-            const self = this;
-
-            XMLHttpRequest.prototype.open = function (method, url, ...args) {
-                this._omni_url = url;
-                this._omni_method = method;
-                return self.originalOpen.apply(this, [method, url, ...args]);
-            };
-
-            XMLHttpRequest.prototype.send = function (body) {
-                const xhr = this;
-                const url = this._omni_url;
-
-                // Capture Gemini API responses
-                if (url && url.includes('/_/BardChatUi/data/')) {
-                    xhr.addEventListener('load', function () {
-                        try {
-                            // Evict oldest entries when buffer is full
-                            if (self.capturedData.length >= self.MAX_CAPTURED) {
-                                self.capturedData.splice(0, Math.floor(self.MAX_CAPTURED / 2));
-                            }
-                            self.capturedData.push({
-                                url,
-                                method: xhr._omni_method,
-                                response: xhr.responseText?.substring(0, 10000) // Limit size
-                            });
-                        } catch (e) {
-                            // Ignore capture errors
-                        }
-                    });
-                }
-
-                return self.originalSend.apply(this, [body]);
-            };
-
-            console.log('[OmniExporter] XHR interceptor started');
-        }
-
-        stop() {
-            if (this.originalOpen) {
-                XMLHttpRequest.prototype.open = this.originalOpen;
-                XMLHttpRequest.prototype.send = this.originalSend;
-                this.originalOpen = null;
-                this.originalSend = null;
-            }
-        }
-
-        getCapturedData() {
-            return this.capturedData;
-        }
-    }
-
-    // ============================================
     // INITIALIZATION
     // ============================================
     const bridge = new WebBridge();
-    const interceptor = new XHRInterceptor();
-
-    // Start interceptor for Gemini pages
-    if (window.location.hostname.includes('gemini.google.com')) {
-        interceptor.start();
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            interceptor.stop();
-        });
-    }
+    // Note: XHR interception for Gemini API calls is handled exclusively by
+    // gemini-page-interceptor.js which runs in the PAGE context (injected via
+    // <script> tag by gemini-adapter.js). This content script runs in Chrome's
+    // isolated world and therefore cannot intercept the page's XMLHttpRequests.
+    // A previously included XHRInterceptor class here only patched the isolated
+    // world's XHR (useless) and was never queried, so it has been removed.
 
     // Sec 3 fix: debug window object removed — it exposed bridge.getGlobalData() (XSRF token)
     // to any page script. Internal instances are kept as local constants.

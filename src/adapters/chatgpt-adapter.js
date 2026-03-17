@@ -516,7 +516,10 @@ function transformChatGPTData(data) {
                     orderedMessages.push(node.message);
                 }
                 if (node?.children && node.children.length > 0) {
-                    currentNodeId = node.children[0];
+                    // Follow the LAST child: ChatGPT appends a new child for each
+                    // regeneration, so the last child is the most recently selected branch.
+                    // Using children[0] (first) would always export the original/stale answer.
+                    currentNodeId = node.children[node.children.length - 1];
                 } else {
                     break;
                 }

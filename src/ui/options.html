@@ -7,6 +7,7 @@
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <title>OmniExporter AI - Dashboard</title>
     <link rel="stylesheet" href="options.css">
+    <link rel="stylesheet" href="toast.css">
 </head>
 
 <body>
@@ -245,9 +246,8 @@
 
                                 <div class="setting-item">
                                     <label>Export Database</label>
-                                    <input type="text" id="notionDbId" placeholder="Auto-created after connection"
-                                        readonly>
-                                    <small class="hint">Database is automatically created when you connect.</small>
+                                    <input type="text" id="notionDbId" placeholder="Auto-created after connection">
+                                    <small class="hint">Database is automatically created when you connect. You can also paste an existing database ID here.</small>
                                 </div>
                                 <div class="setting-item">
                                     <button id="testNotionBtn" class="btn-small" style="margin-top: 10px;">
@@ -765,7 +765,7 @@
                             <!-- Clear Logs -->
                             <div class="test-section"
                                 style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-                                <button id="clearAllLogs" class="btn-small danger" style="width: 100%;">🗑️ Clear All
+                                <button id="clearAllLogsDevtools" class="btn-small danger" style="width: 100%;">🗑️ Clear All
                                     Logs (Secure)</button>
                             </div>
                         </div>
@@ -782,7 +782,7 @@
                 <a href="#" class="footer-link">💬 Support</a>
             </div>
             <div class="footer-brand">
-                <span>OmniExporter AI v5.0.0</span>
+                <span>OmniExporter AI v5.2.0</span>
                 <span class="separator">•</span>
                 <span class="enterprise-tag">Enterprise Edition</span>
             </div>
@@ -797,6 +797,8 @@
     <script src="../utils/notion-block-builder.js"></script>
     <script src="../utils/toast.js"></script>
     <script src="../../auth/notion-oauth.js"></script>
+    <script src="test-framework.js"></script>
+    <script src="test-fixtures.js"></script>
     <script src="options.js"></script>
 </body>
 

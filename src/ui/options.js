@@ -417,6 +417,9 @@ class ErrorRecovery {
 // ============================================================================
 // SECTION: PHASE 4: CONTENT SCRIPT HEALTH CHECKER
 // ============================================================================
+// PLATFORM_CONTENT_SCRIPT_FILES and getContentScriptFiles() are defined in
+// src/utils/shared-utils.js (loaded before this script) to avoid duplication.
+
 class ContentScriptHealthChecker {
     constructor() {
         this.retryAttempts = 3;
@@ -463,10 +466,14 @@ class ContentScriptHealthChecker {
                 return { success: false, error: 'Tab is not on a supported platform' };
             }
 
-            // Bug 10 fix: inject platform-config.js BEFORE content.js
+            // Inject the full platform-specific file set so that Logger, ExportManager,
+            // and the platform adapter are defined before content.js runs.
+            // Previously only platform-config.js and content.js were injected, which
+            // left Logger/ExportManager/adapter globals undefined (silent failures).
+            const files = getContentScriptFiles(tab.url || '');
             await chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ['src/platform-config.js', 'src/content.js']
+                files
             });
 
             await new Promise(r => setTimeout(r, 500));
@@ -1556,6 +1563,10 @@ async function loadAllThreads() {
             const batchSize = 50;
             const maxThreads = 10000;
             const delayMs = 200;
+            // Track seen UUIDs to prevent duplicates when the fallback fires mid-load.
+            // Without this, if GET_THREAD_LIST_OFFSET errors after 200 threads and falls
+            // back to GET_THREAD_LIST (page 1), threads 1–50 are appended again as duplicates.
+            const seenUuids = new Set();
 
             const tab = await getAITab();
             if (!tab) {
@@ -1586,8 +1597,15 @@ async function loadAllThreads() {
                 });
 
                 if (result && result.success && result.data && result.data.threads && result.data.threads.length > 0) {
-                    const newThreads = result.data.threads;
-                    threadData = [...threadData, ...newThreads];
+                    const rawThreads = result.data.threads;
+                    const newThreads = rawThreads.filter(t => {
+                        if (!t.uuid || seenUuids.has(t.uuid)) return false;
+                        seenUuids.add(t.uuid);
+                        return true;
+                    });
+                    if (newThreads.length > 0) {
+                        threadData = [...threadData, ...newThreads];
+                    }
 
                     // Update progress with count
                     const loadingText = listEl.querySelector('.loading-text');
@@ -1595,8 +1613,9 @@ async function loadAllThreads() {
                         loadingText.textContent = `${platformEmoji} Loaded ${threadData.length} threads...`;
                     }
 
-                    offset += newThreads.length;
-                    if (newThreads.length < batchSize) keepLoading = false;
+                    // Advance offset by raw count (not deduped) to avoid re-fetching same page
+                    offset += rawThreads.length;
+                    if (rawThreads.length < batchSize) keepLoading = false;
                     await new Promise(r => setTimeout(r, delayMs));
                 } else {
                     keepLoading = false;
@@ -2381,8 +2400,13 @@ async function toggleAutoSync() {
         toggle.classList.add('active');
         toggle.querySelector('span').textContent = 'Auto On';
         const interval = parseInt(document.getElementById('syncInterval').value) || 60;
-        chrome.alarms.create('autoSyncAlarm', { periodInMinutes: interval });
-        chrome.storage.local.set({ autoSyncEnabled: true });
+        // Save interval to storage first, then enable.
+        // background.js creates the alarm via storage.onChanged (reads the now-current interval).
+        // Previously options.js also called chrome.alarms.create() directly, causing a duplicate
+        // alarm: options.js used the UI field value while background.js re-read from storage.
+        // If the user had changed the interval without saving, the two creations used different
+        // values and the stale background value won.
+        chrome.storage.local.set({ syncInterval: interval, autoSyncEnabled: true });
         log(`Auto-Sync enabled (every ${interval} mins)`, 'success');
     }
 }
@@ -2400,13 +2424,23 @@ function clearExportedCache() {
 }
 
 async function retryFailedThread(uuid) {
-    const thread = threadData.find(t => t.uuid === uuid);
+    let thread = threadData.find(t => t.uuid === uuid);
+    if (!thread) {
+        // Thread not in the currently displayed page — search failures storage for metadata.
+        // (threadData only holds the most recently fetched page, so older failures can't be
+        // found here without this fallback.)
+        const data = await new Promise(r => chrome.storage.local.get('failures', r));
+        const failure = (data.failures || []).find(f => f.uuid === uuid);
+        if (failure) {
+            thread = { uuid: failure.uuid, title: failure.title || 'Unknown', platform: failure.platform };
+        }
+    }
     if (thread) {
         log(`Retrying: ${thread.title || uuid}`, 'info');
         await syncSingleThread(thread);
         if (typeof loadFailures === 'function') loadFailures();
     } else {
-        log('Thread not found. Refresh history first.', 'error');
+        log('Thread not found in history or failures list. Load All threads to retry older items.', 'error');
     }
 }
 
@@ -2941,6 +2975,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     };
     window.displayTestHistory();
+
+    // Clear All Logs — Test Runner section (was duplicate id; now clearAllLogsDevtools)
+    document.getElementById('clearAllLogsDevtools')?.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to clear ALL logs? This cannot be undone.')) {
+            await Logger.secureClear?.() || await chrome.storage.local.remove(['omniLogs', 'logEntries', 'testHistory', 'debugLogs']);
+            alert('All logs cleared securely!');
+            location.reload();
+        }
+    });
 
     // Clear All Logs
     document.getElementById('clearAllLogs')?.addEventListener('click', async () => {

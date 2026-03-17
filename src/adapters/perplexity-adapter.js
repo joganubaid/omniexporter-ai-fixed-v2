@@ -149,6 +149,48 @@ const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter ||
     }
 };
 
+// Helper: fetch with exponential-backoff retry (mirrors the pattern in Grok/Claude adapters).
+// Used inside fetchPerplexityDetailResilient to handle 429 / transient 5xx without crashing the
+// entire paginated detail fetch.
+async function _perplexityFetchWithRetry(url, options = {}, maxRetries = 3) {
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const response = await fetch(url, options);
+            if (response.status === 429 || response.status >= 500) {
+                const retryAfterHeader = response.headers.get('Retry-After');
+                let delayMs;
+                if (retryAfterHeader != null) {
+                    const retryAfterSeconds = parseFloat(retryAfterHeader);
+                    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+                        delayMs = retryAfterSeconds * 1000;
+                    }
+                }
+                if (!delayMs || !Number.isFinite(delayMs) || delayMs <= 0) {
+                    delayMs = Math.pow(2, attempt) * 1000;
+                }
+                lastError = new Error(`HTTP ${response.status}`);
+                if (attempt < maxRetries - 1) {
+                    console.warn(`[Perplexity] HTTP ${response.status} on attempt ${attempt + 1}, retrying in ${delayMs}ms`);
+                    await new Promise(r => setTimeout(r, delayMs));
+                    continue;
+                } else {
+                    break;
+                }
+            }
+            return response;
+        } catch (e) {
+            lastError = e;
+            if (attempt < maxRetries - 1) {
+                await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+            } else {
+                break;
+            }
+        }
+    }
+    throw lastError;
+}
+
 // Helper function for resilient detail fetching
 async function fetchPerplexityDetailResilient(uuid) {
     console.log('[Perplexity] Fetching thread detail for:', uuid);
@@ -195,7 +237,9 @@ async function fetchPerplexityDetailResilient(uuid) {
             const url = `${baseUrl}/rest/thread/${uuid}?${params.toString()}`;
             console.log('[OmniExporter] Fetching:', url);
 
-            const response = await fetch(url, {
+            // Use _perplexityFetchWithRetry so transient 429/5xx errors are retried rather
+            // than immediately crashing the loop and losing all previously-fetched pages.
+            const response = await _perplexityFetchWithRetry(url, {
                 credentials: "include",
                 headers: {
                     "accept": "application/json",
@@ -310,7 +354,21 @@ async function fetchPerplexityDetailResilient(uuid) {
                 if (enriched.blocks && enriched.blocks.length > 0) {
                     const lastAskBlock = enriched.blocks.find(b => b.intended_usage === 'ask_text' && b.markdown_block);
                     if (lastAskBlock) {
+                        // Happy path: append media to the existing answer block.
                         lastAskBlock.markdown_block.answer = (lastAskBlock.markdown_block.answer || '') + mediaContent;
+                    } else {
+                        // No ask_text block found — rather than silently dropping the media,
+                        // append it to the last available block with a markdown_block, or
+                        // create a dedicated block so nothing is lost.
+                        const anyBlock = enriched.blocks.slice().reverse().find(b => b.markdown_block);
+                        if (anyBlock) {
+                            anyBlock.markdown_block.answer = (anyBlock.markdown_block.answer || '') + mediaContent;
+                        } else {
+                            enriched.blocks.push({
+                                intended_usage: 'ask_text',
+                                markdown_block: { answer: mediaContent.trim() }
+                            });
+                        }
                     }
                 }
             }

@@ -200,8 +200,12 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
 
     extractChatList(data) {
         try {
-            const items = Array.isArray(data) ? data :
+            let items = Array.isArray(data) ? data :
                 (data?.data || data?.list || data?.conversations || data?.threads || data?.chats || []);
+            // Guard: if the resolved value is not an array (e.g. a plain object when data.data
+            // is an empty object or non-list structure), .map() would throw a TypeError.
+            // Normalize such cases to an empty array so map/filter operate safely and yield no items.
+            if (!Array.isArray(items)) items = [];
 
             return items.map(item => ({
                 uuid: item.uuid || item.id || item.session_id || item.chat_session_id || item.conversationId,

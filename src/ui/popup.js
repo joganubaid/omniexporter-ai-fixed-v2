@@ -317,17 +317,22 @@ function updatePlatformConnectionDots(activePlatform) {
 // ============================================
 // PLATFORM DETECTION (Fix #3: Content Script Injection)
 // ============================================
+// PLATFORM_CONTENT_SCRIPT_FILES and getContentScriptFiles() are defined in
+// src/utils/shared-utils.js (loaded before this script) to avoid duplication.
 
 /**
- * Inject content script if not already present
+ * Inject content script if not already present.
+ * @param {number} tabId
+ * @param {string} [tabUrl] - URL of the tab (used to pick platform-specific files)
  */
-async function ensureContentScript(tabId) {
+async function ensureContentScript(tabId, tabUrl) {
     try {
+        const files = getContentScriptFiles(tabUrl || '');
         await chrome.scripting.executeScript({
             target: { tabId },
-            files: ['src/platform-config.js', 'src/content.js']
+            files
         });
-        logPopup('debug', 'Content script injected');
+        logPopup('debug', 'Content script injected', { fileCount: files.length });
         return true;
     } catch (e) {
         logPopup('warn', 'Content script injection failed', { error: e.message });
@@ -357,7 +362,7 @@ async function detectPlatform() {
                 logPopup('debug', 'Content script not ready, injecting...');
 
                 // Fix #3: Inject content script and retry
-                const injected = await ensureContentScript(tab.id);
+                const injected = await ensureContentScript(tab.id, tab.url);
                 if (injected) {
                     // Wait for script to initialize
                     await new Promise(r => setTimeout(r, 500));
@@ -650,13 +655,35 @@ async function syncToNotionAPI(data, apiKey, dbId) {
         };
         for (let i = 100; i < children.length; i += 100) {
             const batch = children.slice(i, i + 100);
-            await new Promise(r => setTimeout(r, 350)); // respect rate limits
-            const patchResp = await fetch(
-                `https://api.notion.com/v1/blocks/${pageId}/children`,
-                { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
-            );
-            if (!patchResp.ok) {
-                console.warn(`[Popup] Failed to append block batch ${i}–${i + batch.length}`);
+            try {
+                // Use withRetry + rateLimiter (same as the initial POST) so 429s are handled
+                // instead of silently dropping blocks.
+                await withRetry(async () => {
+                    const patchResp = await notionRateLimiter.throttle(async () => {
+                        return await fetch(
+                            `https://api.notion.com/v1/blocks/${pageId}/children`,
+                            { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
+                        );
+                    });
+                    if (patchResp.status === 429 || patchResp.status >= 500) {
+                        const retryAfterHeader = patchResp.headers.get('Retry-After');
+                        let delayMs = 2000; // default fallback delay in ms
+                        if (retryAfterHeader != null) {
+                            const retryAfterSeconds = Number.parseFloat(retryAfterHeader);
+                            if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+                                // Convert to ms and ensure we don't go below our default fallback
+                                delayMs = Math.max(retryAfterSeconds * 1000, 2000);
+                            }
+                        }
+                        await new Promise(r => setTimeout(r, delayMs));
+                        throw new Error(`Notion rate limit (${patchResp.status}) on PATCH batch ${i}`);
+                    }
+                    if (!patchResp.ok) {
+                        throw new Error(`Failed to append block batch ${i}–${i + batch.length}: ${patchResp.status}`);
+                    }
+                });
+            } catch (patchErr) {
+                console.warn(`[Popup] PATCH batch ${i} failed after retries:`, patchErr.message);
                 break; // partial append — don't fail the whole export
             }
         }
@@ -770,7 +797,9 @@ function downloadFile(content, name) {
     const a = document.createElement('a');
     a.href = url;
     a.download = `${name.replace(/[^a-z0-9]/gi, '_')}.md`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 
