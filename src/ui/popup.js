@@ -319,15 +319,43 @@ function updatePlatformConnectionDots(activePlatform) {
 // ============================================
 
 /**
- * Inject content script if not already present
+ * Maps hostname substrings to the full ordered list of content script files for that platform.
+ * Must match the ordering in manifest.json content_scripts entries.
+ * Previously only 2 of 7 files were injected, so Logger, ExportManager, and adapter globals
+ * were undefined when content.js ran, causing silent failures on manual injection.
  */
-async function ensureContentScript(tabId) {
+const PLATFORM_CONTENT_SCRIPT_FILES = {
+    'perplexity.ai':    ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/perplexity-adapter.js', 'src/content.js'],
+    'chatgpt.com':      ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/chatgpt-adapter.js', 'src/content.js'],
+    'chat.openai.com':  ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/chatgpt-adapter.js', 'src/content.js'],
+    'claude.ai':        ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/claude-adapter.js', 'src/content.js'],
+    'gemini.google.com':['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/gemini-inject.js', 'src/adapters/gemini-adapter.js', 'src/content.js'],
+    'grok.com':         ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js'],
+    'x.com':            ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js'],
+    'chat.deepseek.com':['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/deepseek-adapter.js', 'src/content.js'],
+};
+
+function getContentScriptFiles(url) {
+    for (const [domain, files] of Object.entries(PLATFORM_CONTENT_SCRIPT_FILES)) {
+        if (url && url.includes(domain)) return files;
+    }
+    // Fallback: inject minimal set so content.js at least has platform-config
+    return ['src/platform-config.js', 'src/content.js'];
+}
+
+/**
+ * Inject content script if not already present.
+ * @param {number} tabId
+ * @param {string} [tabUrl] - URL of the tab (used to pick platform-specific files)
+ */
+async function ensureContentScript(tabId, tabUrl) {
     try {
+        const files = getContentScriptFiles(tabUrl || '');
         await chrome.scripting.executeScript({
             target: { tabId },
-            files: ['src/platform-config.js', 'src/content.js']
+            files
         });
-        logPopup('debug', 'Content script injected');
+        logPopup('debug', 'Content script injected', { fileCount: files.length });
         return true;
     } catch (e) {
         logPopup('warn', 'Content script injection failed', { error: e.message });
@@ -357,7 +385,7 @@ async function detectPlatform() {
                 logPopup('debug', 'Content script not ready, injecting...');
 
                 // Fix #3: Inject content script and retry
-                const injected = await ensureContentScript(tab.id);
+                const injected = await ensureContentScript(tab.id, tab.url);
                 if (injected) {
                     // Wait for script to initialize
                     await new Promise(r => setTimeout(r, 500));

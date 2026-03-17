@@ -220,7 +220,11 @@ async function withRetry(fn, maxRetries = RETRY_MAX_ATTEMPTS, baseDelayMs = RETR
             return await fn();
         } catch (error) {
             lastError = error;
-            if (error.message?.includes('unauthorized') || error.message?.includes('Invalid')) {
+            // Only skip retry for known non-retriable auth errors.
+            // Do NOT use a broad 'Invalid' check — that also matches transient errors
+            // like "Invalid JSON", "Invalid date", "Invalid block type" which SHOULD be retried.
+            const nonRetriable = ['unauthorized', 'Invalid API key', 'invalid_token', 'revoked_token'];
+            if (nonRetriable.some(msg => error.message?.includes(msg))) {
                 throw error;
             }
             if (attempt < maxRetries - 1) {
