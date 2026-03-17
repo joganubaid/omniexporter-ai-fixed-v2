@@ -417,30 +417,8 @@ class ErrorRecovery {
 // ============================================================================
 // SECTION: PHASE 4: CONTENT SCRIPT HEALTH CHECKER
 // ============================================================================
-
-/**
- * Maps hostname substrings to the full ordered list of content script files.
- * Must match the ordering in manifest.json content_scripts entries.
- * Previously only platform-config.js and content.js were injected on manual injection,
- * leaving Logger, ExportManager, and adapter globals undefined (silent failures).
- */
-const PLATFORM_CONTENT_SCRIPT_FILES = {
-    'perplexity.ai':    ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/perplexity-adapter.js', 'src/content.js'],
-    'chatgpt.com':      ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/chatgpt-adapter.js', 'src/content.js'],
-    'chat.openai.com':  ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/chatgpt-adapter.js', 'src/content.js'],
-    'claude.ai':        ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/claude-adapter.js', 'src/content.js'],
-    'gemini.google.com':['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/gemini-inject.js', 'src/adapters/gemini-adapter.js', 'src/content.js'],
-    'grok.com':         ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js'],
-    'x.com':            ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js'],
-    'chat.deepseek.com':['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/deepseek-adapter.js', 'src/content.js'],
-};
-
-function getContentScriptFiles(url) {
-    for (const [domain, files] of Object.entries(PLATFORM_CONTENT_SCRIPT_FILES)) {
-        if (url && url.includes(domain)) return files;
-    }
-    return ['src/platform-config.js', 'src/content.js'];
-}
+// PLATFORM_CONTENT_SCRIPT_FILES and getContentScriptFiles() are defined in
+// src/utils/shared-utils.js (loaded before this script) to avoid duplication.
 
 class ContentScriptHealthChecker {
     constructor() {

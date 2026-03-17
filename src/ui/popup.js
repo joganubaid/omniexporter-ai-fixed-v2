@@ -317,31 +317,8 @@ function updatePlatformConnectionDots(activePlatform) {
 // ============================================
 // PLATFORM DETECTION (Fix #3: Content Script Injection)
 // ============================================
-
-/**
- * Maps hostname substrings to the full ordered list of content script files for that platform.
- * Must match the ordering in manifest.json content_scripts entries.
- * Previously only 2 of 7 files were injected, so Logger, ExportManager, and adapter globals
- * were undefined when content.js ran, causing silent failures on manual injection.
- */
-const PLATFORM_CONTENT_SCRIPT_FILES = {
-    'perplexity.ai':    ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/perplexity-adapter.js', 'src/content.js'],
-    'chatgpt.com':      ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/chatgpt-adapter.js', 'src/content.js'],
-    'chat.openai.com':  ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/chatgpt-adapter.js', 'src/content.js'],
-    'claude.ai':        ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/claude-adapter.js', 'src/content.js'],
-    'gemini.google.com':['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/gemini-inject.js', 'src/adapters/gemini-adapter.js', 'src/content.js'],
-    'grok.com':         ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js'],
-    'x.com':            ['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/grok-adapter.js', 'src/content.js'],
-    'chat.deepseek.com':['src/utils/logger.js', 'src/utils/network-interceptor.js', 'src/utils/export-manager.js', 'src/platform-config.js', 'src/adapters/deepseek-adapter.js', 'src/content.js'],
-};
-
-function getContentScriptFiles(url) {
-    for (const [domain, files] of Object.entries(PLATFORM_CONTENT_SCRIPT_FILES)) {
-        if (url && url.includes(domain)) return files;
-    }
-    // Fallback: inject minimal set so content.js at least has platform-config
-    return ['src/platform-config.js', 'src/content.js'];
-}
+// PLATFORM_CONTENT_SCRIPT_FILES and getContentScriptFiles() are defined in
+// src/utils/shared-utils.js (loaded before this script) to avoid duplication.
 
 /**
  * Inject content script if not already present.
