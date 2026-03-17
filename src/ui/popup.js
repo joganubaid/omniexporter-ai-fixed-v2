@@ -655,13 +655,28 @@ async function syncToNotionAPI(data, apiKey, dbId) {
         };
         for (let i = 100; i < children.length; i += 100) {
             const batch = children.slice(i, i + 100);
-            await new Promise(r => setTimeout(r, 350)); // respect rate limits
-            const patchResp = await fetch(
-                `https://api.notion.com/v1/blocks/${pageId}/children`,
-                { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
-            );
-            if (!patchResp.ok) {
-                console.warn(`[Popup] Failed to append block batch ${i}–${i + batch.length}`);
+            try {
+                // Use withRetry + rateLimiter (same as the initial POST) so 429s are handled
+                // instead of silently dropping blocks.
+                await withRetry(async () => {
+                    const patchResp = await notionRateLimiter.throttle(async () => {
+                        return await fetch(
+                            `https://api.notion.com/v1/blocks/${pageId}/children`,
+                            { method: 'PATCH', headers: notionHeaders, body: JSON.stringify({ children: batch }) }
+                        );
+                    });
+                    if (patchResp.status === 429 || patchResp.status >= 500) {
+                        const retryAfter = patchResp.headers.get('Retry-After');
+                        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 2000;
+                        await new Promise(r => setTimeout(r, delay));
+                        throw new Error(`Notion rate limit (${patchResp.status}) on PATCH batch ${i}`);
+                    }
+                    if (!patchResp.ok) {
+                        throw new Error(`Failed to append block batch ${i}–${i + batch.length}: ${patchResp.status}`);
+                    }
+                });
+            } catch (patchErr) {
+                console.warn(`[Popup] PATCH batch ${i} failed after retries:`, patchErr.message);
                 break; // partial append — don't fail the whole export
             }
         }
@@ -775,7 +790,9 @@ function downloadFile(content, name) {
     const a = document.createElement('a');
     a.href = url;
     a.download = `${name.replace(/[^a-z0-9]/gi, '_')}.md`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 

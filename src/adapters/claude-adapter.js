@@ -214,6 +214,12 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
                         v1PageNum = 0;
                         continue;
                     }
+                    // Mid-stream failure (page > 1): return whatever we have so far rather than
+                    // crashing and losing all already-fetched conversations.
+                    if (allThreads.length > 0) {
+                        console.warn(`[Claude] getAllThreads failed on page ${useV2 ? v2PageNum : v1PageNum}, returning ${allThreads.length} partial results:`, e.message);
+                        break;
+                    }
                     throw e;
                 }
 
@@ -602,15 +608,18 @@ async function fetchFilePreviewsForEntries(baseUrl, orgId, convoUuid, entries) {
             try {
                 const preview = await ClaudeAdapter.getFilePreview(ref.uuid);
                 if (preview && preview.content && preview.contentType) {
-                    // Append file content to the answer block
-                    const lastBlock = entry.blocks[entry.blocks.length - 1];
-                    if (lastBlock && lastBlock.markdown_block) {
-                        const header = `\n\n---\n📄 **${ref.name || 'Generated File'}** (${ref.mimeType || preview.contentType}):\n`;
-                        if (preview.contentType.startsWith('text/') || preview.contentType.includes('json')) {
-                            lastBlock.markdown_block.answer += `${header}\`\`\`\n${preview.content}\n\`\`\`\n`;
-                        } else {
-                            lastBlock.markdown_block.answer += `${header}${preview.content}\n`;
-                        }
+                    // Append file content to the answer block.
+                    // Guard: entry.blocks may be an empty array, making [length-1] return
+                    // undefined, which would throw "Cannot read properties of undefined".
+                    const lastBlock = entry.blocks && entry.blocks.length > 0
+                        ? entry.blocks[entry.blocks.length - 1]
+                        : null;
+                    if (!lastBlock || !lastBlock.markdown_block) continue;
+                    const header = `\n\n---\n📄 **${ref.name || 'Generated File'}** (${ref.mimeType || preview.contentType}):\n`;
+                    if (preview.contentType.startsWith('text/') || preview.contentType.includes('json')) {
+                        lastBlock.markdown_block.answer += `${header}\`\`\`\n${preview.content}\n\`\`\`\n`;
+                    } else {
+                        lastBlock.markdown_block.answer += `${header}${preview.content}\n`;
                     }
                 }
             } catch (e) {
