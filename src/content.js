@@ -46,8 +46,9 @@ if (window.__omniExporterLoaded) {
             // Validate UUID format to prevent injection
             isValidUuid: (uuid) => {
                 if (!uuid || typeof uuid !== 'string') return false;
-                // Allow alphanumeric, underscore, hyphen, 8-128 chars
-                return /^[a-zA-Z0-9_-]{8,128}$/.test(uuid);
+                // Allow alphanumeric, dot, underscore, hyphen, 8-128 chars
+                // Gemini IDs can include dots (e.g. from /app/{id}), so include "."
+                return /^[a-zA-Z0-9._-]{8,128}$/.test(uuid);
             },
 
             // Sanitize HTML to prevent XSS
@@ -802,4 +803,3 @@ if (document.readyState === 'loading') {
 window.__omniExporterManager = manager;
 
 } // end if (!window.__omniExporterLoaded)
-

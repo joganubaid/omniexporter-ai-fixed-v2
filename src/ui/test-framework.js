@@ -628,7 +628,7 @@ window.TestRunner = {
     },
 
     // ============================================
-    // SECURITY TESTS (4 tests)
+    // SECURITY TESTS (5 tests)
     // ============================================
     async testSecurity() {
         this.appendResult('<b>🔒 SECURITY TESTS</b>');
@@ -644,6 +644,12 @@ window.TestRunner = {
             const invalidUuid = 'not-a-uuid';
             const pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             this.assert(!pattern.test(invalidUuid));
+        });
+
+        await this.test('Conversation ID pattern accepts dot separators', () => {
+            const geminiId = 'abc.def-123_45';
+            const pattern = /^[a-zA-Z0-9._-]{8,128}$/;
+            this.assert(pattern.test(geminiId));
         });
 
         // XSS Prevention
