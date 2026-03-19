@@ -43,7 +43,8 @@ if (window.__omniExporterLoaded) {
     // ============================================
     if (!window.SecurityUtils) {
         window.SecurityUtils = {
-            // Validate UUID format to prevent injection
+            // Legacy name kept for compatibility; validates platform conversation IDs
+            // (not strictly RFC UUIDs) to prevent injection.
             isValidUuid: (uuid) => {
                 if (!uuid || typeof uuid !== 'string') return false;
                 // Allow alphanumeric, dot, underscore, hyphen, 8-128 chars
