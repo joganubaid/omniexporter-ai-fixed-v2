@@ -327,7 +327,8 @@ function updatePlatformConnectionDots(activePlatform) {
  */
 async function ensureContentScript(tabId, tabUrl) {
     try {
-        // Skip reinjection if content script is already alive to avoid redeclaration errors
+        // Skip reinjection if content script is already alive to avoid redeclaration errors.
+        // HEALTH_CHECK is handled in content.js and returns: { healthy: true, timestamp }.
         const health = await new Promise((resolve) => {
             chrome.tabs.sendMessage(tabId, { type: 'HEALTH_CHECK' }, (response) => {
                 if (chrome.runtime.lastError) {

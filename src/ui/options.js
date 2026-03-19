@@ -1621,7 +1621,9 @@ async function loadAllThreads() {
                     if (typeof result.data.hasMore === 'boolean') {
                         keepLoading = result.data.hasMore;
                     } else if (typeof result.data.offset === 'number' && typeof result.data.total === 'number') {
-                        keepLoading = (result.data.offset + rawThreads.length) < result.data.total;
+                        // `offset` in adapter responses represents the start offset for this batch.
+                        // We already advanced local `offset` above, so compare local progress to total.
+                        keepLoading = offset < result.data.total;
                     } else {
                         // Fallback heuristic for legacy adapters
                         keepLoading = rawThreads.length >= batchSize;
