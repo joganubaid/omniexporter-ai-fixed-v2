@@ -43,7 +43,7 @@ if (window.__omniExporterLoaded) {
     // ============================================
     if (!window.SecurityUtils) {
         window.SecurityUtils = {
-            // Legacy name kept for compatibility; validates platform conversation IDs
+            // Legacy helper name `isValidUuid` is kept for compatibility; validates platform conversation IDs
             // (not strictly RFC UUIDs) to prevent injection.
             isValidUuid: (uuid) => {
                 if (!uuid || typeof uuid !== 'string') return false;
