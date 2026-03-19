@@ -186,7 +186,7 @@ if (!GeminiBridge._listenerAdded) {
     GeminiBridge.init();
 }
 
-const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
+var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     name: "Gemini",
 
     // Request counter for _reqid parameter (HAR shows incrementing by 100000)

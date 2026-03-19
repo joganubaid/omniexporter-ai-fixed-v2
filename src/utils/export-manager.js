@@ -4,7 +4,7 @@
 
 // REAL-14 FIX: Wrap in window guard to prevent SyntaxError: 'Identifier already declared'
 // on SPA re-injection. ExportManager is injected as a content script and re-runs on navigation.
-const root = typeof window !== 'undefined' ? window : globalThis;
+var root = typeof window !== 'undefined' ? window : globalThis;
 if (!root.ExportManager) {
 root.ExportManager = class ExportManager {
     static formats = {

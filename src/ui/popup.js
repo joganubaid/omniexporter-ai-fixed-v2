@@ -327,6 +327,18 @@ function updatePlatformConnectionDots(activePlatform) {
  */
 async function ensureContentScript(tabId, tabUrl) {
     try {
+        // Skip reinjection if content script is already alive to avoid redeclaration errors
+        const health = await new Promise((resolve) => {
+            chrome.tabs.sendMessage(tabId, { type: 'HEALTH_CHECK' }, (response) => {
+                if (chrome.runtime.lastError) {
+                    resolve(false);
+                } else {
+                    resolve(response?.healthy === true);
+                }
+            });
+        });
+        if (health) return true;
+
         const files = getContentScriptFiles(tabUrl || '');
         await chrome.scripting.executeScript({
             target: { tabId },

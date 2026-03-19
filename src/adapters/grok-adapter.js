@@ -4,7 +4,7 @@
 // NOW USES: platformConfig for centralized configuration
 "use strict";
 
-const GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
+var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     name: "Grok",
 
     // ============================================

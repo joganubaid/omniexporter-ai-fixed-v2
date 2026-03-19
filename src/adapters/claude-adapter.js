@@ -7,7 +7,7 @@
 // - DataExtractor (from platform-config.js)
 // - Logger (from logger.js)
 
-const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
+var ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     name: "Claude",
     _cachedOrgId: null,
 

@@ -8,7 +8,7 @@
 // - Logger (from logger.js)
 
 // HAR-verified: supported_block_use_cases required for full response
-const PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES || [
+var PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES || [
     'answer_modes', 'media_items', 'knowledge_cards', 'inline_entity_cards',
     'place_widgets', 'finance_widgets', 'prediction_market_widgets', 'sports_widgets',
     'flight_status_widgets', 'news_widgets', 'shopping_widgets', 'jobs_widgets',
@@ -19,7 +19,7 @@ const PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PE
     'pending_followups', 'inline_claims'
 ];
 
-const PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
+var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
     name: "Perplexity",
 
     extractUuid: (url) => {

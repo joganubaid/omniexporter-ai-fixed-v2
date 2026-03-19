@@ -5,7 +5,7 @@
 // NOW USES: platformConfig for centralized configuration
 "use strict";
 
-const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
+var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     name: "DeepSeek",
 
     // ============================================

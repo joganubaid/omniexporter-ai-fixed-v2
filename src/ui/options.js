@@ -1615,7 +1615,17 @@ async function loadAllThreads() {
 
                     // Advance offset by raw count (not deduped) to avoid re-fetching same page
                     offset += rawThreads.length;
-                    if (rawThreads.length < batchSize) keepLoading = false;
+
+                    // Use explicit hasMore/offset from adapter responses when available.
+                    // Some platforms can return short pages before the final page (e.g., 4,50,50,4,50,46...).
+                    if (typeof result.data.hasMore === 'boolean') {
+                        keepLoading = result.data.hasMore;
+                    } else if (typeof result.data.offset === 'number' && typeof result.data.total === 'number') {
+                        keepLoading = (result.data.offset + rawThreads.length) < result.data.total;
+                    } else {
+                        // Fallback heuristic for legacy adapters
+                        keepLoading = rawThreads.length >= batchSize;
+                    }
                     await new Promise(r => setTimeout(r, delayMs));
                 } else {
                     keepLoading = false;
