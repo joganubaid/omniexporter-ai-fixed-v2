@@ -18,6 +18,9 @@ var PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PERP
     'preserve_latex', 'generic_onboarding_widgets', 'in_context_suggestions',
     'pending_followups', 'inline_claims'
 ];
+const PERPLEXITY_LIST_PAGE_LIMIT = 50;
+const PERPLEXITY_MAX_PAGES = 200;
+const PERPLEXITY_PAGINATION_DELAY_MS = 300;
 
 var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
     name: "Perplexity",
@@ -110,8 +113,8 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
         const seenUuids = new Set();
         let page = 1;
         let hasMore = true;
-        const limit = 50;
-        const maxPages = 200;
+        const limit = PERPLEXITY_LIST_PAGE_LIMIT;
+        const maxPages = PERPLEXITY_MAX_PAGES;
 
         try {
             while (hasMore && page <= maxPages) {
@@ -133,7 +136,7 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
                 if (pageThreads.length > 0 && added === 0) break;
 
                 page++;
-                if (hasMore) await new Promise(r => setTimeout(r, 300));
+                if (hasMore) await new Promise(r => setTimeout(r, PERPLEXITY_PAGINATION_DELAY_MS));
             }
 
             this._allThreadsCache = allThreads;

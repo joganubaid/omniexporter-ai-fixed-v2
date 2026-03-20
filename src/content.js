@@ -704,7 +704,8 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         }
         // ENTERPRISE: Use getAllThreads if adapter supports it (for complete Load All)
         else if (adapter.getThreadsWithOffset && !payload.loadAll) {
-            // Claude and any adapter with offset-based pagination support
+            // Skip this branch during Load All so platform-specific loadAll handlers
+            // (e.g., Claude above) can run full-fetch behavior instead of paged slices.
             const result = await adapter.getThreadsWithOffset(offset, limit);
             sendResponse({ success: true, data: result });
         }
