@@ -272,7 +272,9 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
                 pageNum++;
                 console.log(`[Gemini] Fetching page ${pageNum}, cursor=${cursor || 'none'}`);
 
-                const result = await this.getThreads(pageNum, 100, cursor);
+                // For API pagination, cursor is authoritative; keep page at 1 so
+                // NetworkInterceptor fallback doesn't skip data by synthetic offsets.
+                const result = await this.getThreads(1, 100, cursor);
 
                 // Add unique threads to allThreads
                 for (const thread of result.threads) {
@@ -282,8 +284,8 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
                     }
                 }
 
-                hasMore = result.hasMore && result.nextCursor;
-                cursor = result.nextCursor;
+                hasMore = !!result.nextCursor;
+                cursor = result.nextCursor || null;
 
                 if (progressCallback) {
                     progressCallback(allThreads.length, hasMore);

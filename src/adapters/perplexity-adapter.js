@@ -21,6 +21,9 @@ var PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PERP
 
 var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
     name: "Perplexity",
+    _allThreadsCache: [],
+    _cacheTimestamp: 0,
+    _cacheTTL: 60000, // 1 minute
 
     extractUuid: (url) => {
         // Use config layer with multiple pattern fallbacks
@@ -76,6 +79,9 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
             const items = Array.isArray(data) ? data : [];
             // HAR-verified: use total_threads from response for accurate pagination
             const totalThreads = items.length > 0 ? (items[0].total_threads || 0) : 0;
+            const hasMoreByTotal = totalThreads > 0
+                ? ((page - 1) * limit + items.length < totalThreads)
+                : false;
 
             return {
                 threads: items.map(t => ({
@@ -89,15 +95,69 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
                     search_focus: t.search_focus || '',
                     query_count: t.query_count || 0
                 })),
-                hasMore: totalThreads > 0
-                    ? ((page - 1) * limit + items.length < totalThreads)
-                    : items.length === limit,
+                // Keep full-page fallback because total_threads can be stale/partial.
+                hasMore: hasMoreByTotal || items.length === limit,
                 page
             };
         } catch (error) {
             console.error('[Perplexity] getThreads error:', error);
             throw error;
         }
+    },
+
+    getAllThreads: async function (progressCallback = null) {
+        const allThreads = [];
+        const seenUuids = new Set();
+        let page = 1;
+        let hasMore = true;
+        const limit = 50;
+        const maxPages = 200;
+
+        try {
+            while (hasMore && page <= maxPages) {
+                const result = await this.getThreads(page, limit);
+                const pageThreads = result.threads || [];
+                let added = 0;
+
+                for (const t of pageThreads) {
+                    if (!t?.uuid || seenUuids.has(t.uuid)) continue;
+                    seenUuids.add(t.uuid);
+                    allThreads.push(t);
+                    added++;
+                }
+
+                hasMore = result.hasMore === true;
+                if (progressCallback) progressCallback(allThreads.length, hasMore);
+
+                // Safety: stop if API keeps returning only already-seen rows.
+                if (pageThreads.length > 0 && added === 0) break;
+
+                page++;
+                if (hasMore) await new Promise(r => setTimeout(r, 300));
+            }
+
+            this._allThreadsCache = allThreads;
+            this._cacheTimestamp = Date.now();
+            return allThreads;
+        } catch (error) {
+            console.error('[Perplexity] getAllThreads failed:', error);
+            throw error;
+        }
+    },
+
+    getThreadsWithOffset: async function (offset = 0, limit = 50) {
+        const cacheValid = this._cacheTimestamp > Date.now() - this._cacheTTL;
+        if (!cacheValid || this._allThreadsCache.length === 0) {
+            await this.getAllThreads();
+        }
+
+        const threads = this._allThreadsCache.slice(offset, offset + limit);
+        return {
+            threads,
+            offset,
+            hasMore: offset + limit < this._allThreadsCache.length,
+            total: this._allThreadsCache.length
+        };
     },
 
     // ============================================

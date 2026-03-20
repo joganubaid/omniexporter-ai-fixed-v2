@@ -609,6 +609,28 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 sendResponse({ success: true, data: { threads, offset: 0, hasMore: false } });
             }
         }
+        // ENTERPRISE: Claude explicit branch to support full load-all behavior
+        else if (adapter.name === 'Claude') {
+            if (payload.loadAll && adapter.getAllThreads) {
+                const threads = await adapter.getAllThreads();
+                sendResponse({
+                    success: true,
+                    data: {
+                        threads,
+                        offset: 0,
+                        hasMore: false,
+                        total: threads.length
+                    }
+                });
+            } else if (adapter.getThreadsWithOffset) {
+                const result = await adapter.getThreadsWithOffset(offset, limit);
+                sendResponse({ success: true, data: result });
+            } else {
+                const page = Math.floor(offset / limit) + 1;
+                const response = await adapter.getThreads(page, limit);
+                sendResponse({ success: true, data: response });
+            }
+        }
         // ENTERPRISE: Grok support (HAR-verified endpoints)
         else if (adapter.name === 'Grok') {
             try {
@@ -681,7 +703,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
             }
         }
         // ENTERPRISE: Use getAllThreads if adapter supports it (for complete Load All)
-        else if (adapter.getThreadsWithOffset) {
+        else if (adapter.getThreadsWithOffset && !payload.loadAll) {
             // Claude and any adapter with offset-based pagination support
             const result = await adapter.getThreadsWithOffset(offset, limit);
             sendResponse({ success: true, data: result });
