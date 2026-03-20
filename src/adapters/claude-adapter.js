@@ -102,9 +102,11 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
 
     // ============================================
     // ENTERPRISE: Get ALL threads (Load All feature)
-    // HAR-VERIFIED 2026-03-16: Uses chat_conversations_v2 for richer metadata
-    // BUG-6/PERF-1 FIX: Fetch in pages instead of one massive request.
-    // BUG-7 FIX: Track v2 and v1 pagination independently to avoid resetting progress
+    // HAR-VERIFIED 2026-03-20 (from claude.ai.har analysis):
+    //   - V2 response shape: { data: [...], has_more: bool }
+    //   - NO next_cursor field in the response — cursor/UUID approach is WRONG
+    //   - V2 pagination is OFFSET-BASED: ?limit=50&offset=0, &offset=50, &offset=100 ...
+    //   - Passing cursor=<uuid> returns the SAME page every time (infinite loop)
     // ============================================
     getAllThreads: async function (progressCallback = null) {
         try {
@@ -115,43 +117,30 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
             const seenUuids = new Set();
             let hasMore = true;
 
-            // Try v2 endpoint first for richer metadata
-            let useV2 = true;
-            let v2Cursor = null;
-            let v2PageNum = 0;
-
-            // V1 pagination state (only used after v2 fails)
-            let v1PageNum = 0;
+            // Unified offset counter — used for both V2 and V1 fallback
+            let offset = 0;
             const PAGE_SIZE = 50;
+            let useV2 = true;
+            let pageNum = 0;
 
             while (hasMore) {
-                if (useV2) {
-                    v2PageNum++;
-                    if (v2PageNum > 200) {
-                        console.warn('[Claude] Reached max page limit, stopping pagination');
-                        break;
-                    }
-                } else {
-                    v1PageNum++;
-                    if (v1PageNum > 200) {
-                        console.warn('[Claude] Reached max page limit, stopping pagination');
-                        break;
-                    }
+                pageNum++;
+                if (pageNum > 200) {
+                    console.warn('[Claude] Reached max page limit (200), stopping pagination');
+                    break;
                 }
 
+                // Build URL: V2 with offset, or V1 fallback with offset
                 let pageUrl;
                 if (useV2) {
-                    // HAR-verified: chat_conversations_v2 returns { data: [...], has_more: bool }
+                    // HAR-verified 2026-03-20: V2 uses &offset=N (NOT cursor=uuid)
+                    // Response: { data: [...conversations...], has_more: bool }
                     const v2Endpoint = platformConfig.buildEndpoint('Claude', 'conversationsV2', { org: orgId });
-                    pageUrl = `${baseUrl}${v2Endpoint}`;
-                    if (v2Cursor) {
-                        pageUrl += `&cursor=${v2Cursor}`;
-                    }
+                    pageUrl = `${baseUrl}${v2Endpoint}&offset=${offset}`;
                 } else {
-                    // Fallback to v1 pagination
-                    const offset = (v1PageNum - 1) * PAGE_SIZE;
+                    // V1 fallback — same offset-based approach
                     const endpoint = platformConfig.buildEndpoint('Claude', 'conversations', { org: orgId });
-                    pageUrl = `${baseUrl}${endpoint}?limit=${PAGE_SIZE}&offset=${offset}&sort=updated_at&order=desc`;
+                    pageUrl = `${baseUrl}${endpoint}?limit=${PAGE_SIZE}&offset=${offset}&consistency=eventual`;
                 }
 
                 try {
@@ -161,15 +150,16 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
                     if (useV2 && data && data.data && Array.isArray(data.data)) {
                         // V2 response format: { data: [...], has_more: bool }
                         const page = data.data;
+                        let newOnThisPage = 0;
                         for (const t of page) {
                             if (!seenUuids.has(t.uuid)) {
                                 seenUuids.add(t.uuid);
+                                newOnThisPage++;
                                 allThreads.push({
                                     uuid: t.uuid,
                                     title: t.name || DataExtractor.extractTitle(t, 'Claude'),
                                     last_query_datetime: t.updated_at,
                                     platform: 'Claude',
-                                    // V2 enriched metadata
                                     model: t.model || null,
                                     project_uuid: t.project_uuid || null,
                                     is_starred: t.is_starred || false,
@@ -177,21 +167,25 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
                                 });
                             }
                         }
+                        // Advance offset by actual page size received
+                        offset += page.length;
+                        // has_more is the authoritative field (HAR-verified present on every V2 response)
                         hasMore = data.has_more === true;
-                        // Use last item's cursor for next page
-                        if (hasMore && page.length > 0) {
-                            v2Cursor = page[page.length - 1].uuid;
+                        // Safety: stop if we got a full page but no new items (dedup loop)
+                        if (page.length > 0 && newOnThisPage === 0) {
+                            console.warn('[Claude] Full page returned but all UUIDs already seen — stopping');
+                            hasMore = false;
                         }
+
                     } else if (useV2) {
-                        // BUG-7 FIX: V2 failed, fall back to v1
-                        // Don't reset progress - start v1 from where we left off
-                        console.warn('[Claude] chat_conversations_v2 response unexpected, falling back to v1');
-                        console.log(`[Claude] Collected ${allThreads.length} threads from v2, continuing with v1`);
+                        // V2 returned unexpected format — fall back to V1 from scratch
+                        console.warn('[Claude] V2 response unexpected, falling back to V1');
                         useV2 = false;
-                        v1PageNum = 0; // Start v1 from first page
+                        offset = 0; // Reset offset for V1
                         continue;
+
                     } else {
-                        // V1 response format: array of conversations
+                        // V1 response format: plain array of conversations
                         const page = Array.isArray(data) ? data : [];
                         for (const t of page) {
                             if (!seenUuids.has(t.uuid)) {
@@ -204,29 +198,29 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
                                 });
                             }
                         }
+                        offset += page.length;
                         hasMore = page.length === PAGE_SIZE;
                     }
+
                 } catch (e) {
-                    if (useV2 && v2PageNum === 1) {
-                        // BUG-7 FIX: V2 endpoint not available on first page, fall back to v1
-                        console.warn('[Claude] chat_conversations_v2 failed, falling back to v1:', e.message);
+                    if (useV2 && pageNum === 1) {
+                        // V2 unavailable on first attempt — try V1
+                        console.warn('[Claude] V2 failed, falling back to V1:', e.message);
                         useV2 = false;
-                        v1PageNum = 0;
+                        offset = 0;
+                        pageNum = 0;
                         continue;
                     }
-                    // Mid-stream failure (page > 1): return whatever we have so far rather than
-                    // crashing and losing all already-fetched conversations.
+                    // Mid-stream failure: keep partial results rather than losing everything
                     if (allThreads.length > 0) {
-                        console.warn(`[Claude] getAllThreads failed on page ${useV2 ? v2PageNum : v1PageNum}, returning ${allThreads.length} partial results:`, e.message);
+                        console.warn(`[Claude] getAllThreads failed on page ${pageNum}, keeping ${allThreads.length} results:`, e.message);
                         break;
                     }
                     throw e;
                 }
 
                 if (progressCallback) progressCallback(allThreads.length, hasMore);
-
                 if (allThreads.length >= 10000) break;
-
                 if (hasMore) await new Promise(r => setTimeout(r, 300));
             }
 

@@ -498,9 +498,11 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 last_query_datetime: t.last_query_datetime
             }));
 
-            const hasMore = totalThreads > 0
-                ? (offset + threads.length < totalThreads)
-                : threads.length === limit;
+            // FIX: Use full-page response as the primary "more data" signal.
+            // total_threads can be a server-side cap (e.g., 142) that doesn't reflect
+            // the user's real thread count. Keep paginating if we received a full page.
+            const hasMore = threads.length === limit ||
+                (totalThreads > 0 && offset + threads.length < totalThreads);
 
             sendResponse({ success: true, data: { threads, offset, hasMore, total: totalThreads } });
         }
@@ -577,17 +579,29 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         // ENTERPRISE: Gemini with API support
         else if (adapter.name === 'Gemini') {
             try {
-                const page = Math.floor(offset / limit) + 1;
-                const result = await adapter.getThreads(page, limit);
-                const threads = result.threads || result || [];
-                sendResponse({
-                    success: true,
-                    data: {
-                        threads: Array.isArray(threads) ? threads : [],
-                        offset,
-                        hasMore: result.hasMore || false
-                    }
-                });
+                // FIX: Use getThreadsWithOffset (cursor-paginated cache) instead of page-based
+                // getThreads. The old approach recalculated a page number from the offset but
+                // never passed a cursor, so every "page 2+" request silently refetched page 1.
+                if (adapter.getThreadsWithOffset) {
+                    const result = await adapter.getThreadsWithOffset(offset, limit);
+                    sendResponse({
+                        success: true,
+                        data: {
+                            threads: result.threads,
+                            offset: result.offset,
+                            hasMore: result.hasMore,
+                            total: result.total
+                        }
+                    });
+                } else {
+                    // Fallback: single-page fetch (no cursor pagination)
+                    const result = await adapter.getThreads(1, limit, null);
+                    const threads = result.threads || [];
+                    sendResponse({
+                        success: true,
+                        data: { threads, offset, hasMore: result.hasMore || false }
+                    });
+                }
             } catch (e) {
                 console.warn('[Gemini] API failed, trying DOM fallback:', e.message);
                 // DOM fallback - parse sidebar

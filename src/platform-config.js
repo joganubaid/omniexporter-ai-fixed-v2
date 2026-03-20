@@ -88,9 +88,12 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                     primary: '/api/organizations/{org}/chat_conversations', // VERIFIED: 2026-03-16
                     fallback: '/api/v1/organizations/{org}/conversations' // FALLBACK
                 },
-                // HAR-verified 2026-03-16: v2 endpoint returns richer metadata (model, settings, enabled_mcp_tools)
+                // HAR-verified 2026-03-20: V2 endpoint — offset-based pagination, NO cursor field.
+                // Response: { data: [...], has_more: bool }
+                // Usage: append &offset=N (and optionally &limit=N) to paginate.
+                // Do NOT use cursor=uuid — that returns the same page every time.
                 conversationsV2: {
-                    primary: '/api/organizations/{org}/chat_conversations_v2?limit=30&starred=false&consistency=eventual',
+                    primary: '/api/organizations/{org}/chat_conversations_v2?limit=50&consistency=eventual',
                     fallback: '/api/organizations/{org}/chat_conversations'
                 },
                 conversationDetail: {
