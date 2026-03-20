@@ -485,24 +485,18 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
      * @throws {Error} If no threads can be retrieved from the API or DOM
      */
     getThreads: async function (page = 1, limit = 20, cursor = null) {
-        // Check NetworkInterceptor first
-        if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
-            const all = window.NetworkInterceptor.getChatList();
-            const start = (page - 1) * limit;
-            return {
-                threads: all.slice(start, start + limit),
-                hasMore: start + limit < all.length,
-                page
-            };
-        }
-
         const threads = [];
 
-        // Try API: rpcid MaZiqc for listing conversations
+        // FIX: Try the MaZiqc API FIRST (not NetworkInterceptor).
+        // Previously, NetworkInterceptor was checked first — if it had intercepted even
+        // a handful of threads (e.g. 13 from the sidebar), getThreads returned immediately
+        // with that tiny subset and never called the API. This caused "Load All" to stop
+        // at 13 threads regardless of how many the user actually had.
+        // NetworkInterceptor is now used only as a fallback when the API fails.
         try {
             // HAR-verified payload: [13, null, [0, null, 1]]
             // 13 = conversation category ID (fixed)
-            // null = no pagination cursor
+            // null/cursor = pagination cursor
             // [0, null, 1] = sort/filter params
             const payload = [13, cursor, [0, null, 1]];
             console.log(`[Gemini] Fetching thread list with MaZiqc, cursor=${cursor || 'none'}`);
@@ -511,44 +505,30 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
 
             if (data) {
                 // HAR-verified response structure:
-                // [null, null, [[chat_id, title, null, null, null, [timestamp_secs, timestamp_nanos], null, null, null, 1, ...], ...]]
-                // The conversations array is at data[2] (third element)
+                // data[0] = null (reserved)
+                // data[1] = next cursor string (null if no more pages)
+                // data[2] = conversations array [[id, title, null, null, null, [ts_secs, ts_nanos], ...], ...]
                 let conversations = null;
 
-                // Try data[2] first (HAR-verified position)
                 if (Array.isArray(data[2])) {
                     conversations = data[2];
-                }
-                // Fallback: data[0] (older format)
-                else if (Array.isArray(data[0])) {
+                } else if (Array.isArray(data[0])) {
                     conversations = data[0];
-                }
-                // Fallback: data itself if it's a flat array of conversations
-                else if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0]) && typeof data[0][0] === 'string') {
+                } else if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0]) && typeof data[0][0] === 'string') {
                     conversations = data;
                 }
 
                 if (conversations && conversations.length > 0) {
                     conversations.forEach(conv => {
                         if (!Array.isArray(conv)) return;
-
-                        // HAR-verified structure per chat:
-                        // [0] = chat ID (e.g., "c_ec00ff04a46f7fa6")
-                        // [1] = title (e.g., "DIY Soundproofing With Household Items")
-                        // [5] = [timestamp_seconds, timestamp_nanos]
                         const uuid = conv[0] || '';
                         const title = conv[1] || 'Gemini Chat';
-
-                        // Extract timestamp from conv[5] if available
                         let datetime = new Date().toISOString();
                         if (Array.isArray(conv[5]) && conv[5][0]) {
                             try {
                                 datetime = new Date(conv[5][0] * 1000).toISOString();
-                            } catch (e) {
-                                // Keep default
-                            }
+                            } catch (e) { /* keep default */ }
                         }
-
                         if (uuid) {
                             threads.push({
                                 uuid,
@@ -561,8 +541,7 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
 
                     if (threads.length > 0) {
                         console.log(`[Gemini] ✓ Found ${threads.length} conversations via MaZiqc`);
-
-                        // Get next cursor for pagination (at data[1])
+                        // data[1] is the next-page cursor; null means no more pages.
                         const nextCursor = data[1] || null;
                         return {
                             threads,
@@ -581,7 +560,46 @@ const GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
             }
         }
 
+        // Fallback: NetworkInterceptor (only used when API is unavailable/fails)
+        if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
+            const all = window.NetworkInterceptor.getChatList();
+            const start = (page - 1) * limit;
+            return {
+                threads: all.slice(start, start + limit),
+                hasMore: start + limit < all.length,
+                page
+            };
+        }
+
         return { threads, hasMore: false, page };
+    },
+
+    // ============================================
+    // ENTERPRISE: Offset-based fetching (mirrors ClaudeAdapter pattern)
+    // Builds a full in-memory cache via cursor pagination, then slices.
+    // Used by handleGetThreadListOffset for correct "Load All" behaviour.
+    // ============================================
+    /**
+     * Fetch threads using offset-based addressing backed by cursor-paginated cache.
+     * @param {number} offset - Number of threads to skip
+     * @param {number} limit - Maximum number of threads to return
+     * @returns {Promise<{threads: Array, offset: number, hasMore: boolean, total: number}>}
+     */
+    getThreadsWithOffset: async function (offset = 0, limit = 50) {
+        const cacheValid = GeminiAdapter._cacheTimestamp > Date.now() - GeminiAdapter._cacheTTL;
+
+        if (!cacheValid || GeminiAdapter._allThreadsCache.length === 0) {
+            // Build full cache using cursor pagination
+            await GeminiAdapter.getAllThreads();
+        }
+
+        const threads = GeminiAdapter._allThreadsCache.slice(offset, offset + limit);
+        return {
+            threads,
+            offset,
+            hasMore: offset + limit < GeminiAdapter._allThreadsCache.length,
+            total: GeminiAdapter._allThreadsCache.length
+        };
     },
 
     // ============================================
