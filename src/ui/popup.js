@@ -164,24 +164,23 @@ const reqDeduplication = new RequestDeduplicator();
 const DOM = {};
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Cache frequently used DOM elements at initialization
+    // Cache DOM elements
     DOM.saveToNotionBtn = document.getElementById('saveToNotionBtn');
-    DOM.openDashboard = document.getElementById('openDashboard');
-    DOM.toggleSync = document.getElementById('toggleSync');
-    DOM.platformStatus = document.getElementById('platform-status');
-    DOM.syncStatus = document.getElementById('syncStatus');
-    DOM.status = document.getElementById('status');
+    DOM.openDashboard   = document.getElementById('openDashboard');
+    DOM.toggleSync      = document.getElementById('toggleSync');
+    DOM.platformStatus  = document.getElementById('platform-status');
+    DOM.platformDot     = document.getElementById('platformDot');
+    DOM.syncStatus      = document.getElementById('syncStatus');
+    DOM.status          = document.getElementById('status');
 
-    initConnectionDots(); // Initialize connection dots first
     detectPlatform();
     loadSyncStatus();
     initExportDropdown();
-    initNavigationBar();
 
     // Event Listeners
-    DOM.saveToNotionBtn.addEventListener('click', saveToNotion);
-    DOM.openDashboard.addEventListener('click', openDashboard);
-    DOM.toggleSync.addEventListener('click', toggleAutoSync);
+    DOM.saveToNotionBtn?.addEventListener('click', saveToNotion);
+    DOM.openDashboard?.addEventListener('click', openDashboard);
+    DOM.toggleSync?.addEventListener('click', toggleAutoSync);
 
     // Phase 2: Offline Detection
     window.addEventListener('online', () => {
@@ -198,15 +197,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================
 // CONNECTION DOTS INITIALIZATION
 // ============================================
-function initConnectionDots() {
-    const platforms = ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'deepseek'];
-    platforms.forEach(platform => {
-        const dot = document.getElementById(`dot-${platform}`);
-        if (dot) {
-            dot.classList.add('checking'); // Show checking animation initially
-        }
-    });
-}
+// No-op stubs — platform nav bar removed from popup
+function initConnectionDots() {}
+function initNavigationBar() {}
+function updatePlatformConnectionDots() {}
 
 // ============================================
 // EXPORT DROPDOWN
@@ -245,74 +239,16 @@ function initExportDropdown() {
 }
 
 // ============================================
-// NAVIGATION BAR
+// NAVIGATION BAR — removed, stub kept for safety
 // ============================================
-function initNavigationBar() {
-    const navBtns = document.querySelectorAll('.nav-btn');
-
-    navBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const platform = btn.getAttribute('data-platform');
-            navigateToPlatform(platform);
-        });
-    });
-}
-
-function navigateToPlatform(platform) {
-    const platformUrls = {
-        'perplexity': 'https://www.perplexity.ai/',
-        'chatgpt': 'https://chatgpt.com/',
-        'claude': 'https://claude.ai/',
-        'gemini': 'https://gemini.google.com/',
-        'grok': 'https://grok.com/',
-        'deepseek': 'https://chat.deepseek.com/'
-    };
-
-    const url = platformUrls[platform];
-    if (url) {
-        chrome.tabs.create({ url });
-        if (typeof Toast !== 'undefined') Toast.info(`Opening ${platform}...`);
-    }
-}
+function navigateToPlatform() {}
 
 function updateNavBarActive(platform) {
-    const platformMap = {
-        'Perplexity': 'perplexity',
-        'ChatGPT': 'chatgpt',
-        'Claude': 'claude',
-        'Gemini': 'gemini',
-        'Grok': 'grok',
-        'DeepSeek': 'deepseek'
-    };
-
-    const navBtns = document.querySelectorAll('.nav-btn');
-    navBtns.forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.getAttribute('data-platform') === platformMap[platform]) {
-            btn.classList.add('active');
-        }
-    });
-
-    // Update connection dots
-    updatePlatformConnectionDots(platformMap[platform]);
+    // Update header platform label and dot
+    if (DOM.platformStatus) DOM.platformStatus.textContent = platform;
+    if (DOM.platformDot) DOM.platformDot.classList.add('active');
 }
 
-// ============================================
-// PLATFORM CONNECTION DOTS (from reference files)
-// ============================================
-function updatePlatformConnectionDots(activePlatform) {
-    const platforms = ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'deepseek'];
-
-    platforms.forEach(platform => {
-        const dot = document.getElementById(`dot-${platform}`);
-        if (dot) {
-            dot.classList.remove('connected', 'checking');
-            if (platform === activePlatform) {
-                dot.classList.add('connected');
-            }
-        }
-    });
-}
 
 // ============================================
 // PLATFORM DETECTION (Fix #3: Content Script Injection)
@@ -746,10 +682,10 @@ function updateSyncUI(isEnabled) {
     if (!statusEl) return;
     if (isEnabled) {
         statusEl.textContent = 'ON';
-        statusEl.className = 'status on';
+        statusEl.className = 'sync-badge on';
     } else {
         statusEl.textContent = 'OFF';
-        statusEl.className = 'status off';
+        statusEl.className = 'sync-badge';
     }
 }
 
@@ -807,11 +743,11 @@ function setStatus(message, type) {
     const el = DOM.status || document.getElementById('status');
     if (!el) return;
     el.textContent = message;
-    el.className = `status-message ${type}`;
+    el.className = `status-msg ${type}`;
 
     if (type === 'success' || type === 'info') {
         setTimeout(() => {
-            el.className = 'status-message';
+            el.className = 'status-msg';
         }, 3000);
     }
 }

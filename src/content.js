@@ -458,53 +458,60 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
             'Sec-Fetch-Site': 'same-origin'
         };
 
-        // Use Perplexity API directly with offset
+        // PERPLEXITY: One API call per message, 20 items at a time.
+        //
+        // Why NOT getAllThreads/getThreadsWithOffset:
+        //   getAllThreads fetches every page sequentially inside one Chrome message
+        //   (500 threads = 25 API calls x ~300ms = ~7-15s). Chrome message channel
+        //   times out, the whole thing dies, 0 threads returned.
+        //
+        // Correct approach: each GET_THREAD_LIST_OFFSET message = ONE API call = 20 items.
+        //   options.js loop: offset += rawThreads.length (advances by 20 each time),
+        //   keepLoading = hasMore (from has_next_page, the only reliable signal).
+        //   For 500 threads: 25 round-trips x ~300ms each = ~7.5s total, no timeouts.
         if (adapter.name === 'Perplexity') {
-            if (typeof platformConfig === 'undefined') {
-                throw new Error('platformConfig not loaded');
-            }
-            const endpoint = platformConfig.buildEndpoint('Perplexity', 'listThreads');
-            const baseUrl = platformConfig.getBaseUrl('Perplexity');
-            const url = `${baseUrl}${endpoint}`;
-            // HAR-verified body: includes search_term
-            const body = { limit, offset, ascending: false, search_term: "" };
+            if (typeof platformConfig === 'undefined') throw new Error('platformConfig not loaded');
 
-            const response = await fetch(url, {
-                method: "POST",
-                credentials: "include",
+            const endpoint = platformConfig.buildEndpoint('Perplexity', 'listThreads');
+            const baseUrl  = platformConfig.getBaseUrl('Perplexity');
+            const version  = (platformConfig.activeVersions?.get('Perplexity')) || '2.18';
+            const spaceId  = payload.spaceId || null;
+
+            // Always send limit=20 — the API ignores larger values anyway.
+            const body = { limit: 20, offset, ascending: false, search_term: "" };
+            if (spaceId) body.collection_uuid = spaceId;
+
+            const pResp = await fetch(`${baseUrl}${endpoint}`, {
+                method: 'POST',
+                credentials: 'include',
                 headers: {
                     ...browserHeaders,
-                    "content-type": "application/json",
-                    "x-app-apiclient": "default",
-                    // REAL-7 FIX: Use dynamic version from PerplexityAdapter if available.
-                    // handleGetThreadListOffset is the actual path for "Load All" — must not be hardcoded.
-                    "x-app-apiversion": (typeof PerplexityAdapter !== 'undefined' && PerplexityAdapter._apiVersion)
-                        ? PerplexityAdapter._apiVersion
-                        : (typeof platformConfig !== 'undefined' && platformConfig.activeVersions?.get('Perplexity'))
-                            ? platformConfig.activeVersions.get('Perplexity')
-                            : '2.18'
+                    'content-type': 'application/json',
+                    'x-app-apiclient': 'default',
+                    'x-app-apiversion': version
                 },
                 body: JSON.stringify(body)
             });
-            const data = await response.json();
-            const items = Array.isArray(data) ? data : [];
-            // HAR-verified: use total_threads from response for accurate pagination
-            const totalThreads = items.length > 0 ? (items[0].total_threads || 0) : 0;
 
-            const threads = items.map(t => ({
-                // HAR-verified: use slug for detail API (it expects slug, not UUID)
-                uuid: t.slug || t.uuid,
-                title: t.title || "Untitled",
-                last_query_datetime: t.last_query_datetime
+            if (!pResp.ok) throw new Error(`Perplexity API ${pResp.status}`);
+
+            const pData  = await pResp.json();
+            const pItems = Array.isArray(pData) ? pData : [];
+
+            const pThreads = pItems.map(t => ({
+                uuid:                t.slug || t.uuid,
+                title:               t.title || DataExtractor.extractTitle(t, 'Perplexity') || 'Untitled',
+                last_query_datetime: t.last_query_datetime,
+                display_model:       t.display_model || '',
+                mode:                t.mode || ''
             }));
 
-            // FIX: Use full-page response as the primary "more data" signal.
-            // total_threads can be a server-side cap (e.g., 142) that doesn't reflect
-            // the user's real thread count. Keep paginating if we received a full page.
-            const hasMore = threads.length === limit ||
-                (totalThreads > 0 && offset + threads.length < totalThreads);
+            // has_next_page is the ONLY reliable "more pages" signal.
+            // total_threads lies — reports ~99 even for 500+ thread accounts.
+            const pHasMore = pItems.length > 0 ? (pItems[0].has_next_page === true) : false;
 
-            sendResponse({ success: true, data: { threads, offset, hasMore, total: totalThreads } });
+            console.log(`[Perplexity] offset=${offset} got=${pThreads.length} hasMore=${pHasMore}`);
+            sendResponse({ success: true, data: { threads: pThreads, offset, hasMore: pHasMore } });
         }
         // ENTERPRISE: DeepSeek with cursor-based offset simulation
         else if (adapter.name === 'DeepSeek' && adapter.getThreadsWithOffset) {
@@ -576,49 +583,89 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 sendResponse({ success: false, error: e.message });
             }
         }
-        // ENTERPRISE: Gemini with API support
+        // GEMINI: One batchexecute API call per message.
+        //
+        // Problem with getThreadsWithOffset: it calls getAllThreads() which loops 100+ pages
+        // inside a single Chrome message → timeout, 0 results.
+        //
+        // Fix: call getThreads(page, limit, cursor) directly — ONE request per message.
+        // Cursors are stored in window.__omniGeminiCursorMap so each subsequent call
+        // can pass the right cursor without re-fetching earlier pages.
+        //
+        // cursor flow:
+        //   offset=0  → cursor=null,           stores nextCursor at key 50
+        //   offset=50 → cursor=map[50],        stores nextCursor at key 100
+        //   offset=100→ cursor=map[100], ...
         else if (adapter.name === 'Gemini') {
             try {
-                // FIX: Use getThreadsWithOffset (cursor-paginated cache) instead of page-based
-                // getThreads. The old approach recalculated a page number from the offset but
-                // never passed a cursor, so every "page 2+" request silently refetched page 1.
-                if (adapter.getThreadsWithOffset) {
-                    const result = await adapter.getThreadsWithOffset(offset, limit);
-                    sendResponse({
-                        success: true,
-                        data: {
-                            threads: result.threads,
-                            offset: result.offset,
-                            hasMore: result.hasMore,
-                            total: result.total
-                        }
-                    });
-                } else {
-                    // Fallback: single-page fetch (no cursor pagination)
-                    const result = await adapter.getThreads(1, limit, null);
-                    const threads = result.threads || [];
-                    sendResponse({
-                        success: true,
-                        data: { threads, offset, hasMore: result.hasMore || false }
-                    });
+        // Persist cursor map across multiple GET_THREAD_LIST_OFFSET messages
+                if (!window.__omniGeminiCursorMap) window.__omniGeminiCursorMap = {};
+                // Reset cursor map when starting fresh (offset=0 = new Dashboard load)
+                if (offset === 0) window.__omniGeminiCursorMap = {};
+                const cursor   = window.__omniGeminiCursorMap[offset] ?? null;
+                const pageNum  = Math.floor(offset / limit) + 1;
+
+                const result = await adapter.getThreads(pageNum, limit, cursor);
+
+                // Store next cursor so the following page request can use it
+                if (result.nextCursor) {
+                    window.__omniGeminiCursorMap[offset + (result.threads?.length || limit)] = result.nextCursor;
                 }
+
+                const threads = result.threads || [];
+                const hasMore = result.hasMore === true && !!result.nextCursor;
+
+                console.log(`[Gemini] offset=${offset} got=${threads.length} hasMore=${hasMore}`);
+                sendResponse({ success: true, data: { threads, offset, hasMore } });
             } catch (e) {
                 console.warn('[Gemini] API failed, trying DOM fallback:', e.message);
-                // DOM fallback - parse sidebar
                 const threads = [];
-                document.querySelectorAll('[class*="conversation-title"], [class*="chat-item"], a[href*="/app/"]').forEach((item, i) => {
+                document.querySelectorAll('[class*="conversation-title"],[class*="chat-item"],a[href*="/app/"]').forEach((item, i) => {
                     if (i >= limit) return;
                     const href = item.closest('a')?.getAttribute('href') || '';
                     const uuid = href.match(/\/app\/([a-zA-Z0-9_-]+)/)?.[1];
                     if (uuid && SecurityUtils.isValidUuid(uuid)) {
-                        threads.push({
-                            uuid,
-                            title: item.textContent?.trim() || 'Gemini Chat',
-                            platform: 'Gemini'
-                        });
+                        threads.push({ uuid, title: item.textContent?.trim() || 'Gemini Chat', platform: 'Gemini' });
                     }
                 });
-                sendResponse({ success: true, data: { threads, offset: 0, hasMore: false } });
+                sendResponse({ success: true, data: { threads, offset, hasMore: false } });
+            }
+        }
+        // CLAUDE: One V2 API call per message.
+        //
+        // Problem with getThreadsWithOffset: calls getAllThreads() which loops all pages
+        // inside one Chrome message → timeout.
+        //
+        // HAR-verified V2 shape: GET .../conversations/v2?...&offset=N
+        // Response: { data: [...50 convos...], has_more: bool }
+        // No cursor field — pure offset-based, one fetch per message.
+        else if (adapter.name === 'Claude') {
+            try {
+                if (typeof ClaudeAdapter === 'undefined') throw new Error('ClaudeAdapter not loaded');
+                const orgId   = await ClaudeAdapter.getOrgId();
+                const baseUrl = platformConfig.getBaseUrl('Claude');
+                const v2Ep    = platformConfig.buildEndpoint('Claude', 'conversationsV2', { org: orgId });
+                // HAR-verified: V2 uses &offset=N (not cursor=uuid — that returns same page forever)
+                const url = `${baseUrl}${v2Ep}&offset=${offset}`;
+
+                const resp = await ClaudeAdapter._fetchWithRetry(url);
+                const data = await resp.json();
+
+                const page    = Array.isArray(data.data) ? data.data : [];
+                const threads = page.map(t => ({
+                    uuid:                t.uuid,
+                    title:               t.name || DataExtractor.extractTitle(t, 'Claude') || 'Untitled',
+                    last_query_datetime: t.updated_at,
+                    model:               t.model || null,
+                    is_starred:          t.is_starred || false
+                }));
+                const hasMore = data.has_more === true;
+
+                console.log(`[Claude] offset=${offset} got=${threads.length} hasMore=${hasMore}`);
+                sendResponse({ success: true, data: { threads, offset, hasMore } });
+            } catch (e) {
+                console.error('[Claude] direct V2 failed:', e.message);
+                sendResponse({ success: false, error: e.message });
             }
         }
         // ENTERPRISE: Grok support (HAR-verified endpoints)
@@ -692,9 +739,9 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 }
             }
         }
-        // ENTERPRISE: Use getAllThreads if adapter supports it (for complete Load All)
+        // Generic fallback: adapters with getThreadsWithOffset (DeepSeek already handled above,
+        // Claude and Gemini also handled above — this covers any future adapter)
         else if (adapter.getThreadsWithOffset) {
-            // Claude and any adapter with offset-based pagination support
             const result = await adapter.getThreadsWithOffset(offset, limit);
             sendResponse({ success: true, data: result });
         }
