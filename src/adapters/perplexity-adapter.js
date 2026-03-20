@@ -83,6 +83,141 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
     },
 
 
+    // ============================================
+    // Cache for getAllThreads / getThreadsWithOffset
+    // Same pattern as ClaudeAdapter / GeminiAdapter
+    // ============================================
+    _allThreadsCache: [],
+    _cacheTimestamp: 0,
+    _cacheTTL: 60000, // 1 minute
+
+    // ============================================
+    // getAllThreads — loops through ALL pages using has_next_page
+    // HAR-verified: API returns 20 items per page, has_next_page is the
+    // only reliable stop signal. Runs entirely inside the content-script
+    // world so we avoid Chrome message-passing overhead for every page.
+    // ============================================
+    getAllThreads: async function (progressCallback = null, spaceId = null) {
+        try {
+            const endpoint = platformConfig.buildEndpoint('Perplexity', 'listThreads');
+            const baseUrl = platformConfig.getBaseUrl('Perplexity');
+            const url = `${baseUrl}${endpoint}`;
+            const version = (typeof platformConfig !== 'undefined'
+                ? platformConfig.activeVersions?.get('Perplexity') : null) || '2.18';
+            const headers = {
+                "accept": "*/*",
+                "content-type": "application/json",
+                "x-app-apiclient": "default",
+                "x-app-apiversion": version
+            };
+
+            const allThreads = [];
+            const seenUuids = new Set();
+            let offset = 0;
+            let hasMore = true;
+            const PAGE_SIZE = 20;
+            const MAX_PAGES = 600; // safety cap (600 × 20 = 12 000 threads)
+            let pageNum = 0;
+
+            while (hasMore) {
+                pageNum++;
+                if (pageNum > MAX_PAGES) {
+                    console.warn('[Perplexity] Reached max page limit, stopping');
+                    break;
+                }
+
+                const body = { limit: PAGE_SIZE, offset, ascending: false, search_term: "" };
+                if (spaceId) body.collection_uuid = spaceId;
+
+                try {
+                    const response = await fetch(url, {
+                        method: "POST", credentials: "include", headers,
+                        body: JSON.stringify(body)
+                    });
+
+                    if (!response.ok) {
+                        console.warn(`[Perplexity] getAllThreads page ${pageNum} HTTP ${response.status}`);
+                        break;
+                    }
+
+                    const data = await response.json();
+                    const items = Array.isArray(data) ? data : [];
+
+                    let newOnPage = 0;
+                    for (const t of items) {
+                        const key = t.slug || t.uuid;
+                        if (key && !seenUuids.has(key)) {
+                            seenUuids.add(key);
+                            newOnPage++;
+                            allThreads.push({
+                                uuid: key,
+                                title: DataExtractor.extractTitle(t, 'Perplexity'),
+                                last_query_datetime: t.last_query_datetime,
+                                display_model: t.display_model || '',
+                                mode: t.mode || '',
+                                search_focus: t.search_focus || '',
+                                query_count: t.query_count || 0
+                            });
+                        }
+                    }
+
+                    // Advance offset by items received (always 20 from API)
+                    offset += items.length;
+
+                    // has_next_page is the ONLY reliable stop signal
+                    hasMore = items.length > 0 ? (items[0].has_next_page === true) : false;
+
+                    // Safety: if full page returned but nothing new, stop (dedup loop)
+                    if (items.length > 0 && newOnPage === 0) {
+                        console.warn('[Perplexity] Full page but all duplicates — stopping');
+                        break;
+                    }
+
+                    if (progressCallback) progressCallback(allThreads.length, hasMore);
+                    console.log(`[Perplexity] Page ${pageNum}: +${newOnPage} threads (total ${allThreads.length}), hasMore=${hasMore}`);
+
+                    // Polite delay between pages to avoid rate-limiting
+                    if (hasMore) await new Promise(r => setTimeout(r, 250));
+
+                } catch (e) {
+                    console.warn(`[Perplexity] getAllThreads page ${pageNum} error:`, e.message);
+                    if (allThreads.length > 0) break; // keep partial results
+                    throw e;
+                }
+            }
+
+            // Store in cache
+            PerplexityAdapter._allThreadsCache = allThreads;
+            PerplexityAdapter._cacheTimestamp = Date.now();
+            console.log(`[Perplexity] getAllThreads complete: ${allThreads.length} threads`);
+            return allThreads;
+
+        } catch (error) {
+            console.error('[Perplexity] getAllThreads failed:', error);
+            throw error;
+        }
+    },
+
+    // ============================================
+    // getThreadsWithOffset — cache-backed offset slice
+    // Used by handleGetThreadListOffset in content.js
+    // ============================================
+    getThreadsWithOffset: async function (offset = 0, limit = 50, spaceId = null) {
+        const cacheValid = PerplexityAdapter._cacheTimestamp > Date.now() - PerplexityAdapter._cacheTTL;
+
+        if (!cacheValid || PerplexityAdapter._allThreadsCache.length === 0) {
+            await PerplexityAdapter.getAllThreads(null, spaceId);
+        }
+
+        const threads = PerplexityAdapter._allThreadsCache.slice(offset, offset + limit);
+        return {
+            threads,
+            offset,
+            hasMore: offset + limit < PerplexityAdapter._allThreadsCache.length,
+            total: PerplexityAdapter._allThreadsCache.length
+        };
+    },
+
     getSpaces: async () => {
         try {
             const baseUrl = platformConfig.getBaseUrl('Perplexity');

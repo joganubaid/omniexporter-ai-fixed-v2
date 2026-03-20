@@ -6,16 +6,25 @@
 // SECTION: STATE MANAGEMENT
 // ============================================================================
 let currentPlatform = "Unknown";
-let aiPlatformTabId = null; // Store the AI platform tab ID
+let aiPlatformTabId = null;
 let selectedThreads = new Set();
-let threadData = [];
-let currentPage = 1;
-let itemsPerPage = 50; // Increased from 20 for faster loading
-let hasMoreThreads = true;
-let exportedUuids = new Set();
-let exportHistory = [];
-let syncStatusMap = {};
+let threadData      = [];   // all threads shown so far (all pages accumulated)
+let currentPage     = 1;
+let itemsPerPage    = 50;
+let hasMoreThreads  = true;
+let exportedUuids   = new Set();
+let exportHistory   = [];
+let syncStatusMap   = {};
 let exportStartTime = null;
+
+// ── Prefetch buffer ───────────────────────────────────────────────────────────
+// Threads already fetched from the API but not yet shown to the user.
+// Allows platforms with small API caps (Perplexity: 20/req, ChatGPT: 28/req)
+// to still present full 50-item pages to the user.
+let prefetchBuffer = [];   // [{uuid, title, last_query_datetime, ...}]
+let apiOffset      = 0;    // tracks how far into the platform API we've read
+let apiHasMore     = true; // whether the API still has data beyond apiOffset
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ============================================================
 // SHARED PLATFORM URL MAP (Bug 6 fix — mirrors popup.js)
@@ -665,18 +674,14 @@ async function updatePlatformSelector() {
 function updatePlatformIcon() {
     const iconDisplay = document.getElementById('platformIconDisplay');
     if (!iconDisplay) return;
-
-    // Hide all icons first
-    iconDisplay.querySelectorAll('.platform-icon').forEach(icon => {
+    // Hide all icons first (new HTML uses .picon, old used .platform-icon — handle both)
+    iconDisplay.querySelectorAll('.picon, .platform-icon').forEach(icon => {
         icon.style.display = 'none';
     });
-
     // Show the icon matching current platform
     if (currentPlatform) {
         const activeIcon = iconDisplay.querySelector(`[data-platform="${currentPlatform}"]`);
-        if (activeIcon) {
-            activeIcon.style.display = 'block';
-        }
+        if (activeIcon) activeIcon.style.display = 'block';
     }
 }
 
@@ -866,7 +871,7 @@ async function handleOauthDisconnect() {
 // ============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
     initNavigation();
-    initSubtabs();
+    // initSubtabs removed — Activity/DevTools tabs deleted
     initDataSourceRadio();
     initDateFilter();
 
@@ -961,11 +966,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Event Listeners - Thread List
-    document.getElementById('selectAllBtn')?.addEventListener('click', selectAllThreads);
+    document.getElementById('selectAllBtn')?.addEventListener('change', selectAllThreads);
     document.getElementById('refreshHistory')?.addEventListener('click', () => fetchHistory(1));
     document.getElementById('prevPageBtn')?.addEventListener('click', () => changePage(-1));
     document.getElementById('nextPageBtn')?.addEventListener('click', () => changePage(1));
-    document.getElementById('loadAllBtn')?.addEventListener('click', loadAllThreads);
+    // loadAllBtn removed — pagination uses Prev/Next instead
     document.getElementById('historySearch')?.addEventListener('input', debounce(handleSearch));
 
     // Event Listeners - Bulk Actions
@@ -977,8 +982,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Event Listeners - Settings
     document.getElementById('saveAllSettings')?.addEventListener('click', saveAllSettings);
     document.getElementById('testNotionBtn')?.addEventListener('click', testNotionConnection);
-    document.getElementById('downloadLogsBtn')?.addEventListener('click', downloadLogsAsJson);
-    document.getElementById('clearLogs')?.addEventListener('click', clearAllData);
+    // (Activity Log / Dev Tools tabs removed — listeners no-op via optional chaining)
 
     // Phase 2: Offline Detection
     window.addEventListener('online', () => log('🌐 Back online!', 'success'));
@@ -1000,7 +1004,7 @@ function initNavigation() {
             item.classList.add('active');
 
             // Update tab content - hide all, then show selected
-            document.querySelectorAll('.tab-content').forEach(t => {
+            document.querySelectorAll('.tab').forEach(t => {
                 t.classList.add('hidden');
                 t.classList.remove('active');
             });
@@ -1014,21 +1018,8 @@ function initNavigation() {
 }
 
 
-function initSubtabs() {
-    document.querySelectorAll('.subtab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            const subtabId = tab.dataset.subtab;
-
-            // Update subtab buttons
-            document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            // Update subtab content
-            document.querySelectorAll('.subtab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById(`subtab-${subtabId}`)?.classList.add('active');
-        });
-    });
-}
+// Subtabs removed (Activity Log / Dev Tools deleted) — keep stub to avoid ReferenceError
+function initSubtabs() {}
 
 // ============================================================================
 // SECTION: DATA SOURCE & DATE FILTER
@@ -1142,11 +1133,12 @@ async function loadSettings() {
         document.getElementById('skipExported').checked = true;
     }
 
-    // Auto-sync toggle in header
+    // Auto-sync toggle in sidebar
     if (data.autoSyncEnabled) {
         const btn = document.getElementById('autoSyncToggle');
-        btn.classList.add('active');
-        btn.querySelector('span').textContent = 'Auto On';
+        if (btn) btn.classList.add('active');
+        const lbl = document.getElementById('autoSyncLabel');
+        if (lbl) lbl.textContent = 'On';
     }
 
     log('Settings loaded from storage', 'info');
@@ -1372,65 +1364,167 @@ async function loadSpaces() {
 
 
 // ============================================================================
-// SECTION: THREAD HISTORY
+// SECTION: THREAD HISTORY — buffer-based pagination
+//
+// Design: platforms return different page sizes (Perplexity: 20, ChatGPT: 28,
+// Claude/Gemini: 50). We always show 50 items per page using a prefetchBuffer.
+//
+//  fillBuffer(target, tab, spaceId):
+//    Keeps calling GET_THREAD_LIST_OFFSET until the buffer holds ≥ target
+//    items OR the API has nothing more to give. Each call advances apiOffset
+//    by however many items the API returned (the platform's natural page size).
+//
+//  fetchHistory(page=1):
+//    Reset everything → fill buffer → slice 50 → render
+//
+//  changePage(+1):
+//    Fill buffer to 50 → slice 50 into threadData → render next page
+//
+//  changePage(-1):
+//    Slice from already-accumulated threadData (zero API calls)
+//
+// Indicator: "1–50 of 100+" when buffer still has data, "50–100 of 100" at end
 // ============================================================================
+
+async function fillBuffer(target, tab, spaceId) {
+    const FETCH_LIMIT = 50; // what we ask each call; platform may return less
+    while (prefetchBuffer.length < target && apiHasMore) {
+        let result;
+        try {
+            result = await new Promise((resolve) => {
+                chrome.tabs.sendMessage(tab.id, {
+                    type: 'GET_THREAD_LIST_OFFSET',
+                    payload: { offset: apiOffset, limit: FETCH_LIMIT, spaceId }
+                }, (resp) => {
+                    if (chrome.runtime.lastError || !resp?.success) {
+                        resolve({ success: false });
+                    } else {
+                        resolve(resp);
+                    }
+                });
+            });
+        } catch (e) {
+            break;
+        }
+
+        if (!result?.success || !result.data?.threads?.length) {
+            apiHasMore = false;
+            break;
+        }
+
+        const rawThreads = result.data.threads;
+        const seenAll    = new Set(threadData.map(t => t.uuid));
+        prefetchBuffer.push(...rawThreads.filter(t => !seenAll.has(t.uuid) &&
+            !prefetchBuffer.some(b => b.uuid === t.uuid)));
+
+        // Advance API offset by however many the platform actually returned
+        apiOffset += rawThreads.length;
+
+        // Trust the platform's hasMore signal
+        if (typeof result.data.hasMore === 'boolean') {
+            apiHasMore = result.data.hasMore;
+        } else {
+            apiHasMore = rawThreads.length >= FETCH_LIMIT;
+        }
+
+        await new Promise(r => setTimeout(r, 150)); // polite delay
+    }
+}
+
 async function fetchHistory(page = 1) {
-    const listEl = document.getElementById('threadList');
-    const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
-    const spaceId = dataSource === 'spaces' ? document.getElementById('spaceSelector').value : null;
-    const dateFilter = document.getElementById('dateFilterEnabled').checked
-        ? document.getElementById('dateFilterValue').value : null;
+    const listEl    = document.getElementById('threadList');
+    const dataSource = document.querySelector('input[name="dataSource"]:checked')?.value || 'all';
+    const spaceId   = dataSource === 'spaces' ? document.getElementById('spaceSelector')?.value : null;
+    const dateFilterOn  = document.getElementById('dateFilterEnabled')?.checked;
+    const dateFilterVal = dateFilterOn ? document.getElementById('dateFilterValue')?.value : null;
+
+    // Show skeleton immediately
+    const skelRow = () => `<div class="skeleton-row"><div class="skel skel-check"></div><div class="skel skel-title"></div><div class="skel skel-date"></div></div>`;
+    listEl.innerHTML = skelRow().repeat(5);
 
     if (page === 1) {
-        listEl.innerHTML = '<div class="loader-container"><div class="loader"></div><span>Fetching history...</span></div>';
-        threadData = [];
-        currentPage = 1;
+        // Full reset
+        threadData     = [];
+        prefetchBuffer = [];
+        apiOffset      = 0;
+        apiHasMore     = true;
+        currentPage    = 1;
+        selectedThreads.clear();
+        updateSelection(null, false);
     }
 
     try {
         await reqDeduplication.run('fetchHistory', async () => {
             const tab = await getAITab();
             if (!tab) {
-                listEl.innerHTML = '<div class="loader">Open an AI platform (Perplexity, ChatGPT, Claude) first.</div>';
+                listEl.innerHTML = `<div class="empty-state"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p>Open an AI platform tab first.</p></div>`;
+                hasMoreThreads = false;
+                updatePagination();
                 return;
             }
 
-            try {
-                const response = await sendMessageWithTimeout(tab.id, {
-                    type: 'GET_THREAD_LIST',
-                    payload: { page, limit: itemsPerPage, spaceId }
-                }, 15000);
+            // Fill buffer to at least one display page
+            await fillBuffer(itemsPerPage, tab, spaceId);
 
-                let newThreads = response.data.threads;
-
-                // Apply date filter client-side
-                if (dateFilter) {
-                    const filterDate = new Date(dateFilter);
-                    newThreads = newThreads.filter(t => {
-                        const threadDate = new Date(t.last_query_datetime);
-                        return threadDate >= filterDate;
-                    });
-                }
-
-                threadData = page === 1 ? newThreads : [...threadData, ...newThreads];
-                // BUG-1 FIX: Check hasMore (which adapters actually return) instead of has_next
-                // has_next is never set, so undefined !== false is always true
-                hasMoreThreads = response.data.hasMore === true && newThreads.length === itemsPerPage;
-                currentPage = page;
-
-                const start = (currentPage - 1) * itemsPerPage;
-                renderThreadList(threadData.slice(start, start + itemsPerPage));
+            if (prefetchBuffer.length === 0 && threadData.length === 0) {
+                listEl.innerHTML = `<div class="empty-state"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg><p>No threads found.</p></div>`;
+                hasMoreThreads = false;
                 updatePagination();
-            } catch (msgError) {
-                listEl.innerHTML = '<div class="loader">Please refresh the AI platform page.</div>';
-                log(`Thread fetch error: ${msgError.message}`, 'error');
+                return;
             }
+
+            // Drain up to itemsPerPage from buffer into this page
+            let pageThreads = prefetchBuffer.splice(0, itemsPerPage);
+
+            // Apply date filter client-side
+            if (dateFilterVal) {
+                const filterDate = new Date(dateFilterVal);
+                pageThreads = pageThreads.filter(t =>
+                    t.last_query_datetime ? new Date(t.last_query_datetime) >= filterDate : true
+                );
+            }
+
+            threadData     = [...threadData, ...pageThreads];
+            currentPage    = page;
+            hasMoreThreads = apiHasMore || prefetchBuffer.length > 0;
+
+            const start = (currentPage - 1) * itemsPerPage;
+            renderThreadList(threadData.slice(start, start + itemsPerPage));
+            updatePagination();
         });
     } catch (e) {
-        console.error("[OmniExporter] Error boundary caught fetchHistory error:", e);
-        listEl.innerHTML = `<div class="loader">Error: ${escapeHtml(e.message)}</div>`;
+        console.error('[OmniExporter] fetchHistory error:', e);
+        listEl.innerHTML = `<div class="empty-state"><p>Error: ${escapeHtml(e.message)}</p></div>`;
     }
 }
+
+async function changePage(delta) {
+    const newPage = currentPage + delta;
+    if (newPage < 1) return;
+
+    if (delta < 0) {
+        // Going backwards — data already in threadData, no API calls
+        currentPage = newPage;
+        const start = (currentPage - 1) * itemsPerPage;
+        renderThreadList(threadData.slice(start, start + itemsPerPage));
+        updatePagination();
+        return;
+    }
+
+    // Going forward
+    const neededStart = (newPage - 1) * itemsPerPage;
+    if (neededStart < threadData.length) {
+        // Already have this page in memory
+        currentPage = newPage;
+        renderThreadList(threadData.slice(neededStart, neededStart + itemsPerPage));
+        updatePagination();
+        return;
+    }
+
+    // Need to fetch more — run fetchHistory for the new page
+    await fetchHistory(newPage);
+}
+
 
 
 function renderThreadList(threads) {
@@ -1439,53 +1533,79 @@ function renderThreadList(threads) {
         listEl.innerHTML = '';
 
         if (threads.length === 0) {
-            listEl.innerHTML = '<div class="loader">No threads found.</div>';
+            listEl.innerHTML = `
+              <div class="empty-state">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                <p>No threads found.</p>
+              </div>`;
             return;
         }
 
         threads.forEach(t => {
             try {
                 const isExported = exportedUuids.has(t.uuid);
-                const status = syncStatusMap[t.uuid];
-                const item = document.createElement('div');
+                const status     = syncStatusMap[t.uuid];
                 const isSelected = selectedThreads.has(t.uuid);
-                item.className = `thread-item ${isExported ? 'exported' : ''} ${isSelected ? 'selected' : ''}`.trim();
+                const item       = document.createElement('div');
+
+                item.className = `thread-item${isSelected ? ' selected' : ''}${isExported ? ' exported' : ''}`;
                 item.dataset.uuid = t.uuid;
 
-                const date = t.last_query_datetime ? new Date(t.last_query_datetime).toLocaleDateString() : 'Unknown';
+                // Format date: short locale date
+                const rawDate = t.last_query_datetime;
+                const dateStr = rawDate
+                    ? new Date(rawDate).toLocaleDateString(undefined, { year: '2-digit', month: 'short', day: 'numeric' })
+                    : '—';
 
-                let statusHtml = '';
-                if (status === 'synced' || isExported) {
-                    statusHtml = '<span class="thread-status synced">✓ Synced</span>';
-                } else if (status === 'failed') {
-                    statusHtml = '<span class="thread-status failed">✗ Failed</span>';
-                }
-
-                // Use InputSanitizer for user-provided content
                 const safeTitle = InputSanitizer.clean(t.title || 'Untitled');
-                const safeUuid = InputSanitizer.clean(t.uuid);
+                const safeUuid  = InputSanitizer.clean(t.uuid);
+
+                // Synced badge (shown in title cell to keep 3-col layout clean)
+                const syncedTag = (status === 'synced' || isExported)
+                    ? ' <span style="font-size:10px;color:#22c55e;margin-left:6px">✓</span>'
+                    : (status === 'failed' ? ' <span style="font-size:10px;color:#ef4444;margin-left:6px">✗</span>' : '');
+
                 item.innerHTML = `
-                    <input type="checkbox" data-uuid="${safeUuid}" ${isSelected ? 'checked' : ''} ${isExported ? 'disabled' : ''}>
-                    <div class="thread-info">
-                        <div class="thread-title">${safeTitle}</div>
-                        <div class="thread-date">${date}</div>
+                    <div class="tcol-check">
+                        <input type="checkbox" data-uuid="${safeUuid}" ${isSelected ? 'checked' : ''} ${isExported ? 'disabled' : ''}>
                     </div>
-                    ${statusHtml}
+                    <div class="tcol-title thread-title-cell">${safeTitle}${syncedTag}</div>
+                    <div class="tcol-date thread-date-cell">${dateStr}</div>
+                    <div class="tcol-action thread-action-cell">
+                        <button class="row-export-btn" data-uuid="${safeUuid}" title="Export this thread">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </button>
+                    </div>
                 `;
 
                 if (!isExported) {
-                    const checkbox = item.querySelector('input');
+                    const checkbox = item.querySelector('input[type="checkbox"]');
                     checkbox.addEventListener('change', (e) => {
                         const checked = e.target.checked;
                         item.classList.toggle('selected', checked);
                         updateSelection(t.uuid, checked);
                     });
                     item.addEventListener('click', (e) => {
-                        if (e.target === checkbox) return;
+                        if (e.target === checkbox || e.target.closest('.row-export-btn')) return;
                         const checked = !checkbox.checked;
                         checkbox.checked = checked;
                         item.classList.toggle('selected', checked);
                         updateSelection(t.uuid, checked);
+                    });
+
+                    // Row-level quick export button
+                    item.querySelector('.row-export-btn')?.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const tab = await getAITab();
+                        if (!tab) return;
+                        chrome.tabs.sendMessage(tab.id, {
+                            type: 'EXTRACT_CONTENT_BY_UUID',
+                            payload: { uuid: t.uuid }
+                        }, (resp) => {
+                            if (resp?.success && typeof ExportManager !== 'undefined') {
+                                ExportManager.export(resp.data, 'markdown', resp.data.platform);
+                            }
+                        });
                     });
                 }
 
@@ -1495,172 +1615,68 @@ function renderThreadList(threads) {
             }
         });
     } catch (e) {
-        console.error("[OmniExporter] Error boundary caught renderThreadList error:", e);
+        console.error("[OmniExporter] renderThreadList error:", e);
         document.getElementById('threadList').innerHTML = '<div class="loader">Failed to render threads.</div>';
     }
 }
 
 function updatePagination() {
     const startItem = (currentPage - 1) * itemsPerPage + 1;
-    const endItem = Math.min(currentPage * itemsPerPage, threadData.length);
-    document.getElementById('pageIndicator').textContent = `Page ${currentPage} • ${startItem}-${endItem} of ${threadData.length}`;
-    document.getElementById('prevPageBtn').disabled = currentPage === 1;
-    document.getElementById('nextPageBtn').disabled = !hasMoreThreads && endItem >= threadData.length;
-}
-
-function changePage(delta) {
-    const newPage = currentPage + delta;
-    if (delta > 0 && hasMoreThreads && newPage * itemsPerPage > threadData.length) {
-        fetchHistory(newPage);
-    } else {
-        currentPage = newPage;
-        const start = (currentPage - 1) * itemsPerPage;
-        renderThreadList(threadData.slice(start, start + itemsPerPage));
-        updatePagination();
+    const endItem   = Math.min(currentPage * itemsPerPage, threadData.length);
+    const moreSign  = hasMoreThreads ? '+' : '';
+    const indicator = document.getElementById('pageIndicator');
+    if (indicator) {
+        indicator.textContent = threadData.length === 0
+            ? '—'
+            : `${startItem}–${endItem} of ${threadData.length}${moreSign}`;
     }
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+    if (prevBtn) prevBtn.disabled = currentPage === 1;
+    if (nextBtn) nextBtn.disabled = !hasMoreThreads && endItem >= threadData.length;
 }
 
+// loadAllThreads removed — replaced by Next-button buffer pagination above.
+// Kept as no-op so any lingering references don't throw.
 async function loadAllThreads() {
-    try {
-        await reqDeduplication.run('loadAll', async () => {
-            const listEl = document.getElementById('threadList');
-            const loadBtn = document.getElementById('loadAllBtn');
-
-            // Get platform emoji for loading
-            const platformEmoji = currentPlatform === 'Perplexity' ? '🔮' :
-                currentPlatform === 'ChatGPT' ? '🤖' :
-                    currentPlatform === 'Claude' ? '🧠' :
-                        currentPlatform === 'Gemini' ? '✨' :
-                            currentPlatform === 'Grok' ? '❌' :
-                                currentPlatform === 'DeepSeek' ? '🔍' : '💬';
-
-            // Enhanced loading button state
-            if (loadBtn) {
-                loadBtn.innerHTML = `<span class="loading-spinner"></span> Loading...`;
-                loadBtn.disabled = true;
-                loadBtn.classList.add('loading');
-            }
-
-            // Show skeleton loading with platform branding
-            listEl.innerHTML = `
-                <div class="loading-state">
-                    <div class="platform-loading-header">
-                        <span class="platform-emoji">${platformEmoji}</span>
-                        <span class="platform-name">${currentPlatform || 'AI Platform'}</span>
-                    </div>
-                    <div class="loading-progress">
-                        <div class="progress-bar-animated"></div>
-                    </div>
-                    <div class="loading-text">Fetching threads...</div>
-                    <div class="skeleton-threads">
-                        ${Array(5).fill('<div class="skeleton-thread"><div class="skeleton-checkbox"></div><div class="skeleton-content"><div class="skeleton-title"></div><div class="skeleton-date"></div></div></div>').join('')}
-                    </div>
-                </div>`;
-
-            threadData = [];
-            let offset = 0;
-            let keepLoading = true;
-            const batchSize = 50;
-            const maxThreads = 10000;
-            const delayMs = 200;
-            // Track seen UUIDs to prevent duplicates when the fallback fires mid-load.
-            // Without this, if GET_THREAD_LIST_OFFSET errors after 200 threads and falls
-            // back to GET_THREAD_LIST (page 1), threads 1–50 are appended again as duplicates.
-            const seenUuids = new Set();
-
-            const tab = await getAITab();
-            if (!tab) {
-                listEl.innerHTML = '<div class="empty-state"><span class="empty-icon">🔌</span><span>Open an AI platform first</span></div>';
-                if (loadBtn) {
-                    loadBtn.innerHTML = 'Load All';
-                    loadBtn.disabled = false;
-                    loadBtn.classList.remove('loading');
-                }
-                return;
-            }
-
-            while (keepLoading && threadData.length < maxThreads) {
-                const result = await new Promise((resolve) => {
-                    chrome.tabs.sendMessage(tab.id, {
-                        type: 'GET_THREAD_LIST_OFFSET',
-                        payload: { offset, limit: batchSize }
-                    }, (response) => {
-                        if (chrome.runtime.lastError) {
-                            chrome.tabs.sendMessage(tab.id, {
-                                type: 'GET_THREAD_LIST',
-                                payload: { page: Math.floor(offset / batchSize) + 1, limit: batchSize }
-                            }, (r) => resolve(r || { success: false }));
-                        } else {
-                            resolve(response || { success: false });
-                        }
-                    });
-                });
-
-                if (result && result.success && result.data && result.data.threads && result.data.threads.length > 0) {
-                    const rawThreads = result.data.threads;
-                    const newThreads = rawThreads.filter(t => {
-                        if (!t.uuid || seenUuids.has(t.uuid)) return false;
-                        seenUuids.add(t.uuid);
-                        return true;
-                    });
-                    if (newThreads.length > 0) {
-                        threadData = [...threadData, ...newThreads];
-                    }
-
-                    // Update progress with count
-                    const loadingText = listEl.querySelector('.loading-text');
-                    if (loadingText) {
-                        loadingText.textContent = `${platformEmoji} Loaded ${threadData.length} threads...`;
-                    }
-
-                    // Advance offset by raw count (not deduped) to avoid re-fetching same page
-                    offset += rawThreads.length;
-                    if (rawThreads.length < batchSize) keepLoading = false;
-                    await new Promise(r => setTimeout(r, delayMs));
-                } else {
-                    keepLoading = false;
-                }
-            }
-
-            hasMoreThreads = false;
-            currentPage = 1;
-            renderThreadList(threadData.slice(0, itemsPerPage));
-            updatePagination();
-
-            // Restore button
-            if (loadBtn) {
-                loadBtn.innerHTML = '✓ Loaded';
-                loadBtn.disabled = false;
-                loadBtn.classList.remove('loading');
-                setTimeout(() => { loadBtn.innerHTML = 'Load All'; }, 2000);
-            }
-
-            log(`Loaded all ${threadData.length} threads!`, 'success');
-        });
-    } catch (e) {
-        console.error("[OmniExporter] Error in loadAllThreads:", e);
-        const loadBtn = document.getElementById('loadAllBtn');
-        if (loadBtn) {
-            loadBtn.innerHTML = 'Load All';
-            loadBtn.disabled = false;
-            loadBtn.classList.remove('loading');
-        }
-        log('Failed to load all threads.', 'error');
-    }
+    console.warn('[OmniExporter] loadAllThreads() called but is no longer used.');
 }
+
+// ── Dead loadAllThreads body removed ─────────────────────────────────────────
+
+
+
+
+
+
+
 
 
 
 function handleSearch(e) {
-    const query = e.target.value.toLowerCase();
+    const query = (e.target.value || '').toLowerCase().trim();
+    if (!query) {
+        // Empty search — show current page of unfiltered data
+        const start = (currentPage - 1) * itemsPerPage;
+        renderThreadList(threadData.slice(start, start + itemsPerPage));
+        return;
+    }
+    // Search across ALL fetched threadData, reset to page 1 of results
     const filtered = threadData.filter(t => (t.title || '').toLowerCase().includes(query));
     renderThreadList(filtered.slice(0, itemsPerPage));
+    const ind = document.getElementById('pageIndicator');
+    if (ind) ind.textContent = `${filtered.length} results`;
 }
 
 function selectAllThreads() {
-    const visible = threadData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const selectAllChk = document.getElementById('selectAllBtn');
+    const allChecked   = selectAllChk ? selectAllChk.checked : true;
+    const visible      = threadData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
     visible.forEach(t => {
-        if (!exportedUuids.has(t.uuid)) selectedThreads.add(t.uuid);
+        if (!exportedUuids.has(t.uuid)) {
+            if (allChecked) selectedThreads.add(t.uuid);
+            else            selectedThreads.delete(t.uuid);
+        }
     });
     renderThreadList(visible);
     updateSelection(null, false);
@@ -1669,13 +1685,17 @@ function selectAllThreads() {
 function updateSelection(uuid, checked) {
     if (uuid) {
         if (checked) selectedThreads.add(uuid);
-        else selectedThreads.delete(uuid);
+        else         selectedThreads.delete(uuid);
     }
     const count = selectedThreads.size;
-    document.getElementById('bulkExportBtn').textContent = `Save Selected to Notion (${count})`;
-    document.getElementById('bulkExportBtn').disabled = count === 0;
-    document.getElementById('bulkMdBtn').textContent = `Export MD (${count})`;
-    document.getElementById('bulkMdBtn').disabled = count === 0;
+    const notionBtn = document.getElementById('bulkExportBtn');
+    const mdBtn     = document.getElementById('bulkMdBtn');
+    const countEl   = document.getElementById('bulkCount');
+    const mdCountEl = document.getElementById('bulkMdCount');
+    if (notionBtn) notionBtn.disabled = count === 0;
+    if (mdBtn)     mdBtn.disabled     = count === 0;
+    if (countEl)   countEl.textContent   = `(${count})`;
+    if (mdCountEl) mdCountEl.textContent = `(${count})`;
 }
 
 // ============================================================================
@@ -2387,25 +2407,20 @@ function log(message, type = 'info') {
 
 async function toggleAutoSync() {
     const toggle = document.getElementById('autoSyncToggle');
+    const label  = document.getElementById('autoSyncLabel');
     if (!toggle) return;
     const isActive = toggle.classList.contains('active');
 
     if (isActive) {
         toggle.classList.remove('active');
-        toggle.querySelector('span').textContent = 'Auto Off';
+        if (label) label.textContent = 'Off';
         chrome.alarms.clear('autoSyncAlarm');
         chrome.storage.local.set({ autoSyncEnabled: false });
         log('Auto-Sync disabled', 'info');
     } else {
         toggle.classList.add('active');
-        toggle.querySelector('span').textContent = 'Auto On';
-        const interval = parseInt(document.getElementById('syncInterval').value) || 60;
-        // Save interval to storage first, then enable.
-        // background.js creates the alarm via storage.onChanged (reads the now-current interval).
-        // Previously options.js also called chrome.alarms.create() directly, causing a duplicate
-        // alarm: options.js used the UI field value while background.js re-read from storage.
-        // If the user had changed the interval without saving, the two creations used different
-        // values and the stale background value won.
+        if (label) label.textContent = 'On';
+        const interval = parseInt(document.getElementById('syncInterval')?.value) || 60;
         chrome.storage.local.set({ syncInterval: interval, autoSyncEnabled: true });
         log(`Auto-Sync enabled (every ${interval} mins)`, 'success');
     }
@@ -2837,26 +2852,10 @@ document.addEventListener('visibilitychange', () => {
 // SECTION: TEST RUNNER - LAZY LOADED
 // ============================================================================
 
-/**
- * Dynamically load the test framework script on demand.
- * Caches on window.TestRunner to avoid duplicate loads.
- * @returns {Promise<object>} The TestRunner object
- */
+// Test framework removed — devtools tab deleted. Stub to avoid ReferenceError.
 async function loadTestFramework() {
-    if (window.TestRunner) return window.TestRunner;
-    return new Promise((resolve, reject) => {
-        const loadScript = (src) => new Promise((res, rej) => {
-            const s = document.createElement('script');
-            s.src = src;
-            s.onload = () => res();
-            s.onerror = () => rej(new Error(`Failed to load ${src}`));
-            document.head.appendChild(s);
-        });
-        const chain = window.TestFixtures
-            ? loadScript('test-framework.js')
-            : loadScript('test-fixtures.js').then(() => loadScript('test-framework.js'));
-        chain.then(() => resolve(window.TestRunner)).catch(reject);
-    });
+    console.warn('[OmniExporter] Test framework not available (devtools tab removed).');
+    return null;
 }
 
 // Wire up test runner buttons

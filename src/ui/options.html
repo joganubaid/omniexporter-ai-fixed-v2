@@ -1,805 +1,295 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-Content-Type-Options" content="nosniff">
-    <title>OmniExporter AI - Dashboard</title>
-    <link rel="stylesheet" href="options.css">
-    <link rel="stylesheet" href="toast.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <title>OmniExporter AI — Dashboard</title>
+  <link rel="stylesheet" href="options.css">
+  <link rel="stylesheet" href="toast.css">
 </head>
-
 <body>
-    <script src="error-boundary.js"></script>
-    <div id="error-boundary" style="display:none; background:#fee; color:#c00; padding:12px; margin:8px; border-radius:8px; font-size:13px;"></div>
-    <div class="dashboard">
-        <!-- Header -->
-        <header class="dashboard-header">
-            <div class="header-brand">
-                <svg viewBox="0 0 24 24" width="28" height="28">
-                    <path fill="currentColor"
-                        d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,6V12L16,15L16.8,13.7L12.5,11.2V6H11Z" />
-                </svg>
-                <div>
-                    <h1>OmniExporter AI</h1>
-                    <span class="subtitle">Enterprise Dashboard</span>
-                </div>
+  <script src="error-boundary.js"></script>
+  <div id="error-boundary" style="display:none;background:#1a0505;color:#f87171;padding:10px 16px;font-size:12px;border-bottom:1px solid #3a1010;"></div>
+
+  <div class="dash">
+
+    <!-- ── Sidebar ── -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../../icons/icon32.png" alt="" class="brand-logo" onerror="this.style.display='none'" />
+        <div class="brand-text">
+          <span class="brand-name">OmniExporter</span>
+          <span class="brand-ver">v5.2.0</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="history">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+          Threads
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg>
+          Settings
+        </button>
+        <button class="nav-item" data-tab="about">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          About
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="autoSyncToggle" class="sync-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          <span>Auto-Sync: <strong id="autoSyncLabel">Off</strong></span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── Content ── -->
+    <main class="content">
+
+      <!-- ═══ TAB: THREADS ═══ -->
+      <section id="tab-history" class="tab active">
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <!-- Platform selector with icon -->
+            <div class="platform-selector-container">
+              <div id="platformIconDisplay" class="picon-wrap">
+                <img class="picon" data-platform="Perplexity" src="../../icons/logos/perplexity.svg" alt="Perplexity" />
+                <img class="picon" data-platform="ChatGPT"    src="../../icons/logos/chatgpt.svg"    alt="ChatGPT" />
+                <img class="picon" data-platform="Claude"     src="../../icons/logos/claude.svg"     alt="Claude" />
+                <img class="picon" data-platform="Gemini"     src="../../icons/logos/gemini.svg"     alt="Gemini" />
+                <img class="picon" data-platform="Grok"       src="../../icons/logos/grok.svg"       alt="Grok" />
+                <img class="picon" data-platform="DeepSeek"   src="../../icons/logos/deepseek.svg"   alt="DeepSeek" />
+              </div>
+              <select id="platformSelector" class="select">
+                <option value="">Detecting platforms…</option>
+              </select>
+              <button id="refreshPlatformsBtn" class="icon-btn" title="Refresh">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
             </div>
-            <div class="header-actions">
-                <button id="autoSyncToggle" class="auto-sync-btn" title="Toggle Auto-Sync">
-                    <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                        stroke-width="2">
-                        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path>
-                        <path d="M21 3v5h-5"></path>
-                    </svg>
-                    <span>Auto Off</span>
-                </button>
-                <div class="platform-selector-container">
-                    <!-- Platform Icon Display -->
-                    <div id="platformIconDisplay" class="platform-icon-display">
-                        <img class="platform-icon" data-platform="Perplexity" src="../../icons/logos/perplexity.svg"
-                            alt="Perplexity" />
-                        <img class="platform-icon" data-platform="ChatGPT" src="../../icons/logos/chatgpt.svg"
-                            alt="ChatGPT" />
-                        <img class="platform-icon" data-platform="Claude" src="../../icons/logos/claude.svg" alt="Claude" />
-                        <img class="platform-icon" data-platform="Gemini" src="../../icons/logos/gemini.svg" alt="Gemini" />
-                        <img class="platform-icon" data-platform="Grok" src="../../icons/logos/grok.svg" alt="Grok" />
-                        <img class="platform-icon" data-platform="DeepSeek" src="../../icons/logos/deepseek.svg"
-                            alt="DeepSeek" />
-                    </div>
-                    <select id="platformSelector" class="platform-selector" title="Select AI Platform">
-                        <option value="">Detecting platforms...</option>
-                    </select>
-                    <button id="refreshPlatformsBtn" class="icon-btn" title="Refresh Platforms">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M23 4v6h-6"></path>
-                            <path d="M1 20v-6h6"></path>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                        </svg>
-                    </button>
 
-                    <!-- Phase 5 Fix 5: Connection Status Indicator -->
-                    <div class="connection-status" id="connectionStatus" style="display: none;">
-                        <span class="status-dot"></span>
-                        <span class="status-text">Checking...</span>
-                        <span class="response-time"></span>
-                    </div>
-                </div>
+            <!-- Space filter -->
+            <div id="spaceFilterWrap" class="space-filter-wrap hidden">
+              <label class="radio-lbl">
+                <input type="radio" name="dataSource" value="all" checked> All
+              </label>
+              <label class="radio-lbl">
+                <input type="radio" name="dataSource" value="spaces"> Spaces
+              </label>
+              <select id="spaceSelector" class="select select-sm hidden">
+                <option value="">Select space…</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="toolbar-right">
+            <!-- Date filter -->
+            <label class="date-filter-label">
+              <input type="checkbox" id="dateFilterEnabled">
+              Since
+            </label>
+            <input type="date" id="dateFilterValue" class="date-input" disabled>
+
+            <!-- Search -->
+            <div class="search-wrap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" id="historySearch" class="search-input" placeholder="Search…">
             </div>
 
-        </header>
+            <button id="refreshHistory" class="icon-btn" title="Refresh">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+        </div>
 
-        <!-- Main Content -->
-        <main class="dashboard-main">
-            <!-- Sidebar Navigation -->
-            <nav class="sidebar">
-                <button class="nav-item active" data-tab="history">
-                    <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-                        stroke-width="2">
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                        <path d="M3 3v5h5"></path>
-                        <path d="M12 7v5l4 2"></path>
-                    </svg>
-                    <span>Thread History</span>
-                </button>
-                <button class="nav-item" data-tab="settings">
-                    <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-                        stroke-width="2">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path
-                            d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z">
-                        </path>
-                    </svg>
-                    <span>Settings</span>
-                </button>
-                <button class="nav-item" data-tab="activity">
-                    <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-                        stroke-width="2">
-                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-                    </svg>
-                    <span>Activity Log</span>
-                </button>
-                <button class="nav-item" data-tab="manual">
-                    <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-                        stroke-width="2">
-                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                    </svg>
-                    <span>Manual</span>
-                </button>
-                <button class="nav-item" data-tab="devtools">
-                    <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-                        stroke-width="2">
-                        <path d="M12 20V10"></path>
-                        <path d="M18 20V4"></path>
-                        <path d="M6 20v-4"></path>
-                    </svg>
-                    <span>Dev Tools</span>
-                </button>
-            </nav>
-
-            <!-- Content Area -->
-            <div class="content-area">
-                <!-- TAB: Thread History -->
-                <section id="tab-history" class="tab-content active">
-                    <!-- Data Source Card -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3><svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-                                    stroke="currentColor" stroke-width="2">
-                                    <path d="M3 3v18h18"></path>
-                                    <path d="m19 9-5 5-4-4-3 3"></path>
-                                </svg> Data Source</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="radio-group">
-                                <label class="radio-option">
-                                    <input type="radio" name="dataSource" value="all" checked>
-                                    <span>All Threads</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="dataSource" value="spaces">
-                                    <span>From Spaces</span>
-                                </label>
-                            </div>
-                            <select id="spaceSelector" class="space-dropdown hidden">
-                                <option value="">Select a Space...</option>
-                            </select>
-                            <div class="date-filter">
-                                <label class="checkbox-container">
-                                    <input type="checkbox" id="dateFilterEnabled">
-                                    <span class="checkmark"></span>
-                                    Only sync since:
-                                </label>
-                                <input type="date" id="dateFilterValue" class="date-input" disabled>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Thread List Card -->
-                    <div class="card thread-list-card">
-                        <div class="card-header">
-                            <div class="thread-header-left">
-                                <h3>Thread List</h3>
-                                <input type="text" id="historySearch" class="search-input"
-                                    placeholder="Search threads...">
-                            </div>
-                            <div class="thread-header-actions">
-                                <button id="selectAllBtn" class="btn-icon" title="Select All">☑️</button>
-                                <button id="refreshHistory" class="btn-icon" title="Refresh">🔄</button>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <!-- Pagination -->
-                            <div class="pagination-bar">
-                                <button id="prevPageBtn" class="page-btn" disabled>← Prev</button>
-                                <span id="pageIndicator" class="page-indicator">Page 1 • 0 items</span>
-                                <button id="loadAllBtn" class="page-btn">Load All</button>
-                                <button id="nextPageBtn" class="page-btn">Next →</button>
-                            </div>
-
-                            <!-- Thread List -->
-                            <div id="threadList" class="thread-list">
-                                <div class="loader">Loading threads...</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Bulk Actions -->
-                    <div class="bulk-actions-bar">
-                        <button id="bulkExportBtn" class="primary-btn" disabled>
-                            <span>Save Selected to Notion (0)</span>
-                        </button>
-                        <button id="bulkMdBtn" class="secondary-btn" disabled>
-                            <span>Export MD (0)</span>
-                        </button>
-                        <button id="exportAllBtn" class="secondary-btn">
-                            <span>Export All</span>
-                        </button>
-                        <button id="clearCacheBtn" class="danger-btn">
-                            Clear Cache
-                        </button>
-                    </div>
-
-                    <!-- Progress Bar -->
-                    <div id="exportProgress" class="progress-container hidden">
-                        <div class="progress-bar-bg">
-                            <div id="progressBarFill" class="progress-bar-fill"></div>
-                        </div>
-                        <div id="progressText" class="progress-text">Exporting: 0/0</div>
-                    </div>
-                </section>
-
-                <!-- TAB: Settings -->
-                <section id="tab-settings" class="tab-content hidden">
-                    <!-- Notion Integration -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3><svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-                                    stroke="currentColor" stroke-width="2">
-                                    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path>
-                                    <path d="M14 2v4a2 2 0 0 0 2 2h4"></path>
-                                </svg> Notion Integration</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="security-notice">
-                                <strong>⚠️ Security Notice:</strong> Your Notion credentials are stored locally in your
-                                browser. Never share your extension data or sync settings across untrusted devices.
-                            </div>
-
-                            <div class="notion-auth-grid">
-                                <div id="notionOauthSection" class="notion-oauth-section">
-                                    <div class="setting-item">
-                                        <label>Connection Status</label>
-                                        <div class="oauth-status-row">
-                                            <span id="notionOauthStatus" class="status-pill">Not connected</span>
-                                            <button id="connectNotionOauth" class="btn-small primary">🔐 Connect to
-                                                Notion</button>
-                                            <button id="disconnectNotionOauth" class="btn-small danger"
-                                                style="display:none;">Disconnect</button>
-                                        </div>
-                                        <small class="hint">One-click OAuth connection. No credentials needed!</small>
-                                    </div>
-                                </div>
-
-                                <div class="setting-item">
-                                    <label>Export Database</label>
-                                    <input type="text" id="notionDbId" placeholder="Auto-created after connection">
-                                    <small class="hint">Database is automatically created when you connect. You can also paste an existing database ID here.</small>
-                                </div>
-                                <div class="setting-item">
-                                    <button id="testNotionBtn" class="btn-small" style="margin-top: 10px;">
-                                        🔌 Test Connection
-                                    </button>
-                                    <span id="notionTestResult" style="margin-left: 10px; font-size: 0.85rem;"></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-
-                    <!-- Sync Configuration -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3><svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-                                    stroke="currentColor" stroke-width="2">
-                                    <path d="M12 20v-6M6 20V10M18 20V4"></path>
-                                </svg> Sync Configuration</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="setting-item">
-                                <label>Auto-Sync Interval (minutes)</label>
-                                <input type="number" id="syncInterval" class="small-input" value="60" min="5"
-                                    max="1440">
-                            </div>
-                            <div class="checkbox-grid">
-                                <label class="checkbox-container">
-                                    <input type="checkbox" id="autoSyncNotion">
-                                    <span class="checkmark"></span>
-                                    Auto-sync to Notion
-                                </label>
-                                <label class="checkbox-container">
-                                    <input type="checkbox" id="includeMetadata">
-                                    <span class="checkmark"></span>
-                                    Include Metadata
-                                </label>
-                                <label class="checkbox-container">
-                                    <input type="checkbox" id="syncImages" checked>
-                                    <span class="checkmark"></span>
-                                    Sync Images
-                                </label>
-                                <label class="checkbox-container">
-                                    <input type="checkbox" id="syncCitations" checked>
-                                    <span class="checkmark"></span>
-                                    Sync Citations
-                                </label>
-                                <label class="checkbox-container">
-                                    <input type="checkbox" id="skipExported" checked>
-                                    <span class="checkmark"></span>
-                                    Skip Already Exported
-                                </label>
-                            </div>
-
-                        </div>
-                    </div>
-
-                    <!-- Save Button -->
-                    <div class="settings-actions">
-                        <button id="saveAllSettings" class="primary-btn">
-                            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
-                                stroke="currentColor" stroke-width="2">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                                <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                                <polyline points="7 3 7 8 15 8"></polyline>
-                            </svg>
-                            Save All Settings
-                        </button>
-                    </div>
-                </section>
-
-                <!-- TAB: Activity Log -->
-                <section id="tab-activity" class="tab-content hidden">
-                    <!-- Activity Sub-tabs -->
-                    <div class="subtab-nav">
-                        <button class="subtab active" data-subtab="logs">Activity Logs</button>
-                        <button class="subtab" data-subtab="failures">Failures</button>
-                        <button class="subtab" data-subtab="history">Export History</button>
-                    </div>
-
-                    <!-- Activity Logs -->
-                    <div id="subtab-logs" class="subtab-content active">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3>Activity Log</h3>
-                                <div class="card-actions">
-                                    <button id="downloadLogsBtn" class="btn-small">📥 Download JSON</button>
-                                    <button id="clearLogs" class="btn-small danger">🗑️ Clear</button>
-                                </div>
-                            </div>
-                            <div class="card-body">
-                                <div id="logContent" class="log-content"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Failures -->
-                    <div id="subtab-failures" class="subtab-content hidden">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3>Export Failures</h3>
-                            </div>
-                            <div class="card-body">
-                                <div id="failureContent" class="failure-list"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Export History -->
-                    <div id="subtab-history" class="subtab-content hidden">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3>Export History</h3>
-                            </div>
-                            <div class="card-body">
-                                <div id="historyContent" class="history-list"></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- TAB: Manual -->
-                <section id="tab-manual" class="tab-content hidden">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>📘 How to Use OmniExporter AI</h3>
-                        </div>
-                        <div class="card-body manual-content">
-                            <h4>1. Configure Notion Integration</h4>
-                            <p>Go to <strong>Settings</strong> tab and choose OAuth2 or Token authentication.</p>
-                            <ul>
-                                <li>Create an integration at <a href="https://www.notion.so/my-integrations"
-                                        target="_blank">notion.so/my-integrations</a></li>
-                                <li>Register your OAuth redirect URL (from Settings) or paste your token</li>
-                                <li>Share your database with the integration</li>
-                                <li>Copy the Database ID from the URL</li>
-                            </ul>
-
-                            <h4>2. Export Threads</h4>
-                            <p>Navigate to Perplexity, ChatGPT, Claude, Gemini, Grok, or DeepSeek and use the Thread
-                                History to bulk export.</p>
-                            <ul>
-                                <li>Select threads using checkboxes</li>
-                                <li>Click "Save Selected to Notion" or "Export MD"</li>
-                                <li>Use filters to narrow down by date or space</li>
-                            </ul>
-
-                            <h4>3. Enable Auto-Sync</h4>
-                            <p>Toggle Auto-Sync in the header to automatically sync new conversations.</p>
-                            <ul>
-                                <li>Configure interval in Settings</li>
-                                <li>Background sync happens even when popup is closed</li>
-                            </ul>
-
-                            <h4>4. Monitor Activity</h4>
-                            <p>Check the Activity Log tab for sync history, failures, and export logs.</p>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>📊 Subscription Status</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="subscription-badge enterprise">
-                                <span class="crown">👑</span>
-                                <span class="plan">Enterprise PRO</span>
-                            </div>
-                            <p class="subscription-info">Unlimited exports • Priority support • All platforms</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- TAB: Developer Tools -->
-                <section id="tab-devtools" class="tab-content hidden">
-                    <!-- Debug Mode Card -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3><svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-                                    stroke="currentColor" stroke-width="2">
-                                    <path d="M12 20V10"></path>
-                                    <path d="M18 20V4"></path>
-                                    <path d="M6 20v-4"></path>
-                                </svg> Debug Mode</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="debug-toggle-row">
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="debugModeToggle">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <div class="debug-toggle-info">
-                                    <strong>Enable Debug Mode</strong>
-                                    <p>When enabled, detailed logs are stored for troubleshooting. Logs persist until
-                                        cleared.</p>
-                                </div>
-                            </div>
-
-                            <div class="debug-settings-row">
-                                <div class="setting-item">
-                                    <label>Log Retention</label>
-                                    <select id="logMaxEntries">
-                                        <option value="100">100 entries</option>
-                                        <option value="500">500 entries</option>
-                                        <option value="1000" selected>1,000 entries</option>
-                                        <option value="5000">5,000 entries</option>
-                                    </select>
-                                </div>
-                                <div class="setting-item">
-                                    <label class="checkbox-container">
-                                        <input type="checkbox" id="logConsoleOutput" checked>
-                                        <span class="checkmark"></span>
-                                        Also output to browser console
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Log Statistics -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>📊 Log Statistics</h3>
-                            <button id="refreshLogStats" class="btn-small">🔄 Refresh</button>
-                        </div>
-                        <div class="card-body">
-                            <div class="log-stats-grid">
-                                <div class="stat-item">
-                                    <span class="stat-value" id="statTotalLogs">0</span>
-                                    <span class="stat-label">Total Logs</span>
-                                </div>
-                                <div class="stat-item error">
-                                    <span class="stat-value" id="statErrors">0</span>
-                                    <span class="stat-label">Errors</span>
-                                </div>
-                                <div class="stat-item warning">
-                                    <span class="stat-value" id="statWarnings">0</span>
-                                    <span class="stat-label">Warnings</span>
-                                </div>
-                                <div class="stat-item info">
-                                    <span class="stat-value" id="statInfo">0</span>
-                                    <span class="stat-label">Info</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Log Viewer -->
-                    <div class="card log-viewer-card">
-                        <div class="card-header">
-                            <h3>📋 Log Viewer</h3>
-                            <div class="card-actions">
-                                <button id="downloadLogsJson" class="btn-small">📥 JSON</button>
-                                <button id="downloadLogsTxt" class="btn-small">📄 Text</button>
-                                <button id="copyLogsForAI" class="btn-small primary">🤖 Copy for AI</button>
-                                <button id="clearAllLogs" class="btn-small danger">🗑️ Clear All</button>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <!-- Log Filters -->
-                            <div class="log-filters">
-                                <select id="logFilterLevel">
-                                    <option value="">All Levels</option>
-                                    <option value="ERROR">🔴 Errors Only</option>
-                                    <option value="WARN">🟡 Warnings+</option>
-                                    <option value="INFO">🔵 Info+</option>
-                                    <option value="DEBUG">⚪ Debug (All)</option>
-                                </select>
-                                <select id="logFilterModule">
-                                    <option value="">All Modules</option>
-                                    <option value="AutoSync">🔄 AutoSync</option>
-                                    <option value="OAuth">🔐 OAuth</option>
-                                    <option value="Content">📄 Content</option>
-                                    <option value="Perplexity">🟦 Perplexity</option>
-                                    <option value="ChatGPT">🟢 ChatGPT</option>
-                                    <option value="Claude">🟠 Claude</option>
-                                    <option value="Gemini">🟣 Gemini</option>
-                                    <option value="Grok">🔴 Grok</option>
-                                    <option value="DeepSeek">🟤 DeepSeek</option>
-                                    <option value="Export">📤 Export</option>
-                                    <option value="Notion">📝 Notion</option>
-                                    <option value="Storage">💾 Storage</option>
-                                    <option value="UI">🖥️ UI</option>
-                                    <option value="Network">🌐 Network</option>
-                                    <option value="System">🔧 System</option>
-                                </select>
-                                <input type="text" id="logSearchInput" placeholder="Search logs..."
-                                    class="log-search-input">
-                                <select id="logLimit">
-                                    <option value="50">Last 50</option>
-                                    <option value="100" selected>Last 100</option>
-                                    <option value="250">Last 250</option>
-                                    <option value="500">Last 500</option>
-                                    <option value="">All</option>
-                                </select>
-                                <button id="applyLogFilters" class="btn-small">Apply</button>
-                            </div>
-
-                            <!-- Log Entries -->
-                            <div id="logEntriesContainer" class="log-entries-container">
-                                <div class="log-empty-state">No logs yet. Enable debug mode to start collecting logs.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Test Runner -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>🧪 Test Runner</h3>
-                            <span id="testRunnerStatus" class="test-status"></span>
-                        </div>
-                        <div class="card-body">
-                            <p style="margin-bottom: 12px; color: var(--text-secondary);">Run automated tests to verify
-                                all extension features are working correctly.</p>
-
-                            <!-- Unit Tests -->
-                            <div class="test-section">
-                                <strong>📋 Unit Tests</strong>
-                                <div class="test-buttons"
-                                    style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
-                                    <button id="runAllTests" class="btn-small primary">▶️ Run All Tests</button>
-                                    <button id="runLoggerTests" class="btn-small">Logger</button>
-                                    <button id="runStorageTests" class="btn-small">Storage</button>
-                                    <button id="runOAuthTests" class="btn-small">OAuth</button>
-                                    <button id="runExportTests" class="btn-small">Export</button>
-                                    <button id="runUITests" class="btn-small">UI</button>
-                                </div>
-                            </div>
-
-                            <!-- Platform Tests -->
-                            <div class="test-section" style="margin-top: 16px;">
-                                <strong>🌐 Platform Tests</strong>
-                                <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px 0;">Quick
-                                    connection test (uses existing tabs)</p>
-                                <div class="test-buttons" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                    <button id="runAllPlatformTests" class="btn-small primary">🚀 Test All
-                                        Platforms</button>
-                                    <button id="testPerplexity" class="btn-small"
-                                        data-platform="perplexity">Perplexity</button>
-                                    <button id="testChatGPT" class="btn-small" data-platform="chatgpt">ChatGPT</button>
-                                    <button id="testClaude" class="btn-small" data-platform="claude">Claude</button>
-                                    <button id="testGemini" class="btn-small" data-platform="gemini">Gemini</button>
-                                    <button id="testGrok" class="btn-small" data-platform="grok">Grok</button>
-                                    <button id="testDeepSeek" class="btn-small"
-                                        data-platform="deepseek">DeepSeek</button>
-                                </div>
-                            </div>
-
-                            <!-- Network Mode Tests -->
-                            <div class="test-section"
-                                style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
-                                <strong>📶 Network Mode Tests</strong>
-                                <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px 0;">
-                                    Choose based on your internet speed
-                                </p>
-                                <div class="test-buttons" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                    <button id="testFastInternet" class="btn-small" style="background: #10b981;">
-                                        ⚡ Fast Internet
-                                    </button>
-                                    <button id="testSlowInternet" class="btn-small" style="background: #f59e0b;">
-                                        🐢 Slow Internet
-                                    </button>
-                                    <button id="testOpenTabsOnly" class="btn-small">
-                                        📂 Open Tabs Only
-                                    </button>
-                                </div>
-                                <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 8px;">
-                                    <div>⚡ <b>Fast</b>: Uses existing tabs, opens new with 3s wait</div>
-                                    <div>🐢 <b>Slow</b>: Opens all tabs, waits 5s + 10s retry if needed</div>
-                                    <div>📂 <b>Open Only</b>: Only tests platforms you have open</div>
-                                </div>
-                                <div id="networkTestProgress" style="margin-top: 8px; display: none;">
-                                    <div style="font-size: 12px;">⏳ <span id="networkTestStatus">Loading...</span></div>
-                                </div>
-                            </div>
-
-                            <!-- Deep Platform Tests -->
-                            <div class="test-section" style="margin-top: 16px;">
-                                <strong>🔬 Deep Platform Tests</strong>
-                                <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px 0;">Full
-                                    test: connection → threads → chat extraction → export formats → Notion</p>
-                                <div class="test-buttons" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                    <button id="runFullE2E" class="btn-small primary">🏆 Full E2E Suite</button>
-                                    <button class="btn-small" data-deep="perplexity">🔬 Perplexity</button>
-                                    <button class="btn-small" data-deep="chatgpt">🔬 ChatGPT</button>
-                                    <button class="btn-small" data-deep="claude">🔬 Claude</button>
-                                    <button class="btn-small" data-deep="gemini">🔬 Gemini</button>
-                                    <button class="btn-small" data-deep="grok">🔬 Grok</button>
-                                    <button class="btn-small" data-deep="deepseek">🔬 DeepSeek</button>
-                                </div>
-                            </div>
-
-                            <!-- Test Results -->
-                            <div id="testResultsContainer" style="margin-top: 16px; display: none;">
-                                <div
-                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                    <strong>📊 Test Results</strong>
-                                    <!-- Search & Filter -->
-                                    <div style="display: flex; gap: 8px;">
-                                        <input type="text" id="testSearch" placeholder="🔍 Search tests..."
-                                            style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-secondary); width: 150px; font-size: 12px;">
-                                        <select id="testFilter"
-                                            style="padding: 4px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-secondary); font-size: 12px;">
-                                            <option value="all">All Tests</option>
-                                            <option value="passed">✅ Passed</option>
-                                            <option value="failed">❌ Failed</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <!-- Progress Bar -->
-                                <div id="testProgressBar"
-                                    style="width: 100%; height: 4px; background: var(--bg-tertiary); border-radius: 2px; margin-bottom: 8px; overflow: hidden; display: none;">
-                                    <div id="testProgressFill"
-                                        style="width: 0%; height: 100%; background: linear-gradient(90deg, #4f46e5, #06b6d4); transition: width 0.3s;">
-                                    </div>
-                                </div>
-
-                                <div id="testResults" class="test-results"
-                                    style="margin-top: 8px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;">
-                                </div>
-                                <div class="test-summary"
-                                    style="margin-top: 8px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
-                                    <span>✅ Passed: <strong id="testsPassed">0</strong></span>
-                                    <span>❌ Failed: <strong id="testsFailed">0</strong></span>
-                                    <span>⏱️ Duration: <strong id="testsDuration">0ms</strong></span>
-                                    <span style="margin-left: auto;">
-                                        <button id="exportResultsJson" class="btn-small">📥 JSON</button>
-                                        <button id="exportResultsCsv" class="btn-small">📥 CSV</button>
-                                    </span>
-                                </div>
-                            </div>
-
-                            <!-- Test History Panel -->
-                            <div class="test-section" style="margin-top: 16px;">
-                                <details>
-                                    <summary style="cursor: pointer; font-weight: bold;">📜 Test History</summary>
-                                    <div id="testHistoryPanel"
-                                        style="margin-top: 8px; padding: 8px; background: var(--bg-tertiary); border-radius: 8px; font-size: 12px;">
-                                        <em>No test runs yet</em>
-                                    </div>
-                                </details>
-                            </div>
-
-                            <!-- Test Metrics Panel -->
-                            <div class="test-section" style="margin-top: 16px;">
-                                <details>
-                                    <summary style="cursor: pointer; font-weight: bold;">📊 Test Metrics</summary>
-                                    <div id="testMetricsPanel"
-                                        style="margin-top: 8px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; font-size: 12px;">
-                                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                                            <div
-                                                style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                                <div style="font-size: 20px; font-weight: bold; color: #10b981;"
-                                                    id="metricPassRate">--%</div>
-                                                <div style="color: var(--text-tertiary);">Pass Rate</div>
-                                            </div>
-                                            <div
-                                                style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                                <div style="font-size: 20px; font-weight: bold; color: #6366f1;"
-                                                    id="metricAvgDuration">--ms</div>
-                                                <div style="color: var(--text-tertiary);">Avg Duration</div>
-                                            </div>
-                                            <div
-                                                style="text-align: center; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
-                                                <div style="font-size: 20px; font-weight: bold; color: #f59e0b;"
-                                                    id="metricFlakyCount">0</div>
-                                                <div style="color: var(--text-tertiary);">Flaky Tests</div>
-                                            </div>
-                                        </div>
-                                        <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-                                            <span>🐢 Slowest: <strong id="metricSlowest">--</strong></span>
-                                            <span>⚡ Fastest: <strong id="metricFastest">--</strong></span>
-                                        </div>
-                                        <div style="margin-top: 8px;">
-                                            <button id="showCoverageBtn" class="btn-small">📈 View Coverage</button>
-                                            <button id="showFlakyBtn" class="btn-small">⚠️ Flaky Tests</button>
-                                        </div>
-                                    </div>
-                                </details>
-                            </div>
-
-                            <!-- Performance Panel -->
-                            <div class="test-section" style="margin-top: 16px;">
-                                <details>
-                                    <summary style="cursor: pointer; font-weight: bold;">📈 Performance</summary>
-                                    <div id="performancePanel"
-                                        style="margin-top: 8px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; font-size: 12px;">
-                                        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                                            <div>🧠 Memory: <strong id="perfMemory">--</strong></div>
-                                            <div>💾 Storage: <strong id="perfStorage">--</strong></div>
-                                            <div>📝 Log Count: <strong id="perfLogCount">--</strong></div>
-                                        </div>
-                                        <button id="refreshPerformance" class="btn-small" style="margin-top: 8px;">🔄
-                                            Refresh</button>
-                                    </div>
-                                </details>
-                            </div>
-
-                            <!-- Extra Tests -->
-                            <div class="test-section" style="margin-top: 16px;">
-                                <strong>⚡ Extra Tests</strong>
-                                <div class="test-buttons"
-                                    style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
-                                    <button id="runSecurityTests" class="btn-small">🔒 Security</button>
-                                    <button id="runErrorTests" class="btn-small">⚠️ Errors</button>
-                                    <button id="runAdapterTests" class="btn-small">🌐 Adapters</button>
-                                    <button id="runToastTests" class="btn-small">🔔 Toast</button>
-                                    <button id="runAdvancedTests" class="btn-small">🚀 Advanced</button>
-                                    <button id="runStressTests" class="btn-small danger">💪 Stress</button>
-                                </div>
-                            </div>
-
-                            <!-- Clear Logs -->
-                            <div class="test-section"
-                                style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-                                <button id="clearAllLogsDevtools" class="btn-small danger" style="width: 100%;">🗑️ Clear All
-                                    Logs (Secure)</button>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+        <!-- Thread table -->
+        <div class="thread-table-wrap">
+          <!-- Table header -->
+          <div class="thread-table-head">
+            <div class="tcol-check">
+              <input type="checkbox" id="selectAllBtn" title="Select all visible">
             </div>
-        </main>
+            <div class="tcol-title">Title</div>
+            <div class="tcol-date">Date</div>
+            <div class="tcol-action"></div>
+          </div>
 
-        <!-- Footer -->
-        <footer class="dashboard-footer">
-            <div class="footer-links">
-                <a href="#" class="footer-link">🌐 Website</a>
-                <a href="#" class="footer-link">📘 Documentation</a>
-                <a href="#" class="footer-link">💬 Support</a>
+          <!-- Thread rows -->
+          <div id="threadList" class="thread-table-body">
+            <div class="empty-state">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              <p>Select a platform to load threads</p>
             </div>
-            <div class="footer-brand">
-                <span>OmniExporter AI v5.2.0</span>
-                <span class="separator">•</span>
-                <span class="enterprise-tag">Enterprise Edition</span>
-            </div>
-        </footer>
-    </div>
+          </div>
+        </div>
 
-    <script src="../utils/logger.js"></script>
-    <script src="../utils/shared-utils.js"></script>
-    <script src="../../config.js"></script>
-    <script src="../platform-config.js"></script>
-    <script src="../utils/export-manager.js"></script>
-    <script src="../utils/notion-block-builder.js"></script>
-    <script src="../utils/toast.js"></script>
-    <script src="../../auth/notion-oauth.js"></script>
-    <script src="test-framework.js"></script>
-    <script src="test-fixtures.js"></script>
-    <script src="options.js"></script>
+        <!-- Pagination -->
+        <div class="pagination">
+          <button id="prevPageBtn" class="pag-btn" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            Prev
+          </button>
+          <span id="pageIndicator" class="pag-info">—</span>
+          <button id="nextPageBtn" class="pag-btn">
+            Next
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+        <!-- Bulk actions -->
+        <div class="bulk-bar">
+          <button id="bulkExportBtn" class="bulk-btn bulk-primary" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+            Save to Notion <span id="bulkCount">(0)</span>
+          </button>
+          <button id="bulkMdBtn" class="bulk-btn bulk-secondary" disabled>
+            Export MD <span id="bulkMdCount">(0)</span>
+          </button>
+          <button id="exportAllBtn" class="bulk-btn bulk-ghost">Export All</button>
+          <button id="clearCacheBtn" class="bulk-btn bulk-danger">Clear Cache</button>
+        </div>
+
+        <!-- Progress -->
+        <div id="exportProgress" class="progress-wrap hidden">
+          <div class="progress-track"><div id="progressBarFill" class="progress-fill"></div></div>
+          <div id="progressText" class="progress-text">Exporting…</div>
+        </div>
+
+      </section>
+
+      <!-- ═══ TAB: SETTINGS ═══ -->
+      <section id="tab-settings" class="tab hidden">
+
+        <!-- Notion Integration -->
+        <div class="card">
+          <div class="card-hd">
+            <span class="card-title">Notion Integration</span>
+          </div>
+          <div class="card-bd">
+            <div class="notice-warn">
+              Your credentials are stored locally in this browser only.
+            </div>
+            <div class="setting-row">
+              <label class="setting-label">Connection</label>
+              <div class="oauth-row">
+                <span id="notionOauthStatus" class="status-pill">Not connected</span>
+                <button id="connectNotionOauth" class="btn-sm btn-white">Connect Notion</button>
+                <button id="disconnectNotionOauth" class="btn-sm btn-danger" style="display:none">Disconnect</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label class="setting-label">Database ID</label>
+              <input type="text" id="notionDbId" class="input" placeholder="Auto-created on connect">
+              <p class="setting-hint">Auto-created when you connect, or paste an existing database ID.</p>
+            </div>
+            <div class="setting-row">
+              <button id="testNotionBtn" class="btn-sm btn-outline">Test Connection</button>
+              <span id="notionTestResult" class="test-result"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sync Config -->
+        <div class="card">
+          <div class="card-hd">
+            <span class="card-title">Sync</span>
+          </div>
+          <div class="card-bd">
+            <div class="setting-row setting-inline">
+              <label class="setting-label">Auto-sync interval</label>
+              <div class="input-with-unit">
+                <input type="number" id="syncInterval" class="input input-xs" value="60" min="5" max="1440">
+                <span class="unit">min</span>
+              </div>
+            </div>
+            <div class="checkbox-list">
+              <label class="check-row">
+                <input type="checkbox" id="autoSyncNotion">
+                <span class="check-box"></span>
+                Auto-sync to Notion
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="includeMetadata">
+                <span class="check-box"></span>
+                Include metadata
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="syncImages" checked>
+                <span class="check-box"></span>
+                Include images
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="syncCitations" checked>
+                <span class="check-box"></span>
+                Include citations
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="skipExported" checked>
+                <span class="check-box"></span>
+                Skip already exported
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-footer">
+          <button id="saveAllSettings" class="btn-save">Save Settings</button>
+        </div>
+
+      </section>
+
+      <!-- ═══ TAB: ABOUT ═══ -->
+      <section id="tab-about" class="tab hidden">
+        <div class="card">
+          <div class="card-bd">
+            <div class="about-header">
+              <img src="../../icons/icon128.png" alt="OmniExporter" class="about-logo" onerror="this.style.display='none'" />
+              <div>
+                <h2 class="about-name">OmniExporter AI</h2>
+                <p class="about-ver">Version 5.2.0</p>
+              </div>
+            </div>
+            <p class="about-desc">Export conversations from Perplexity, ChatGPT, Claude, Gemini, Grok and DeepSeek to Markdown, JSON, or Notion.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span class="card-title">How to use</span></div>
+          <div class="card-bd about-steps">
+            <div class="step"><span class="step-n">1</span><div><strong>Connect Notion</strong> — go to Settings and click "Connect Notion"</div></div>
+            <div class="step"><span class="step-n">2</span><div><strong>Select platform</strong> — open a supported AI site, then open the Dashboard</div></div>
+            <div class="step"><span class="step-n">3</span><div><strong>Browse threads</strong> — use Prev / Next to page through your history</div></div>
+            <div class="step"><span class="step-n">4</span><div><strong>Export</strong> — select threads and save to Notion, or export as Markdown</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span class="card-title">Links</span></div>
+          <div class="card-bd link-list">
+            <a href="#" class="about-link">Documentation</a>
+            <a href="#" class="about-link">Support</a>
+            <a href="#" class="about-link">Report a bug</a>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="../utils/logger.js"></script>
+  <script src="../utils/shared-utils.js"></script>
+  <script src="../../config.js"></script>
+  <script src="../platform-config.js"></script>
+  <script src="../utils/export-manager.js"></script>
+  <script src="../utils/notion-block-builder.js"></script>
+  <script src="../utils/toast.js"></script>
+  <script src="../../auth/notion-oauth.js"></script>
+  <script src="options.js"></script>
 </body>
-
 </html>
