@@ -837,22 +837,35 @@ async function resolveNotionToken() {
 
 async function handleOauthConnect() {
     try {
-        await saveAllSettings();
+        // Capture whatever the user has typed in the DB ID field BEFORE the OAuth flow runs.
+        // If they've pre-filled their own database ID we must preserve it — the auto-create
+        // logic inside storeTokens() will only skip creation when a DB ID is already in
+        // storage, so we save it to storage first via saveAllSettings().
+        const dbIdInput = document.getElementById('notionDbId');
+        const userTypedDbId = dbIdInput ? dbIdInput.value.trim() : '';
+
+        await saveAllSettings();              // saves userTypedDbId to storage if valid
         await NotionOAuth.init();
         log('🔐 Starting OAuth flow...', 'info');
-        await NotionOAuth.authorize();
+        await NotionOAuth.authorize();        // → storeTokens() → createExportDatabase() only if no DB ID in storage
         const status = await NotionOAuth.getStatus();
         updateOauthStatus({ notion_oauth_workspace_name: status.workspace });
         await chrome.storage.local.set({ notion_auth_method: 'oauth' });
 
-        // Show database connection status
-        const { notionDbId, notionDbName } = await chrome.storage.local.get(['notionDbId', 'notionDbName']);
-        const dbIdInput = document.getElementById('notionDbId');
-        if (notionDbId) {
-            if (dbIdInput) dbIdInput.value = notionDbId;
-            log(`✅ OAuth2 connected! Database "${notionDbName || 'AI Chats Export'}" ready.`, 'success');
+        // Read what ended up in storage after the whole flow
+        const stored = await chrome.storage.local.get(['notionDbId', 'notionDbName']);
+
+        // If the user had pre-typed a DB ID and auto-create stored a different one,
+        // the user's explicit choice wins — overwrite storage and the input field.
+        if (userTypedDbId && InputSanitizer.validateDatabaseId(userTypedDbId) && stored.notionDbId !== userTypedDbId) {
+            await chrome.storage.local.set({ notionDbId: userTypedDbId });
+            if (dbIdInput) dbIdInput.value = userTypedDbId;
+            log(`✅ OAuth2 connected! Using your database: ${userTypedDbId}`, 'success');
+        } else if (stored.notionDbId) {
+            if (dbIdInput) dbIdInput.value = stored.notionDbId;
+            log(`✅ OAuth2 connected! Database "${stored.notionDbName || stored.notionDbId}" ready.`, 'success');
         } else {
-            log('✅ OAuth2 connected. Note: Could not auto-create database - please check Notion permissions.', 'success');
+            log('✅ OAuth2 connected. Paste your Database ID in the field above and click Save Settings.', 'success');
         }
     } catch (error) {
         log(`OAuth connection failed: ${error.message}`, 'error');
@@ -2621,10 +2634,16 @@ async function refreshLogStats() {
 
         const stats = await Logger.getStats();
 
-        document.getElementById('statTotalLogs').textContent = stats.total || 0;
-        document.getElementById('statErrors').textContent = stats.byLevel?.ERROR || 0;
-        document.getElementById('statWarnings').textContent = stats.byLevel?.WARN || 0;
-        document.getElementById('statInfo').textContent = (stats.byLevel?.INFO || 0) + (stats.byLevel?.DEBUG || 0);
+        // Dev Tools tab was removed — these elements may not exist; guard to avoid null crash
+        const elTotal    = document.getElementById('statTotalLogs');
+        const elErrors   = document.getElementById('statErrors');
+        const elWarnings = document.getElementById('statWarnings');
+        const elInfo     = document.getElementById('statInfo');
+
+        if (elTotal)    elTotal.textContent    = stats.total || 0;
+        if (elErrors)   elErrors.textContent   = stats.byLevel?.ERROR || 0;
+        if (elWarnings) elWarnings.textContent = stats.byLevel?.WARN  || 0;
+        if (elInfo)     elInfo.textContent     = (stats.byLevel?.INFO || 0) + (stats.byLevel?.DEBUG || 0);
     } catch (e) {
         console.error('Failed to refresh log stats:', e);
     }
@@ -2878,8 +2897,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Notion Test
-    document.getElementById('testNotionBtn')?.addEventListener('click', async () => { const TR = await loadTestFramework(); TR.testNotionConnection(); });
+    // Notion Test — handled by the first DOMContentLoaded listener above (testNotionConnection direct call).
+    // Do NOT add a second listener here — it used to call loadTestFramework() which returns null → crash.
 
     // Network mode test buttons
     document.getElementById('testFastInternet')?.addEventListener('click', async () => { const TR = await loadTestFramework(); TR.testFastInternet(); });

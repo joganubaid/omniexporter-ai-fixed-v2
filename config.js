@@ -22,10 +22,10 @@
 // ─── Notion OAuth ────────────────────────────────────────────────
 // Replace with your Client ID from https://www.notion.so/my-integrations
 // Leave as-is to use the project's shared default integration.
-const NOTION_CLIENT_ID = null;
+const NOTION_CLIENT_ID = "2ebd872b-594c-8001-bf30-00373781f7d9";
 
 // ─── OAuth Server ────────────────────────────────────────────────
 // Replace with your deployed Cloudflare Worker URL.
 // When null the extension falls back to the shared default worker
 // (https://omniexporter-oauth.jonub250383.workers.dev).
-const OAUTH_SERVER_URL = null;
+const OAUTH_SERVER_URL = "https://omniexporter-oauth.jonub250383.workers.dev";

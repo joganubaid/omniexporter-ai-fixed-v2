@@ -11,7 +11,7 @@
 // For forks: deploy your own Cloudflare Worker and add YOUR extension ID here.
 const ALLOWED_ORIGINS = new Set([
     // Add your extension ID here, e.g.:
-    // 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+    'chrome-extension://chfdccefngihoobfjmmjfldlpieopdel',
 ]);
 
 // Rate limiting: track requests per IP (in-memory, resets on worker restart)
