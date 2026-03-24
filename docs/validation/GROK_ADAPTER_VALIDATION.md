@@ -31,16 +31,17 @@ The `grok-adapter.js` implementation correctly follows the HAR‑observed conver
 ### ✅ Core Conversation Flow (PASS)
 
 **HAR Finding (Required Flow):**
-1. `GET /rest/app-chat/conversations?pageSize=60`
+1. `GET /rest/app-chat/conversations?pageSize=50[&pageToken=cursor]` — cursor loop until `nextPageToken` is null
 2. `GET /rest/app-chat/conversations/{uuid}/response-node?includeThreads=true`
 3. `POST /rest/app-chat/conversations/{uuid}/load-responses`
 
 **Current Implementation:**
-- `getAllThreads()` uses `/rest/app-chat/conversations?pageSize=60`
+- `getAllThreads()` loops with `pageSize=50` and `nextPageToken` cursor until exhausted; stores full cache
+- `getThreadsWithOffset()` slices from the in-memory cache for dashboard pagination
 - `getThreadDetail()` performs response‑node then load‑responses
 
 **Status:** ✅ Match  
-Reference: [grok-adapter.js](file:///c:/Users/jonub/omniexporter-ai-fixed-v2/src/adapters/grok-adapter.js#L113-L328)
+Note: Legacy docs referenced `pageSize=60` (single-request cap). The adapter was updated to `pageSize=50` with full cursor pagination to support accounts with >60 conversations.
 
 ---
 
@@ -53,8 +54,10 @@ Reference: [grok-adapter.js](file:///c:/Users/jonub/omniexporter-ai-fixed-v2/src
 **Current Implementation:**
 - Uses `responses` array and `message` field
 - Maps `sender: human/assistant` to Q/A entries
+- Handles `mediaReferences[]` (images, videos), `codeBlocks[]`, and `searchResults[]` within messages — appended inline to the answer text
+- Consecutive human messages without an assistant reply are flushed as separate entries (no silent drops)
 
-**Status:** ✅ Match
+**Status:** ✅ Match (enriched)
 
 ---
 

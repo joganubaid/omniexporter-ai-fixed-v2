@@ -54,9 +54,9 @@ const response = await fetch(
     headers: {
       'authorization': `Bearer ${token}`,
       'x-client-platform': 'web',
-      'x-client-version': '1.7.0',
+      'x-client-version': '1.7.1',
       'x-client-locale': 'en_US',
-      'x-client-timezone-offset': '19800',
+      'x-client-timezone-offset': String(-(new Date().getTimezoneOffset())),
       'x-app-version': '20241129.1'
     }
   }
@@ -99,9 +99,9 @@ const response = await fetch(
     headers: {
       'authorization': `Bearer ${token}`,
       'x-client-platform': 'web',
-      'x-client-version': '1.7.0',
+      'x-client-version': '1.7.1',
       'x-client-locale': 'en_US',
-      'x-client-timezone-offset': '19800',
+      'x-client-timezone-offset': String(-(new Date().getTimezoneOffset())),
       'x-app-version': '20241129.1'
     }
   }
@@ -118,17 +118,18 @@ console.log('Messages:', data.data.biz_data.chat_messages);
 ### ✓ Must Have
 
 1. **Bearer Token Authentication**
-   - Extract from `/users/current` response
-   - Include in `authorization` header for all requests
+   - Try `localStorage.getItem('userToken')` and other known keys first (plain string)
+   - Fall back to `/api/v0/users/current` (async) if localStorage has nothing
+   - Cache token in-memory only — **do NOT write back to localStorage** (BUG-3 fix)
 
 2. **Required Headers**
    ```javascript
    {
      'authorization': 'Bearer {token}',
      'x-client-platform': 'web',
-     'x-client-version': '1.7.0',
+     'x-client-version': '1.7.1',
      'x-client-locale': 'en_US',
-     'x-client-timezone-offset': '19800',
+     'x-client-timezone-offset': String(-(new Date().getTimezoneOffset())),
      'x-app-version': '20241129.1'
    }
    ```
@@ -141,26 +142,45 @@ console.log('Messages:', data.data.biz_data.chat_messages);
    }
    ```
 
-4. **Credentials Include**
+4. **Message Structure — `fragments[]` not `content`**
+   ```javascript
+   // ❌ WRONG — content field is always ""
+   const text = msg.content;
+
+   // ✅ CORRECT — real text is in fragments[]
+   const parts = [];
+   for (const f of (msg.fragments || [])) {
+     if (f.type === 'thinking' || f.type === 'reasoning') {
+       parts.push(`\n> 💭 **Thinking:**\n> ${f.content.replace(/\n/g, '\n> ')}\n`);
+     } else {
+       parts.push(f.content || '');
+     }
+   }
+   const text = parts.join('').trim();
+   ```
+   DeepSeek R1 also embeds `<think>...</think>` tags in text fragments — handle both forms.
+
+5. **Credentials Include**
    ```javascript
    fetch(url, { credentials: 'include' })
    ```
 
 ### ⚠️ Common Pitfalls
 
-1. **Missing Authorization Header**
+1. **Using `msg.content` instead of `msg.fragments`**
+   - `content` is always `""` — you'll get empty exports
+   - Real text lives in `fragments[].content`
+
+2. **Missing Authorization Header**
    - Will get 401 Unauthorized
-   - Must include Bearer token
 
-2. **Wrong Response Path**
+3. **Wrong Response Path**
    - Data is at `data.data.biz_data`, not `data`
-   - Must unwrap nested structure
 
-3. **Timezone Offset**
-   - Must be in seconds, not minutes
-   - Use: `new Date().getTimezoneOffset() * -60`
+4. **Hardcoded Timezone Offset**
+   - Use dynamic `String(-(new Date().getTimezoneOffset()))` not a hardcoded string
 
-4. **Empty Message Arrays**
+5. **Empty Message Arrays**
    - Some conversations have no messages
    - Always check `chat_messages.length`
 

@@ -558,43 +558,6 @@ var NotionOAuth = {
                 error: error.message
             };
         }
-    },
-
-    /**
-     * Upload a page content to Notion (Used for Verification)
-     */
-    async uploadPage(properties, children, token) {
-        if (!token) token = await this.getActiveToken();
-
-        // Ensure database ID exists
-        const stored = await chrome.storage.local.get('notionDbId');
-        if (!stored.notionDbId) {
-            throw new Error('No Notion Database configured. Please run setup first.');
-        }
-
-        const response = await fetch('https://api.notion.com/v1/pages', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Notion-Version': '2022-06-28',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                parent: { database_id: stored.notionDbId },
-                properties: properties,
-                children: children
-            })
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            _logOAuth('error', 'Upload error details', { status: response.status, message: err.message });
-            throw new Error(`Upload failed (HTTP ${response.status}). Please check your configuration.`);
-        }
-
-        return await response.json().catch(() => {
-            throw new Error('Upload succeeded but response was not valid JSON.');
-        });
     }
 };
 

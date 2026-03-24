@@ -80,7 +80,8 @@ Grok uses cookie-based sessions. Requests require `credentials: "include"` to se
 **Calls in HAR:** 8
 
 **Query Parameters:**
-- `pageSize` (required)
+- `pageSize` (required) — use `50`; `60` was the legacy single-page maximum
+- `pageToken` (optional) — cursor from previous response for next page
 - `filterIsStarred` (optional)
 - `workspaceId` (optional)
 
@@ -170,15 +171,18 @@ Grok uses cookie-based sessions. Requests require `credentials: "include"` to se
 
 ### List Conversations
 ```
-GET /rest/app-chat/conversations?pageSize=60
+GET /rest/app-chat/conversations?pageSize=50
+GET /rest/app-chat/conversations?pageSize=50&pageToken={cursor}
 ```
 
 **Typical Fields:**
+- `conversations[]`
 - `conversationId`
 - `title`
 - `createTime`
 - `modifyTime`
 - `starred`
+- `nextPageToken` — present when more pages exist; absent/null on last page
 
 ### Response Nodes
 ```
@@ -203,7 +207,18 @@ POST /rest/app-chat/conversations/{uuid}/load-responses
 
 ## Pagination
 
-Grok uses `pageSize` for listing conversations. Additional paging parameters may be present when filtering by workspace.
+Grok uses `pageSize` for listing conversations, with cursor-based pagination via `nextPageToken` for accounts with more than one page of conversations.
+
+**HAR-verified pagination flow:**
+```
+GET /rest/app-chat/conversations?pageSize=50
+→ Response: { conversations: [...], nextPageToken: "abc123" }
+
+GET /rest/app-chat/conversations?pageSize=50&pageToken=abc123
+→ Response: { conversations: [...], nextPageToken: null }  ← stop here
+```
+
+The adapter loops until `nextPageToken` is absent or null, building a full in-memory thread cache. `pageSize=60` is the legacy single-request limit; the current implementation uses `pageSize=50` with full cursor pagination.
 
 ---
 
@@ -220,9 +235,10 @@ Common statuses observed:
 ## Testing & Validation
 
 ### Manual Checks
-1. List conversations with `pageSize=60`
-2. Fetch response-node for a known conversation
-3. Load responses for a known response-node set
+1. List conversations with `pageSize=50`; check for `nextPageToken` in response
+2. If `nextPageToken` present, repeat with `pageToken=<value>` until null
+3. Fetch response-node for a known conversation
+4. Load responses for a known response-node set
 
 ### Adapter Checks
 - `getThreads` uses `/rest/app-chat/conversations`

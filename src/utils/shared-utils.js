@@ -1,4 +1,4 @@
-// OmniExporter AI - Shared UI Utilities v5.2.0
+// OmniExporter AI - Shared UI Utilities v5.4.0
 // Shared between popup.js and options.js
 "use strict";
 

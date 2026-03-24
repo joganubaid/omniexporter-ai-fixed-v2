@@ -4,9 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 5.2.x   | ✅ Current |
-| 5.1.x   | ⚠️ Upgrade recommended |
-| < 5.1   | ❌ No longer supported |
+| 5.4.x   | ✅ Current |
+| 5.3.x   | ⚠️ Upgrade recommended |
+| < 5.3   | ❌ No longer supported |
 
 ## Security Practices
 

@@ -18,7 +18,8 @@
 
 ### 1. List Conversations
 ```
-GET /rest/app-chat/conversations?pageSize=60
+GET /rest/app-chat/conversations?pageSize=50
+GET /rest/app-chat/conversations?pageSize=50&pageToken={cursor}  ← repeat until nextPageToken is null
 ```
 
 ### 2. Response Nodes
@@ -63,10 +64,11 @@ POST /rest/app-chat/conversations/{uuid}/load-responses
 ## Manual Testing Steps
 
 1. Open grok.com and sign in  
-2. Call list conversations with `pageSize=60`  
-3. Pick a `conversationId` and call response-node  
-4. Call load-responses for the same conversation  
-5. Verify message content is returned
+2. Call list conversations with `pageSize=50`  
+3. If `nextPageToken` is present in the response, repeat with `&pageToken=<value>` until null  
+4. Pick a `conversationId` and call response-node  
+5. Call load-responses for the same conversation  
+6. Verify message content is returned and includes any media references or code blocks
 
 ---
 

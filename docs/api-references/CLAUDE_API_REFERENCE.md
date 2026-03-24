@@ -1,8 +1,8 @@
 # Claude API Reference & Implementation Guide
 
 **OmniExporter AI - Comprehensive Agent Documentation**  
-**Version:** 5.2.0  
-**Last Updated:** 2026-02-21  
+**Version:** 5.4.0  
+**Last Updated:** 2026-03-20  
 **HAR Analysis Date:** 2026-02-21  
 **Purpose:** Complete reference for AI agents to validate and improve the Claude adapter
 
@@ -28,7 +28,7 @@
 ## Executive Summary
 
 ### What This Extension Does
-OmniExporter AI exports AI conversations from Claude (and 5 other platforms) to multiple formats (Markdown, JSON, HTML, PDF, Notion).
+OmniExporter AI exports AI conversations from Claude (and 5 other platforms) to Markdown, JSON, and Notion.
 
 ### Claude Integration Status
 ✅ **PRODUCTION READY** - The Claude adapter correctly implements Anthropic's REST API as verified by HAR analysis.
@@ -106,13 +106,22 @@ Returns: Array of organizations user has access to
 
 ### URL Patterns (HAR-Verified)
 
-#### 1. List Conversations
+#### 1. List Conversations (V1 — legacy)
 ```
 GET /api/organizations/{org_uuid}/chat_conversations
-    ?limit=30
+    ?limit=50
     &offset=0
     &consistency=eventual
 ```
+
+#### 1a. List Conversations (V2 — current, HAR-verified 2026-03-20)
+```
+GET /api/organizations/{org_uuid}/chat_conversations_v2
+    ?limit=50
+    &consistency=eventual
+    &offset=0
+```
+V2 response shape: `{ data: [...], has_more: bool }` — pure offset pagination, **no cursor field**. Always advance by `offset += page.length`. Using `cursor=<uuid>` returns the same page every time.
 
 #### 2. Get Conversation Detail
 ```
@@ -120,8 +129,9 @@ GET /api/organizations/{org_uuid}/chat_conversations/{conversation_uuid}
     ?tree=True
     &rendering_mode=messages
     &render_all_tools=true
-    &consistency=strong
+    &consistency=str
 ```
+> **Note:** `consistency=str` (not `strong`) is the HAR-verified value as of 2026-03-16.
 
 #### 3. Count All Conversations
 ```
@@ -144,8 +154,12 @@ Content-Type: application/json
 Sec-Fetch-Dest: empty
 Sec-Fetch-Mode: cors
 Sec-Fetch-Site: same-origin
+anthropic-client-platform: web_claude_ai
+anthropic-client-version: 1.0.0
 Cookie: sessionKey=sk-ant-sid02-...; lastActiveOrg=...; ...
 ```
+
+> **Note:** `anthropic-client-platform` and `anthropic-client-version` are sent by the real Claude browser client on every request (HAR-verified 2026-03-16). The adapter includes these via `_getHeaders()`.
 
 ### Critical Cookies (HAR-Verified)
 ```
@@ -214,13 +228,18 @@ src/
 
 **Core Methods:**
 ```javascript
-extractUuid(url)              // Extract conversation ID from URL
-getOrgId()                    // Get organization UUID (cached)
-getThreads(page, limit)       // List conversations (page-based)
-getThreadsWithOffset(offset, limit)  // List with offset (enterprise)
-getAllThreads()               // Bulk fetch for dashboard
-getThreadDetail(uuid)         // Get full conversation
-_fetchWithRetry(url, options) // Retry with exponential backoff
+extractUuid(url)                        // Extract conversation ID from URL
+getOrgId()                              // Get organization UUID (cached)
+getThreads(page, limit)                 // List conversations (page-based, uses getAllThreads cache)
+getThreadsWithOffset(offset, limit)     // Offset slice from in-memory cache
+getAllThreads(progressCallback)         // Full paginated fetch via V2 endpoint (offset-based)
+getThreadDetail(uuid)                   // Get full conversation — Full Fidelity mode
+getArtifactVersions(convoUuid)          // List artifact versions for a conversation
+getArtifactStorageInfo(artifactId, convoUuid) // Get storage info for an artifact version
+getFilePreview(fileId)                  // Fetch content of a generated/uploaded file
+getProjects()                           // List projects by extracting unique project UUIDs
+_fetchWithRetry(url, options)           // Retry with exponential backoff
+_getHeaders()                           // Build request headers (incl. anthropic-client-*)
 ```
 
 **Implementation Highlights:**
@@ -230,30 +249,58 @@ _fetchWithRetry(url, options) // Retry with exponential backoff
 - In-memory thread caching (1-minute TTL)
 - Comprehensive error handling
 
-#### 2. transformClaudeData()
-**Purpose:** Convert Claude API response to standard format
+#### 2. transformClaudeData() + extractAllContentBlocks()
+**Purpose:** Convert Claude API response to standard entries format with Full Fidelity content extraction
 
 **Input:** Claude API response with `chat_messages` array  
-**Output:** Standardized `entries` array with `query_str` and `blocks`
+**Output:** Standardized `entries` array with `query_str`, `blocks`, and `attachments`
+
+**Content block types handled (HAR-verified 2026-03-16):**
+
+| Block type | What it is | How it's rendered |
+|---|---|---|
+| `text` | Plain answer text | Appended directly |
+| `tool_use` | Tool/function call | Fenced `` ```tool_call:name `` block with JSON input |
+| `tool_result` | Tool output | `> **Tool result:**` or `> **Tool error:**` blockquote |
+| `token_budget` | Internal throttle marker | Silently skipped |
+| `local_resource` | Generated/uploaded file | `📄 [File: name]` placeholder + UUID queued for `getFilePreview()` |
 
 **Key Logic:**
 ```javascript
-// Claude message structure:
-// - sender: "human" | "assistant"
-// - content: [{ text: "..." }]
-// - text: "" (always empty, use content[0].text)
+// extractAllContentBlocks(contentArray) — called for every message
+// msg.content is an array of typed blocks, NOT a single text field.
+// msg.text is ALWAYS empty — never use it.
 
+for (const block of contentArray) {
+  switch (block.type) {
+    case 'text':
+      parts.push(block.text);
+      break;
+    case 'tool_use':
+      parts.push(`\`\`\`tool_call:${block.name}\n${JSON.stringify(block.input)}\n\`\`\``);
+      break;
+    case 'tool_result':
+      // block.content is itself an array of sub-blocks (text / local_resource)
+      const prefix = block.is_error ? '❌ **Tool error:**' : '> **Tool result:**';
+      parts.push(`${prefix} ${extractedSubText}`);
+      break;
+    case 'token_budget':
+      break; // skip silently
+    case 'local_resource':
+      fileRefs.push({ uuid: block.uuid, name: block.name, mimeType: block.mime_type });
+      parts.push(`📄 **[File: ${block.name}]**`);
+      break;
+  }
+}
+
+// transformClaudeData(data) — iterates chat_messages
 messages.forEach(msg => {
-  const msgText = msg.content[0]?.text || '';
+  const { text, fileRefs } = extractAllContentBlocks(msg.content);
   if (msg.sender === 'human') {
-    // Start new entry
-    currentEntry = { query_str: msgText, blocks: [] };
-  } else if (msg.sender === 'assistant') {
-    // Add to current entry
-    currentEntry.blocks.push({
-      intended_usage: 'ask_text',
-      markdown_block: { answer: msgText }
-    });
+    currentEntry = { query_str: text, blocks: [], attachments: [...msg.attachments] };
+  } else if (msg.sender === 'assistant' && currentEntry) {
+    currentEntry.blocks.push({ intended_usage: 'ask_text', markdown_block: { answer: text } });
+    // fileRefs queued → fetchFilePreviewsForEntries() appends content after all entries built
   }
 });
 ```
@@ -360,7 +407,7 @@ GET /api/organizations/1a0bc2b2-1fed-4d00-b396-5c50e2e53c44/chat_conversations/a
     ?tree=True
     &rendering_mode=messages
     &render_all_tools=true
-    &consistency=strong HTTP/3
+    &consistency=str HTTP/3
 Host: claude.ai
 Accept: application/json
 Cookie: sessionKey=sk-ant-sid02-...
@@ -430,31 +477,12 @@ const response = await fetch(`${url}?${params}`, {
 });
 
 const data = await response.json();
-const entries = [];
-let currentEntry = null;
-
-data.chat_messages.forEach(msg => {
-  // CRITICAL: msg.text is ALWAYS empty
-  // Use msg.content[0].text instead
-  const msgText = (msg.content && msg.content[0]?.text) || '';
-  
-  if (msg.sender === 'human') {
-    if (currentEntry) entries.push(currentEntry);
-    currentEntry = {
-      query_str: msgText,
-      blocks: []
-    };
-  } else if (msg.sender === 'assistant' && currentEntry) {
-    currentEntry.blocks.push({
-      intended_usage: 'ask_text',
-      markdown_block: { answer: msgText }
-    });
-  }
-});
-
-if (currentEntry && currentEntry.blocks.length > 0) {
-  entries.push(currentEntry);
-}
+const entries = transformClaudeData(data);
+// transformClaudeData calls extractAllContentBlocks() per message.
+// msg.content is an array of typed blocks — msg.text is ALWAYS empty.
+// Handles: text, tool_use, tool_result, token_budget, local_resource blocks.
+// Human attachments (msg.attachments[]) are preserved in entry.attachments[].
+// Generated file UUIDs from local_resource blocks are fetched via getFilePreview().
 ```
 
 ---
@@ -521,9 +549,14 @@ Based on comprehensive HAR analysis, Claude has **31 unique API endpoints**:
 #### Core Conversation Endpoints (Used by Extension)
 ```
 ✅ GET /api/organizations/{org}
-✅ GET /api/organizations/{org}/chat_conversations
-✅ GET /api/organizations/{org}/chat_conversations/{uuid}
+✅ GET /api/organizations/{org}/chat_conversations                        ← V1 (fallback)
+✅ GET /api/organizations/{org}/chat_conversations_v2                     ← V2 (primary, offset-based)
+✅ GET /api/organizations/{org}/chat_conversations/{uuid}                 ← detail (?consistency=str)
 ✅ GET /api/organizations/{org}/chat_conversations/count_all
+✅ GET /api/organizations/{org}/artifacts/{uuid}/versions                 ← getArtifactVersions()
+✅ GET /api/organizations/{org}/artifacts/artifact_version/{id}/manage/storage/info ← getArtifactStorageInfo()
+✅ GET /api/{org}/files/{fileId}/preview                                  ← getFilePreview()
+✅ GET /api/organizations/{org}/projects/{uuid}                           ← getProjects() (per-project fetch)
 ```
 
 #### Account & Profile
@@ -658,7 +691,7 @@ GET /api/organizations/{org}/chat_conversations/{uuid}
     ?tree=True
     &rendering_mode=messages
     &render_all_tools=true
-    &consistency=strong
+    &consistency=str
 ```
 
 **Response Size:** 106,568 bytes (~104 KB)  
@@ -775,7 +808,7 @@ GET /api/organizations/{org}/chat_conversations/count_all
 
 **Recommended:**
 ```
-?tree=True&rendering_mode=messages&render_all_tools=true&consistency=strong
+?tree=True&rendering_mode=messages&render_all_tools=true&consistency=str
 ```
 
 ---
@@ -837,6 +870,8 @@ Content-Type: application/json
 Sec-Fetch-Dest: empty
 Sec-Fetch-Mode: cors
 Sec-Fetch-Site: same-origin
+anthropic-client-platform: web_claude_ai
+anthropic-client-version: 1.0.0
 ```
 
 **Authentication:**

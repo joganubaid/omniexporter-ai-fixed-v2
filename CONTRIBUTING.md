@@ -30,10 +30,18 @@ Thank you for your interest in contributing! This guide will help you get starte
 ```
 src/
 ├── background.js          — Service worker (alarms, context menus, messaging)
-├── content.js             — Content script with inline Perplexity/ChatGPT/Claude adapters
+├── content.js             — Content script orchestration layer (adapter dispatch, message routing, re-injection guard)
 ├── platform-config.js     — Endpoint configs, DataExtractor, VersionDetector
-├── adapters/              — Standalone platform adapters (Gemini, Grok, DeepSeek)
-├── utils/                 — Logger, network interceptor, export manager, toast
+├── adapters/              — One file per AI platform (all 6 adapters live here)
+│   ├── chatgpt-adapter.js
+│   ├── claude-adapter.js
+│   ├── deepseek-adapter.js
+│   ├── gemini-adapter.js
+│   ├── gemini-inject.js
+│   ├── gemini-page-interceptor.js
+│   ├── grok-adapter.js
+│   └── perplexity-adapter.js
+├── utils/                 — Logger, network interceptor, export manager, toast, notion-block-builder
 └── ui/                    — Popup, options/dashboard, notion picker + CSS
 ```
 

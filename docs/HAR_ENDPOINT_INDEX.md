@@ -21,15 +21,19 @@
 ---
 
 ## Claude (claude.har — 14.6 MB)
-**Base URL:** `https://api.claude.ai`
-**Auth:** Cookie-based (sessionKey)
+**Base URL:** `https://claude.ai`
+**Auth:** Cookie-based (sessionKey) + `anthropic-client-platform: web_claude_ai` header
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/organizations/{org}/chat_conversations` | GET | List conversations (v1, offset) |
-| `/api/organizations/{org}/chat_conversations_v2` | GET | List conversations (v2, cursor) |
-| `/api/organizations/{org}/chat_conversations/{uuid}` | GET | Get conversation detail |
-| `/api/organizations/{org}/projects` | GET | List projects |
+| `/api/organizations` | GET | Get organization UUID (required for all other calls) |
+| `/api/organizations/{org}/chat_conversations` | GET | List conversations (V1, offset-based fallback) |
+| `/api/organizations/{org}/chat_conversations_v2?limit=50&consistency=eventual` | GET | List conversations (V2, **offset-based** — no cursor field; use `&offset=N`) |
+| `/api/organizations/{org}/chat_conversations/{uuid}?tree=True&rendering_mode=messages&render_all_tools=true&consistency=str` | GET | Get conversation detail with full content blocks |
+| `/api/organizations/{org}/artifacts/{uuid}/versions?source=w` | GET | List artifact versions for a conversation |
+| `/api/organizations/{org}/artifacts/artifact_version/{id}/manage/storage/info` | GET | Get artifact storage info |
+| `/api/{org}/files/{fileId}/preview` | GET | Fetch generated/uploaded file content |
+| `/api/organizations/{org}/projects/{uuid}` | GET | Get project details |
 
 ---
 
@@ -39,10 +43,10 @@
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/rest/thread/list_threads` | POST | List threads (offset pagination) |
-| `/rest/thread/get_thread` | POST | Get thread detail (cursor pagination) |
-| `/rest/collections/list_user_collections` | POST | List spaces/collections |
-| `/rest/user/get_current_user` | GET | Get user status |
+| `/rest/thread/list_ask_threads` | POST | List threads (body: `{limit:20, offset:N}` — API hard-caps at 20/page; use `items[0].has_next_page` to paginate) |
+| `/rest/thread/{uuid}?with_schematized_response=true&supported_block_use_cases=...` | GET | Get thread detail with cursor pagination (`next_cursor`) |
+| `/rest/collections/list_user_collections` | GET | List spaces/collections |
+| `/rest/user/settings` | GET | Get user settings |
 
 ---
 
@@ -59,25 +63,25 @@
 
 ## Grok (grok.har — 63.1 MB, 231 requests)
 **Base URL:** `https://grok.com`
-**Auth:** Cookie-based
+**Auth:** Cookie-based (`sso`, `sso-rw` cookies)
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/rest/app-chat/conversations` | GET | List conversations |
-| `/rest/app-chat/conversations/{uuid}/response-node` | GET | Get response nodes |
-| `/rest/app-chat/conversations/{uuid}/responses/{id}` | GET | Get response content |
-| `/rest/app-chat/conversations_v2/{uuid}` | GET | Get conversation metadata (model) |
-| `/rest/workspaces` | GET | List workspaces |
+| `/rest/app-chat/conversations?pageSize=50[&pageToken=cursor]` | GET | List conversations (cursor pagination via `nextPageToken`) |
+| `/rest/app-chat/conversations/{uuid}/response-node?includeThreads=true` | GET | Step 1 of detail fetch — get `responseNodes[].responseId` array |
+| `/rest/app-chat/conversations/{uuid}/load-responses` | POST | Step 2 of detail fetch — body: `{responseIds:[...]}` → returns messages |
+| `/rest/app-chat/conversations_v2/{uuid}?includeWorkspaces=true&includeTaskResult=true` | GET | Get conversation metadata (title, model) |
+| `/rest/workspaces?pageSize=50&orderBy=ORDER_BY_LAST_USE_TIME` | GET | List workspaces |
 
 ---
 
 ## DeepSeek (deepseek.har — 3.7 MB, 60 requests)
 **Base URL:** `https://chat.deepseek.com`
-**Auth:** Bearer token + custom headers
+**Auth:** Bearer token (`userToken` from localStorage or `/api/v0/users/current`) + `x-client-version: 1.7.1` headers
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/v0/chat/history` | GET | List chat history |
-| `/api/v0/chat/{uuid}` | GET | Get chat detail |
-| `/api/v0/users/login` | POST | Login / token refresh |
-| `/api/v0/chat/session/info` | GET | Get session info (model, agent_mode) |
+| `/api/v0/chat_session/fetch_page?lte_cursor.pinned=false[&lte_cursor.updated_at=...&lte_cursor.id=...]` | GET | List chat sessions (cursor pagination via last session's `updated_at` + `id`) |
+| `/api/v0/chat/history_messages?chat_session_id={uuid}&cache_version=2` | GET | Get all messages for a session (`fragments[]` array — `content` field is always empty) |
+| `/api/v0/users/current` | GET | Get user info and Bearer token (`data.biz_data.token`) |
+| `/api/v0/client/settings` | GET | Get client feature flags and settings |

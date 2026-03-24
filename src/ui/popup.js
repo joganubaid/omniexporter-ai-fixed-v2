@@ -196,11 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ============================================
 // CONNECTION DOTS INITIALIZATION
-// ============================================
-// No-op stubs — platform nav bar removed from popup
-function initConnectionDots() {}
-function initNavigationBar() {}
-function updatePlatformConnectionDots() {}
 
 // ============================================
 // EXPORT DROPDOWN
@@ -237,11 +232,6 @@ function initExportDropdown() {
         });
     }
 }
-
-// ============================================
-// NAVIGATION BAR — removed, stub kept for safety
-// ============================================
-function navigateToPlatform() {}
 
 function updateNavBarActive(platform) {
     // Update header platform label and dot

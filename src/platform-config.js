@@ -97,7 +97,7 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                     fallback: '/api/organizations/{org}/chat_conversations'
                 },
                 conversationDetail: {
-                    primary: '/api/organizations/{org}/chat_conversations/{uuid}?tree=True&rendering_mode=messages&render_all_tools=true&consistency=str', // VERIFIED: 2026-03-16 by HAR (added consistency=str)
+                    primary: '/api/organizations/{org}/chat_conversations/{uuid}?tree=true&rendering_mode=messages&render_all_tools=true&consistency=eventual', // VERIFIED: 2026-03-16 by HAR (corrected parameters)
                     fallback: '/api/v1/organizations/{org}/conversations/{uuid}' // FALLBACK
                 },
                 // HAR-verified 2026-03-16: project details
@@ -649,12 +649,12 @@ if (!window.PlatformConfigManager) {
                 return cached.version;
             }
 
-            const version = await this.detectVersion(platformName);
+            const version = await this._detectVersion(platformName);
             this.cache.set(platformName, { version, timestamp: Date.now() });
             return version;
         }
 
-        async detectVersion(platformName) {
+        async _detectVersion(platformName) {
             switch (platformName) {
                 case 'Perplexity':
                     return await this.detectPerplexityVersion();
@@ -725,122 +725,10 @@ if (!window.PlatformConfigManager) {
         }
     }
 
-    // ============================================
-    // PLATFORM HEALTH MONITOR
-    // ============================================
-    class PlatformHealthMonitor {
-        constructor() {
-            this.healthStatus = new Map();
-            this.lastCheck = new Map();
-            this.failureCount = new Map();
-            this.checkInterval = 60000; // 1 minute
-        }
-
-        async checkHealth(platformName, adapter) {
-            const lastCheck = this.lastCheck.get(platformName) || 0;
-
-            // Don't check too frequently
-            if (Date.now() - lastCheck < this.checkInterval) {
-                return this.healthStatus.get(platformName) || { healthy: true };
-            }
-
-            const health = await this.performHealthCheck(platformName, adapter);
-
-            this.healthStatus.set(platformName, health);
-            this.lastCheck.set(platformName, Date.now());
-
-            if (!health.healthy) {
-                const failures = (this.failureCount.get(platformName) || 0) + 1;
-                this.failureCount.set(platformName, failures);
-
-                if (failures >= 3) {
-                    await this.recordPlatformIssue(platformName, health.error);
-                }
-            } else {
-                this.failureCount.set(platformName, 0);
-            }
-
-            return health;
-        }
-
-        async performHealthCheck(platformName, adapter) {
-            try {
-                // Try minimal data fetch
-                const testResult = await adapter.getThreads(1, 1);
-
-                if (testResult && testResult.threads !== undefined) {
-                    return {
-                        healthy: true,
-                        lastCheck: Date.now(),
-                        threadsFound: testResult.threads.length
-                    };
-                }
-
-                return { healthy: false, error: 'No data returned' };
-            } catch (error) {
-                return {
-                    healthy: false,
-                    error: error.message,
-                    lastCheck: Date.now(),
-                    recoveryAction: this.suggestRecovery(error)
-                };
-            }
-        }
-
-        suggestRecovery(error) {
-            const msg = (error.message || '').toLowerCase();
-
-            if (msg.includes('unauthorized') || msg.includes('401')) return 'SESSION_EXPIRED';
-            if (msg.includes('not found') || msg.includes('404')) return 'ENDPOINT_CHANGED';
-            if (msg.includes('rate limit') || msg.includes('429')) return 'RATE_LIMITED';
-            if (msg.includes('network') || msg.includes('fetch')) return 'NETWORK_ERROR';
-
-            return 'UNKNOWN';
-        }
-
-        async recordPlatformIssue(platformName, error) {
-            try {
-                const { platformIssues = [] } = await chrome.storage.local.get('platformIssues');
-
-                platformIssues.unshift({
-                    platform: platformName,
-                    error,
-                    timestamp: Date.now(),
-                    severity: 'high'
-                });
-
-                await chrome.storage.local.set({
-                    platformIssues: platformIssues.slice(0, 10)
-                });
-
-                console.error(`[HealthMonitor] Platform issue: ${platformName} - ${error}`);
-            } catch (e) {
-                console.error('[HealthMonitor] Failed to record issue:', e);
-            }
-        }
-
-        getRecoveryMessage(action) {
-            const messages = {
-                'SESSION_EXPIRED': 'Please refresh the platform page and log in again',
-                'ENDPOINT_CHANGED': 'Platform API may have changed. Try updating the extension',
-                'RATE_LIMITED': 'Too many requests. Wait a few minutes and try again',
-                'NETWORK_ERROR': 'Network issue. Check your internet connection',
-                'UNKNOWN': 'An unknown error occurred. Try refreshing the page'
-            };
-
-            return messages[action] || messages['UNKNOWN'];
-        }
-
-        getStatus(platformName) {
-            return this.healthStatus.get(platformName) || { healthy: true, status: 'unknown' };
-        }
-    }
-
     // Register all classes on window so other scripts can access them,
     // and so this guard check works on re-injection.
     window.PlatformConfigManager = PlatformConfigManager;
     window.PlatformVersionDetector = PlatformVersionDetector;
-    window.PlatformHealthMonitor = PlatformHealthMonitor;
     window.DataExtractor = DataExtractor;
 
 } // end if (!window.PlatformConfigManager)
@@ -848,7 +736,6 @@ if (!window.PlatformConfigManager) {
 
 window.platformConfig = window.platformConfig || new window.PlatformConfigManager();
 window.versionDetector = window.versionDetector || new window.PlatformVersionDetector();
-window.healthMonitor = window.healthMonitor || new window.PlatformHealthMonitor();
 
 
 // Export for content script usage

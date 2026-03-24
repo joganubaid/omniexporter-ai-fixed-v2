@@ -1,8 +1,8 @@
 # 🚀 OmniExporter AI - Enterprise Edition
 
-![Version](https://img.shields.io/badge/version-5.2.0-blue) ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green) ![Platforms](https://img.shields.io/badge/platforms-6-orange) ![Formats](https://img.shields.io/badge/export%20formats-5-purple)
+![Version](https://img.shields.io/badge/version-5.4.0-blue) ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green) ![Platforms](https://img.shields.io/badge/platforms-6-orange) ![Formats](https://img.shields.io/badge/export%20formats-2-purple)
 
-Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek** to Markdown, JSON, HTML, PDF, Plain Text, and Notion — with a full dashboard, auto-sync, and OAuth2 Notion integration.
+Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek** to **Markdown, JSON, and Notion** — with a full dashboard, auto-sync, and OAuth2 Notion integration.
 
 ## 📋 Table of Contents
 
@@ -29,20 +29,16 @@ Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepS
 - ✅ **DeepSeek** — Multiple auth token sources, cursor pagination
 
 ### Export Formats
-- 📝 **Markdown** (.md) — With YAML frontmatter metadata
-- 📊 **JSON** — Structured data export
-- 🌐 **HTML** — Styled exports with platform logos
-- 📄 **Plain Text** (.txt) — Simple text format
-- 📕 **PDF** — Print-ready format (via browser print dialog)
+- 📝 **Markdown** (.md) — With YAML frontmatter metadata, sources, attachments, knowledge cards
+- 📊 **JSON** — Structured data export with rich metadata (model, citations, media)
 
 ### Enterprise Features
 - 🔄 **Auto-Sync** — Automatic Notion synchronization on a configurable schedule
-- 📊 **Dashboard** — Bulk export management with history and failure tracking
-- 🔍 **Bulk Export** — Export all conversations at once with pagination
-- 📈 **Analytics** — Export history and audit logging
-- 🔐 **OAuth2** — Secure Notion integration with automatic token refresh
-- 🎨 **Platform Logos** — SVG branding in HTML/Markdown exports
-- 🔧 **Dev Tools** — Built-in log viewer with filtering and export
+- 📊 **Dashboard** — Bulk export management with thread browser and pagination
+- 🔍 **Bulk Export** — Export all conversations at once with per-platform offset/cursor pagination
+- 🔐 **OAuth2** — Secure Notion integration with automatic re-authorization
+- 🎨 **Platform Logos** — SVG branding in Markdown exports
+- 📦 **Rich Notion Blocks** — Full markdown-to-Notion-block conversion via `NotionBlockBuilder`
 
 ## 🌐 Supported Platforms
 
@@ -120,14 +116,14 @@ See [`cloudflare-worker/DEPLOY.md`](cloudflare-worker/DEPLOY.md) for step-by-ste
 ### Quick Export (Current Conversation)
 1. Navigate to any supported AI platform and open a conversation
 2. Click the OmniExporter AI icon in the toolbar (or press `Alt+Shift+E`)
-3. Choose an export format or click **Save to Notion**
+3. Choose **Markdown** or **JSON** from the dropdown, or click **Save to Notion**
 
 ### Bulk Export via Dashboard
 1. Open the dashboard (`Alt+Shift+D` or click **Open Dashboard** in the popup)
 2. Click **Load All Threads** to paginate through all conversations
 3. Select the conversations you want to export
-4. Choose a destination (Notion or local file export)
-5. Click **Export Selected**
+4. Choose a destination: **Save to Notion** or **Export MD** (Markdown download)
+5. Click the corresponding button in the bulk action bar
 
 ### Auto-Sync
 1. Open **Extension Options**
@@ -145,14 +141,17 @@ omniexporter-ai-fixed-v2/
 ├── config.example.js              # Configuration template (copy to config.js)
 ├── src/
 │   ├── background.js              # Service worker (alarms, context menus, messaging)
-│   ├── content.js                 # Content script (Perplexity, ChatGPT, Claude adapters + re-injection guard)
+│   ├── content.js                 # Content script orchestration layer + re-injection guard
 │   ├── platform-config.js         # Endpoint configs, DataExtractor, VersionDetector
 │   ├── adapters/
-│   │   ├── gemini-adapter.js      # Gemini conversation adapter
+│   │   ├── chatgpt-adapter.js     # ChatGPT conversation adapter
+│   │   ├── claude-adapter.js      # Claude conversation adapter (Full Fidelity blocks)
+│   │   ├── deepseek-adapter.js    # DeepSeek conversation adapter (fragments, R1 thinking)
+│   │   ├── gemini-adapter.js      # Gemini conversation adapter (batchexecute RPC)
 │   │   ├── gemini-inject.js       # Injected script for Gemini RPC interception
 │   │   ├── gemini-page-interceptor.js  # Page-level interceptor (web_accessible_resource)
-│   │   ├── grok-adapter.js        # Grok conversation adapter
-│   │   └── deepseek-adapter.js    # DeepSeek conversation adapter
+│   │   ├── grok-adapter.js        # Grok conversation adapter (cursor pagination)
+│   │   └── perplexity-adapter.js  # Perplexity conversation adapter (has_next_page)
 │   ├── utils/
 │   │   ├── logger.js              # Enterprise logging with storage
 │   │   ├── network-interceptor.js # XHR/fetch interception utility
@@ -237,7 +236,7 @@ See [SECURITY.md](SECURITY.md) for the full security policy and vulnerability re
 1. Clone and configure as described in [Installation](#-installation)
 2. Make your source changes under `src/`
 3. Reload the extension at `chrome://extensions/`
-4. Use the **Dev Tools** tab in Options to view real-time logs
+4. Check the **service worker console** (click "Service worker" on the extensions page) for background logs
 
 ### Adding a New Platform Adapter
 1. Create `src/adapters/newplatform-adapter.js` implementing:

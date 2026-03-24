@@ -40,14 +40,27 @@ Status: Working
 Method: credentials: 'include'
 ```
 
-### 3. Message Structure (⚠️ CRITICAL)
+### 3. Message Structure (⚠️ CRITICAL — Full Fidelity)
 ```javascript
-// ❌ WRONG - msg.text is ALWAYS empty
+// ❌ WRONG — msg.text is ALWAYS empty, msg.content[0].text only gets plain text blocks
 const text = msg.text;
+const text = msg.content[0]?.text || '';  // misses tool_use, tool_result, local_resource
 
-// ✅ CORRECT - Use content array
-const text = msg.content[0]?.text || '';
+// ✅ CORRECT — extractAllContentBlocks handles all 5 block types
+const { text, fileRefs } = extractAllContentBlocks(msg.content);
 ```
+
+**5 content block types in msg.content[]:**
+
+| Type | Description |
+|------|-------------|
+| `text` | Plain answer text |
+| `tool_use` | Tool call → rendered as fenced `` ```tool_call:name `` block |
+| `tool_result` | Tool output (may contain sub-blocks) → `> **Tool result:**` |
+| `token_budget` | Internal throttle marker → silently skipped |
+| `local_resource` | Generated/uploaded file → UUID queued for `getFilePreview()` |
+
+Human message `attachments[]` are also captured and stored in `entry.attachments[]`.
 
 ### 4. Organization ID (✅ Verified)
 ```javascript
@@ -66,10 +79,10 @@ const orgId = await ClaudeAdapter.getOrgId();
 
 ## Common Issues & Fixes
 
-### Issue 1: Empty Messages
-**Symptom:** All messages show as empty  
-**Cause:** Using `msg.text` instead of `msg.content[0].text`  
-**Fix:** Update transformClaudeData() to use content array
+### Issue 1: Empty or Incomplete Messages
+**Symptom:** Tool calls, file references, or thinking content missing from export  
+**Cause:** Using `msg.content[0]?.text` instead of `extractAllContentBlocks(msg.content)`  
+**Fix:** The correct function is `extractAllContentBlocks()` in `claude-adapter.js` — it handles all 5 block types
 
 ### Issue 2: 401 Unauthorized
 **Symptom:** API returns 401  
@@ -87,14 +100,16 @@ const orgId = await ClaudeAdapter.getOrgId();
 
 ### Task 1: Validate Message Parsing
 ```javascript
-// Check transformClaudeData() in claude-adapter.js
-// Line ~180-210
+// Check extractAllContentBlocks() and transformClaudeData() in claude-adapter.js
+// extractAllContentBlocks(contentArray) handles 5 block types:
+//   text, tool_use, tool_result, token_budget, local_resource
+// transformClaudeData(data) calls it per message and builds entries with attachments.
 
-// Should use:
-const msgText = (msg.content && msg.content[0]?.text) || msg.text || '';
+// NOT this (only gets plain text, misses tool calls and file refs):
+const msgText = msg.content[0]?.text || '';
 
-// NOT:
-const msgText = msg.text;  // ❌ Always empty
+// YES this:
+const { text, fileRefs } = extractAllContentBlocks(msg.content);
 ```
 
 ### Task 2: Test Pagination
@@ -192,9 +207,16 @@ src/adapters/claude-adapter.js      # Main adapter
 ClaudeAdapter.extractUuid(url)
 ClaudeAdapter.getOrgId()
 ClaudeAdapter.getThreads(page, limit)
+ClaudeAdapter.getAllThreads(progressCallback)
 ClaudeAdapter.getThreadDetail(uuid)
+ClaudeAdapter.getArtifactVersions(convoUuid)
+ClaudeAdapter.getArtifactStorageInfo(artifactId, convoUuid)
+ClaudeAdapter.getFilePreview(fileId)
+ClaudeAdapter.getProjects()
 ClaudeAdapter._fetchWithRetry(url, options)
-transformClaudeData(data)
+extractAllContentBlocks(contentArray)   // handles 5 block types per message
+transformClaudeData(data)               // builds entries array from chat_messages
+fetchFilePreviewsForEntries(...)        // appends file content to entries post-build
 ```
 
 ### Important Constants

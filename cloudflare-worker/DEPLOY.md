@@ -94,14 +94,16 @@ Go to [Notion Integrations](https://www.notion.so/my-integrations) and update:
 
 ---
 
-## Step 7: Update Extension
+## Step 7: Update Extension Configuration
 
-After deploying, update the extension with your Worker URL:
+After deploying, tell the extension your Worker URL via `config.js`:
 
-Open `auth/notion-oauth.js` and update:
 ```javascript
-this.config.tokenEndpoint = 'https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev/api/notion/token';
+// In config.js (copy from config.example.js if you haven't already)
+const OAUTH_SERVER_URL = 'https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev';
 ```
+
+The extension reads `OAUTH_SERVER_URL` at startup and builds the token endpoint URL automatically. Do **not** edit `auth/notion-oauth.js` directly.
 
 ---
 

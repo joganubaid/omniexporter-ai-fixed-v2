@@ -319,52 +319,8 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     },
 
     getSpaces: async () => [],
-
-    // ============================================
-    // HAR-VERIFIED 2026-03-16: Fetch artifact versions for a conversation
-    // GET /api/organizations/{org}/artifacts/{convoUuid}/versions?source=w
-    // Response: { artifact_versions: [...] }
-    // ============================================
-    getArtifactVersions: async function (convoUuid) {
-        try {
-            const orgId = await this.getOrgId();
-            const baseUrl = platformConfig.getBaseUrl('Claude');
-            const endpoint = platformConfig.buildEndpoint('Claude', 'artifactVersions', { org: orgId, uuid: convoUuid });
-            const url = `${baseUrl}${endpoint}`;
-            const response = await ClaudeAdapter._fetchWithRetry(url, {}, 2);
-            const data = await response.json().catch(() => null);
-            return data?.artifact_versions || [];
-        } catch (error) {
-            console.warn('[Claude] getArtifactVersions failed:', error.message);
-            return [];
-        }
-    },
-
-    // ============================================
-    // HAR-VERIFIED 2026-03-16: Fetch artifact storage info
-    // GET /api/organizations/{org}/artifacts/artifact_version/{id}/manage/storage/info?chat_conversation_uuid={uuid}
-    // Response: { total_size_bytes: N, ... }
-    // ============================================
-    getArtifactStorageInfo: async function (artifactId, convoUuid) {
-        try {
-            const orgId = await this.getOrgId();
-            const baseUrl = platformConfig.getBaseUrl('Claude');
-            const endpoint = platformConfig.buildEndpoint('Claude', 'artifactStorageInfo', { org: orgId, artifactId, uuid: convoUuid });
-            const url = `${baseUrl}${endpoint}`;
-            const response = await ClaudeAdapter._fetchWithRetry(url, {}, 2);
-            return await response.json().catch(() => null);
-        } catch (error) {
-            console.warn('[Claude] getArtifactStorageInfo failed:', error.message);
-            return null;
-        }
-    },
-
-    // ============================================
-    // HAR-VERIFIED 2026-03-16: Fetch file preview content
-    // GET /api/{org}/files/{fileId}/preview
-    // Response: binary content (image/webp, text/html, etc.)
-    // ============================================
-    getFilePreview: async function (fileId) {
+    
+    getFilePreview: async function(fileId) {
         try {
             const orgId = await this.getOrgId();
             const baseUrl = platformConfig.getBaseUrl('Claude');
@@ -380,60 +336,6 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
         } catch (error) {
             console.warn('[Claude] getFilePreview failed:', error.message);
             return null;
-        }
-    },
-
-    // ============================================
-    // HAR-VERIFIED 2026-03-16: Fetch project details
-    // GET /api/organizations/{org}/projects/{projectUuid}
-    // Response: { uuid, name, description, ... }
-    // ============================================
-    getProjects: async function () {
-        try {
-            const orgId = await this.getOrgId();
-            const baseUrl = platformConfig.getBaseUrl('Claude');
-            // List conversations and extract unique project references
-            const endpoint = platformConfig.buildEndpoint('Claude', 'conversations', { org: orgId });
-            const url = `${baseUrl}${endpoint}?limit=100&offset=0&sort=updated_at&order=desc`;
-
-            const response = await ClaudeAdapter._fetchWithRetry(url);
-            const data = await response.json().catch(() => null);
-
-            if (!data || !Array.isArray(data)) return [];
-
-            // Extract unique project UUIDs from conversations
-            const projectUuids = new Set();
-            data.forEach(conv => {
-                if (conv.project_uuid) projectUuids.add(conv.project_uuid);
-            });
-
-            if (projectUuids.size === 0) return [];
-
-            // Fetch each project's details
-            const projects = [];
-            for (const projectUuid of projectUuids) {
-                try {
-                    const projectEndpoint = platformConfig.buildEndpoint('Claude', 'projects', { org: orgId, uuid: projectUuid });
-                    const projectUrl = `${baseUrl}${projectEndpoint}`;
-                    const projectResp = await ClaudeAdapter._fetchWithRetry(projectUrl, {}, 2);
-                    const projectData = await projectResp.json().catch(() => null);
-                    if (projectData) {
-                        projects.push({
-                            uuid: projectData.uuid || projectUuid,
-                            name: projectData.name || projectData.title || 'Untitled Project',
-                            description: projectData.description || ''
-                        });
-                    }
-                } catch (e) {
-                    console.warn(`[Claude] Could not fetch project ${projectUuid}:`, e.message);
-                }
-            }
-
-            console.log(`[Claude] ✓ Found ${projects.length} projects`);
-            return projects;
-        } catch (error) {
-            console.warn('[Claude] getProjects failed:', error.message);
-            return [];
         }
     }
 };

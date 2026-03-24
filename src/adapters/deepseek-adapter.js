@@ -463,7 +463,9 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         const dsExtractContent = (msg) => {
             try {
                 // PRIMARY: fragments array (HAR-verified real structure)
-                // fragments = [{type: "text", content: "..."}, {type: "thinking", content: "..."}, ...]
+                // HAR co5m: fragments = [{type:"REQUEST"/"RESPONSE", content:"..."}]
+                // type "REQUEST" = user message, "RESPONSE" = assistant message
+                // type "thinking"/"reasoning" = DeepSeek R1 chain-of-thought
                 if (Array.isArray(msg.fragments) && msg.fragments.length > 0) {
                     const parts = [];
                     for (const f of msg.fragments) {
@@ -475,6 +477,7 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                         if (f?.type === 'thinking' || f?.type === 'reasoning') {
                             parts.push(`\n> 💭 **Thinking:**\n> ${fragText.replace(/\n/g, '\n> ')}\n`);
                         } else {
+                            // REQUEST, RESPONSE, text, or any other type — treat as plain content
                             parts.push(fragText);
                         }
                     }
@@ -547,11 +550,16 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
             return entries;
         };
 
-        // HAR-verified primary endpoint: /api/v0/chat/history_messages?chat_session_id={uuid}&cache_version=2
-        // Fallback endpoints removed — they are 404 and waste time
+        // HAR-VERIFIED (2026-03-23, co5m.har):
+        // - history_messages?cache_version=2 ALWAYS returns chat_messages:[] with cache_control:"MERGE"
+        //   This is a cache-miss signal — DeepSeek tells the browser to merge with a streaming response.
+        //   It NEVER contains real message data. Must be tried LAST as a last resort only.
+        // - history_messages (no cache_version) returns real messages with cache_control:"REPLACE"
+        //   Fragment type is "REQUEST"/"RESPONSE" (not "text"/"thinking").
+        // Correct order: plain endpoint first, cache_version=2 last (will always be empty).
         const endpoints = [
-            `/chat/history_messages?chat_session_id=${uuid}&cache_version=2`,
             `/chat/history_messages?chat_session_id=${uuid}`,
+            `/chat/history_messages?chat_session_id=${uuid}&cache_version=2`,
         ];
 
         for (const endpoint of endpoints) {
@@ -568,15 +576,15 @@ const DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                 const messages = biz.chat_messages ?? biz.messages ?? biz.chat ?? null;
                 const sessionInfo = biz.chat_session ?? biz.session ?? null;
 
-                // Empty conversation (valid state — new chat)
+                // Empty conversation or cache-miss (cache_control:"MERGE" = no real data yet)
                 if (!messages || messages.length === 0) {
-                    if (sessionInfo) {
-                        const t = sessionInfo.title ?? `DeepSeek Thread ${uuid.slice(0, 8)}`;
-                        console.log(`[DeepSeek] Empty conversation: ${t}`);
-                        return { uuid, title: t, platform: 'DeepSeek', entries: [] };
+                    const cacheControl = biz.cache_control ?? '';
+                    if (cacheControl === 'MERGE') {
+                        console.warn(`[DeepSeek] cache_control=MERGE on ${endpoint} — cache miss, skipping`);
+                    } else {
+                        console.warn(`[DeepSeek] No messages in ${endpoint}, trying next...`);
                     }
-                    console.warn(`[DeepSeek] No messages and no session in ${endpoint}`);
-                    continue;
+                    continue; // always try next endpoint regardless of sessionInfo
                 }
 
                 console.log(`[DeepSeek] Found ${messages.length} messages — parsing...`);

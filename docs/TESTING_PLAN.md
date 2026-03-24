@@ -66,13 +66,12 @@
  - Loading and success toasts appear
 
 ### Export Manager (src/utils/export-manager.js)
-- Markdown, JSON, HTML, TXT, PDF, CSV output matches expected structure
+- Markdown and JSON output matches expected structure
 - Metadata present (title, date, url, source)
 - `_extractEntryMeta` correctly extracts sources, media, knowledge cards, attachments
-- Thinking blocks render in all formats (collapsible in HTML, blockquote in MD, text in TXT)
-- Tool calls render as collapsible blocks in HTML and toggle blocks in Notion
-- CSV includes Model column
-- Rich content (sources, attachments, knowledge cards, related questions) present in all export formats
+- Thinking blocks render in Markdown as blockquotes, in JSON as plain text
+- Tool calls render correctly in both formats
+- Rich content (sources, attachments, knowledge cards, related questions) present in both export formats
 
 ### Notion OAuth + Sync
 - OAuth configuration and token storage
@@ -133,7 +132,7 @@ Because platform APIs require live sessions, add a **manual health checklist** t
 
 **Per Platform (ChatGPT, Claude, Gemini, Grok, DeepSeek, Perplexity)**
 1. Open a logged‑in tab for the platform
-2. Run platform test in Options → Dev Tools
+2. Open the extension popup — verify platform is detected
 3. Confirm:
    - Thread list returns at least 1 item
    - Detail extraction returns non‑empty content

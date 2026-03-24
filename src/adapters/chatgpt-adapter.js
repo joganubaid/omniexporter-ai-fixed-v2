@@ -132,17 +132,6 @@ const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
         return headers;
     },
 
-    /**
-     * Restore Auth from __NEXT_DATA__ if needed
-     */
-    _refreshAuth: () => {
-        const nextData = extractFromNextData();
-        if (nextData?.props?.pageProps?.user?.id) {
-            console.log('[ChatGPT] Verified Next.js Auth User:', nextData.props.pageProps.user.id);
-        }
-        return true;
-    },
-
     // ============================================
     // ENTERPRISE: Retry with exponential backoff
     // ============================================
@@ -416,72 +405,6 @@ const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
     },
 
     getSpaces: async () => [],
-
-    // ============================================
-    // HAR-VERIFIED 2026-03-16: List available models
-    // GET /backend-api/models?iim=false&is_gizmo=false
-    // Response: { models: [{slug, title, ...}] }
-    // ============================================
-    getModels: async () => {
-        try {
-            const baseUrl = platformConfig.getBaseUrl('ChatGPT');
-            const endpoint = platformConfig.buildEndpoint('ChatGPT', 'models');
-            const url = `${baseUrl}${endpoint}`;
-
-            const response = await ChatGPTAdapter._fetchWithRetry(url, {}, 2);
-            const data = await response.json();
-
-            const models = (data.models || data.categories || []).map(m => ({
-                slug: m.slug || m.id || m.name,
-                title: m.title || m.name || m.slug || 'Unknown',
-                description: m.description || '',
-                maxTokens: m.max_tokens || m.context_length || null
-            }));
-
-            console.log(`[ChatGPT] ✓ Found ${models.length} models`);
-            return models;
-        } catch (error) {
-            console.warn('[ChatGPT] getModels failed:', error.message);
-            return [];
-        }
-    },
-
-    // ============================================
-    // HAR-VERIFIED 2026-03-16: Create a shareable link for a conversation
-    // POST /backend-api/share/create
-    // Body: { conversation_id, is_anonymous: true }
-    // Response: { share_id, share_url, ... }
-    // ============================================
-    createShareLink: async (uuid) => {
-        try {
-            const baseUrl = platformConfig.getBaseUrl('ChatGPT');
-            const endpoint = platformConfig.buildEndpoint('ChatGPT', 'shareCreate');
-            const url = `${baseUrl}${endpoint}`;
-
-            const response = await ChatGPTAdapter._fetchWithRetry(url, {
-                method: 'POST',
-                body: JSON.stringify({
-                    conversation_id: uuid,
-                    is_anonymous: true
-                })
-            }, 2);
-
-            const data = await response.json();
-            const shareUrl = data.share_url || (data.share_id ? `https://chatgpt.com/share/${data.share_id}` : null);
-
-            if (shareUrl) {
-                console.log(`[ChatGPT] ✓ Share link created: ${shareUrl}`);
-            }
-            return {
-                shareId: data.share_id || null,
-                shareUrl: shareUrl,
-                alreadyExists: data.already_exists || false
-            };
-        } catch (error) {
-            console.warn('[ChatGPT] createShareLink failed:', error.message);
-            return { shareId: null, shareUrl: null, error: error.message };
-        }
-    }
 };
 
 function transformChatGPTData(data) {

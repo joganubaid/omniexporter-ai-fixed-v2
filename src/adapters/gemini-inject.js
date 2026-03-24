@@ -48,12 +48,6 @@
                     case 'GET_GLOBAL_DATA':
                         result = this.getGlobalData();
                         break;
-                    case 'GET_CONVERSATIONS':
-                        result = this.getConversations();
-                        break;
-                    case 'GET_CONVERSATION_DETAIL':
-                        result = this.getConversationDetail(data?.conversationId);
-                        break;
                     case 'GET_AUTH_TOKEN':
                         result = this.getAuthToken();
                         break;
@@ -168,45 +162,11 @@
         }
 
         getConversations() {
-            const conversations = [];
-
-            // Strategy 1: Parse from window.__INITIAL_DATA__
-            if (window.__INITIAL_DATA__) {
-                try {
-                    const data = this.traverseForConversations(window.__INITIAL_DATA__);
-                    if (data.length > 0) return data;
-                } catch (e) {
-                    console.warn('[OmniExporter] Failed to parse __INITIAL_DATA__:', e);
-                }
-            }
-
-
-            // Strategy 2: DOM Parsing REMOVED (Strict API Only)
-            return conversations;
-        }
-
-        extractIdFromHref(href) {
-            if (!href) return null;
-            const match = href.match(/\/(?:app|gem)\/([a-zA-Z0-9_-]+)/);
-            return match ? match[1] : null;
+            // Strategy: DOM Parsing REMOVED (Strict API Only)
+            return [];
         }
 
         getConversationDetail(conversationId) {
-            const messages = [];
-
-            // Strategy 1: Parse from page data structures
-            if (window.__INITIAL_DATA__) {
-                try {
-                    const data = this.traverseForMessages(window.__INITIAL_DATA__, conversationId);
-                    if (data.length > 0) return { id: conversationId, messages: data };
-                } catch (e) {
-                    console.warn('[OmniExporter] Failed to parse messages:', e);
-                }
-            }
-
-
-            // Strategy 2: DOM Extraction REMOVED (Strict API Only)
-
             // Get title (Allowed as browser metadata, not content scraping)
             const title = document.title?.replace(' - Gemini', '').replace('Gemini', '').trim() ||
                 'Gemini Conversation';
@@ -214,62 +174,9 @@
             return {
                 id: conversationId,
                 title,
-                messages,
+                messages: [],
                 platform: 'Gemini'
             };
-        }
-
-        traverseForConversations(obj, results = []) {
-            if (!obj || typeof obj !== 'object') return results;
-
-            // Look for conversation-like structures
-            if (Array.isArray(obj)) {
-                for (const item of obj) {
-                    this.traverseForConversations(item, results);
-                }
-            } else {
-                // Only match objects that have a Gemini-specific conversationId field.
-                // Previously this also matched any object with a generic `id` or `uuid` field,
-                // producing hundreds of false positives from analytics/config/i18n data in
-                // window.__INITIAL_DATA__ (virtually every sub-object has an id property).
-                if (obj.conversationId) {
-                    results.push({
-                        uuid: obj.conversationId,
-                        title: obj.title || obj.name || 'Untitled',
-                        platform: 'Gemini'
-                    });
-                }
-
-                for (const key of Object.keys(obj)) {
-                    this.traverseForConversations(obj[key], results);
-                }
-            }
-
-            return results;
-        }
-
-        traverseForMessages(obj, targetId, results = []) {
-            if (!obj || typeof obj !== 'object') return results;
-
-            if (Array.isArray(obj)) {
-                for (const item of obj) {
-                    this.traverseForMessages(item, targetId, results);
-                }
-            } else {
-                // Check if this is a message
-                if (obj.content || obj.text || obj.message) {
-                    results.push({
-                        query: obj.query || obj.prompt || '',
-                        answer: obj.content || obj.text || obj.message || '',
-                    });
-                }
-
-                for (const key of Object.keys(obj)) {
-                    this.traverseForMessages(obj[key], targetId, results);
-                }
-            }
-
-            return results;
         }
     }
 

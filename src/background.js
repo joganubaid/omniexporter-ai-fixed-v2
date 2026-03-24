@@ -1,4 +1,4 @@
-// OmniExporter AI - Enterprise Edition v5.2.0
+// OmniExporter AI - Enterprise Edition v5.4.0
 // background.js - Enterprise Background Service Worker (Phase 10-12)
 "use strict";
 

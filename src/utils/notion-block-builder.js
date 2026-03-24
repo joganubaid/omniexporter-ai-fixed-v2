@@ -378,10 +378,9 @@ function extractToolCallBlocks(markdown) {
     if (!markdown) return { cleaned: '', toolBlocks: [] };
 
     const toolBlocks = [];
-    // BUG-3 FIX: Changed from lazy [\s\S]*? to greedy [\s\S]* to match the last ```
-    // This prevents early termination when the JSON contains ``` inside
+    // BUG-11 FIX: Changed from greedy [\s\S]* to lazy [\s\S]*? to prevent merging multiple tool calls
     const cleaned = markdown.replace(
-        /```tool_call:([^\n]*)\n([\s\S]*)```/g,
+        /```tool_call:([^\n]*)\n([\s\S]*?)```/g,
         function (_, toolName, body) {
             const name = toolName.trim() || 'unknown';
             toolBlocks.push(

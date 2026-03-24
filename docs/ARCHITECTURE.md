@@ -12,7 +12,7 @@ graph TD
     Adapters["🔌 Adapters (per platform)\nPerplexity / ChatGPT / Claude\nGemini / Grok / DeepSeek"]
     GeminiInject["💉 gemini-inject.js\n(page context injection\nfor WIZ_global_data)"]
     PlatformConfig["⚙️ platform-config.js\nShared URL/config per platform"]
-    ExportMgr["📦 export-manager.js\nMarkdown / HTML / JSON / PDF"]
+    ExportMgr["📦 export-manager.js\nMarkdown / JSON"]
     Logger["📋 logger.js\nDebug logging with storage"]
     NetInterceptor["🌐 network-interceptor.js\nAI API traffic sniffer"]
     NotionOAuth["🔐 auth/notion-oauth.js\nOAuth2 Token Manager"]
@@ -64,7 +64,7 @@ User clicks "Save to Notion"
 | `auth/notion-oauth.js` | OAuth2 token management (authorize, store, re-auth) |
 | `cloudflare-worker/worker.js` | Token exchange worker (keeps client secret safe) |
 | `src/adapters/*.js` | One file per AI platform |
-| `src/utils/export-manager.js` | Export to Markdown, HTML, JSON, PDF, TXT, CSV — with rich content extraction |
+| `src/utils/export-manager.js` | Export to Markdown and JSON — with rich content extraction (`_extractEntryMeta`) |
 | `src/utils/logger.js` | Buffered, filterable debug logger |
 | `src/utils/network-interceptor.js` | Passive XHR/Fetch sniffer for chat list auto-detection |
 | `src/platform-config.js` | Platform URLs, UUID patterns, API base paths |
@@ -92,7 +92,7 @@ User clicks "Save to Notion"
 
 ### ExportManager — `_extractEntryMeta()` (`src/utils/export-manager.js`)
 
-A shared helper method used by all export formats to extract platform-agnostic rich metadata from any adapter's entry format. It normalizes sources, media items, knowledge cards, attachments, and related questions from heterogeneous block structures (e.g., Perplexity `web_results`, `media_items`, `knowledge_cards` blocks) as well as entry-level `sources`, `citations`, and `attachments` arrays. This ensures every export format has consistent access to the same enriched data regardless of the originating platform.
+A shared helper method used by all export formats (Markdown and JSON) to extract platform-agnostic rich metadata from any adapter's entry format. It normalizes sources, media items, knowledge cards, attachments, and related questions from heterogeneous block structures (e.g., Perplexity `web_results`, `media_items`, `knowledge_cards` blocks) as well as entry-level `sources`, `citations`, and `attachments` arrays. This ensures both export formats have consistent access to the same enriched data regardless of the originating platform.
 
 ### NotionBlockBuilder (`src/utils/notion-block-builder.js`)
 

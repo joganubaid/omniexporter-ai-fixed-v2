@@ -103,9 +103,9 @@ DeepSeek uses **Bearer Token** authentication combined with session cookies.
   
   // Client Metadata
   "x-client-platform": "web",
-  "x-client-version": "1.7.0",
+  "x-client-version": "1.7.1",
   "x-client-locale": "en_US",
-  "x-client-timezone-offset": "19800",  // Seconds from UTC
+  "x-client-timezone-offset": String(-(new Date().getTimezoneOffset())),  // dynamic, seconds from UTC
   "x-app-version": "20241129.1",
   
   // Standard Headers
@@ -141,22 +141,30 @@ The Bearer token is obtained from the `/api/v0/users/current` endpoint response:
 }
 ```
 
-**Implementation:**
+**Implementation (HAR-verified):**
 
 ```javascript
-// Extract token from page or API
-async function getAuthToken() {
-  // Method 1: From cookies/localStorage
-  const token = localStorage.getItem('deepseek_token');
-  
-  // Method 2: From /api/v0/users/current
-  const response = await fetch('https://chat.deepseek.com/api/v0/users/current', {
-    credentials: 'include'
-  });
-  const data = await response.json();
-  return data.data.biz_data.token;
+// Method 1: Check known localStorage keys (plain string format, NOT JSON)
+// HAR-verified: token is stored under 'userToken' as a plain string
+const tokenKeys = ['userToken', 'deepseek_token', 'auth_token', 'access_token', 'ds_token'];
+for (const key of tokenKeys) {
+  const val = localStorage.getItem(key);
+  if (val && val.length > 10) {
+    // Try JSON parse first (some versions wrap it)
+    try { const p = JSON.parse(val); token = p.value || p.token; } catch { token = val; }
+    if (token) break;
+  }
 }
+
+// Method 2 (async fallback): fetch from /api/v0/users/current
+// Used when localStorage has no token. Token is cached in-memory only —
+// never written back to localStorage (BUG-3 fix: avoids exposing token to other page scripts).
+const resp = await fetch('https://chat.deepseek.com/api/v0/users/current', { credentials: 'include', headers: {...} });
+const data = await resp.json();
+token = data?.data?.biz_data?.token;
 ```
+
+> **Security note (BUG-3 fix):** The broad localStorage scan that matched any base64-ish string was removed. It was too permissive and could return unrelated tokens (Stripe keys, analytics tokens, etc.). Only the specific known keys above are checked.
 
 ---
 
@@ -328,22 +336,43 @@ Referer: https://chat.deepseek.com/a/chat/s/d326ebda-bbe9-4930-a299-52cd9efbd38f
 **Response Size:** 373 bytes (empty conversation)  
 **Average Response Time:** 230ms
 
-**Message Structure:**
+**Message Structure (HAR-verified 2026-02-17 + 2026-03-16):**
 
-When messages exist, `chat_messages` array contains:
+When messages exist, `chat_messages` contains objects with this structure:
 
 ```json
 {
   "chat_messages": [
     {
       "id": "msg_id",
-      "role": "user" | "assistant",
-      "content": "message text",
+      "role": "user",
+      "content": "",
+      "fragments": [
+        { "type": "text", "content": "Hello, how are you?" }
+      ],
       "created_at": 1771315975.015
+    },
+    {
+      "id": "msg_id_2",
+      "role": "assistant",
+      "content": "",
+      "fragments": [
+        { "type": "text", "content": "I'm doing well! How can I help?" },
+        { "type": "thinking", "content": "The user is asking a greeting..." }
+      ],
+      "created_at": 1771315977.0
     }
   ]
 }
 ```
+
+> **⚠️ CRITICAL:** The `content` field is **always an empty string `""`**. Real message text is in the `fragments[]` array. Each fragment has a `type` (`"text"`, `"thinking"`, `"reasoning"`) and a `content` string.
+
+**DeepSeek R1 thinking blocks** — two formats, both handled:
+- `fragments[].type === "thinking"` — explicit thinking fragment in the array
+- `<think>...</think>` tags embedded in a `text` fragment's content
+
+Both are rendered as `> 💭 **Thinking:** ...` blockquotes in the export.
 
 ---
 

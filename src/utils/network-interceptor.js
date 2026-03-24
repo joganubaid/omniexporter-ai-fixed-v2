@@ -221,11 +221,6 @@ const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor
     // Get captured chat list
     getChatList() {
         return window.__omniExporterInternal.chatList || [];
-    },
-
-    // Get discovered endpoints
-    getEndpoints() {
-        return window.__omniEndpoints || {};
     }
 };
 
