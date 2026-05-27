@@ -43,7 +43,7 @@ src/
 ├── utils/
 │   ├── logger.js
 │   ├── network-interceptor.js   — Passive XHR/fetch capture (opportunistic cache)
-│   ├── export-manager.js        — Markdown/JSON/HTML/CSV/TXT/PDF formatters
+│   ├── export-manager.js        — Markdown + JSON formatters (user-visible). HTML/CSV/TXT/PDF helpers exist in source but aren't wired into the UI as of v5.5.0.
 │   ├── notion-block-builder.js  — Markdown → Notion rich-block converter
 │   ├── shared-utils.js          — LoadingManager, RateLimiter, ExportedUuidStore, PlatformUrlBuilder
 │   └── toast.js                 — In-page notification toasts

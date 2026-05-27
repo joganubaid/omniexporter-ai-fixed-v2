@@ -15,11 +15,9 @@
 3. **GROK_ADAPTER_VALIDATION.md**  
    Implementation vs HAR validation report (non‑telemetry only).
 
-4. **GROK_ANALYSIS_SUMMARY.md**  
-   Executive summary of HAR analysis.
-
-5. **grok.har**  
-   Network capture source (47,536 lines).
+(Earlier docs referenced `GROK_ANALYSIS_SUMMARY.md` and a committed `grok.har`
+file — neither exists in the repo. HAR files are gitignored as `*.har`; capture
+your own from grok.com via DevTools Network if you need to verify endpoints.)
 
 ---
 
@@ -29,11 +27,8 @@
 1. Read GROK_API_REFERENCE.md  
 2. Validate the adapter with GROK_VALIDATION_GUIDE.md  
 3. Review validation results in GROK_ADAPTER_VALIDATION.md  
-
-### For Agents
-1. Start with GROK_ANALYSIS_SUMMARY.md  
-2. Compare with GROK_API_REFERENCE.md  
-3. Validate implementation in grok-adapter.js  
+4. (Optional) Capture a fresh HAR from grok.com to verify endpoints against
+   the validation guide before declaring an API change is real.
 
 ---
 

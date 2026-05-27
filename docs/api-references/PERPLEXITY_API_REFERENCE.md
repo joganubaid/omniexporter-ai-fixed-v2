@@ -347,7 +347,7 @@ source=default
 limit=10 (initial) or 100 (pagination)
 offset=0 (initial only)
 from_first=true (initial only)
-supported_block_use_cases=... (28 values - see below)
+supported_block_use_cases=... (40 values - see below (HAR-verified 2026-05))
 ```
 
 **Supported Block Use Cases (CRITICAL):**
@@ -722,7 +722,7 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
 - [x] Authentication via cookies (no API keys)
 - [x] Version parameter (2.18)
 - [x] Source parameter (default)
-- [x] All 28 block use cases
+- [x] All 40 block use cases
 - [x] Slug for thread detail (not UUID)
 - [x] Cursor-based pagination for detail
 - [x] Offset-based pagination for list

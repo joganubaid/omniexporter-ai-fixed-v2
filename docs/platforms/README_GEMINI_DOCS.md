@@ -279,7 +279,7 @@ cat AGENT_VALIDATION_GUIDE.md
 - **HAR Capture:** Firefox 147.0.4
 - **Analysis Date:** 2026-02-21
 - **Analyst:** Kiro AI Assistant
-- **Extension Version:** 5.2.0
+- **Extension Version:** 5.5.0
 
 ---
 

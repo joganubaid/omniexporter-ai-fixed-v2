@@ -82,6 +82,6 @@
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/v0/chat_session/fetch_page?lte_cursor.pinned=false[&lte_cursor.updated_at=...&lte_cursor.id=...]` | GET | List chat sessions (cursor pagination via last session's `updated_at` + `id`) |
-| `/api/v0/chat/history_messages?chat_session_id={uuid}&cache_version=2` | GET | Get all messages for a session (`fragments[]` array — `content` field is always empty) |
+| `/api/v0/chat/history_messages?chat_session_id={uuid}` | GET | Get all messages for a session (`fragments[]` array — `content` field is always empty for FILE fragments, populated for REQUEST/RESPONSE). **Do not append `&cache_version=2`** — adapter-verified behaviour: that variant always returns an empty cache-miss response (`chat_messages:[]` with `cache_control:"MERGE"`). |
 | `/api/v0/users/current` | GET | Get user info and Bearer token (`data.biz_data.token`) |
 | `/api/v0/client/settings` | GET | Get client feature flags and settings |

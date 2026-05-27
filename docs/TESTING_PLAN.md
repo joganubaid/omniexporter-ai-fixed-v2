@@ -11,7 +11,7 @@
 - Content script messaging and normalization
 - Platform adapters (thread list + detail extraction)
 - UI popup + dashboard interactions
-- Export formats (Markdown, JSON, HTML, TXT, PDF, CSV)
+- Export formats — **Markdown and JSON** are the user-visible options in popup/dashboard. (`ExportManager` source also has helpers for HTML/TXT/CSV/PDF but they aren't wired into the UI as of v5.5.0; treat them as internal.)
 - Notion OAuth + database + page upload
 - Logging, interception, and storage limits
 

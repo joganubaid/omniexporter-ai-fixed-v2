@@ -10,7 +10,7 @@ graph TD
     Background["🔧 background.js\nService Worker\n(Auto-Sync, Alarms, Context Menus)"]
     Content["📄 content.js\nContent Script\n(Thread List, Detail Extract)"]
     Adapters["🔌 Adapters (per platform)\nPerplexity / ChatGPT / Claude\nGemini / Grok / DeepSeek"]
-    GeminiInject["💉 gemini-inject.js\n(page context injection\nfor WIZ_global_data)"]
+    GeminiInject["💉 gemini-inject.js\n(content-script bridge for Gemini\nsession params: SNlM0e, cfb2h, FdrFJe\nvia inline-script-text scan)"]
     PlatformConfig["⚙️ platform-config.js\nShared URL/config per platform"]
     ExportMgr["📦 export-manager.js\nMarkdown / JSON"]
     Logger["📋 logger.js\nDebug logging with storage"]
@@ -30,7 +30,7 @@ graph TD
     Adapters -->|page context bridge| GeminiInject
     Adapters -->|reads config| PlatformConfig
     Adapters -->|captured traffic| NetInterceptor
-    Popup & Options -->|toMarkdown/toJSON/toPDF| ExportMgr
+    Popup & Options -->|toMarkdown/toJSON| ExportMgr
     Popup & Options -->|buildNotionProperties| NotionOAuth
     NotionOAuth -->|token exchange| CFWorker
     CFWorker -->|authorized request| NotionAPI
@@ -100,14 +100,19 @@ A self-contained module that converts markdown content and structured conversati
 
 **Key responsibilities:**
 
+**Public API** (only these two methods are exposed on `NotionBlockBuilder` —
+the rest are module-internal as of v5.5.0):
+
 | Function | Purpose |
 |----------|---------|
-| `buildNotionBlocks(entries, platform, metadata)` | Main entry point – turns an array of Q&A entries into Notion blocks |
-| `markdownToBlocks(markdown)` | Parses markdown into heading, code, list, quote, divider, and paragraph blocks |
-| `parseInlineMarkdown(text)` | Converts bold, italic, inline code, and links into `rich_text` annotations |
-| `extractToolCallBlocks(markdown)` | Detects `` ```tool_call:name `` fences and wraps them in collapsible toggle blocks |
-| `extractEntryContent(entry)` | Extracts answer text and sources from platform-specific entry shapes |
-| `chunkText(text, limit)` | Splits long text at the Notion 2 000-char `rich_text` limit |
+| `buildNotionBlocks(entries, platform, metadata)` | Main entry point — turns an array of Q&A entries into Notion blocks |
+| `flattenToggleBlocks(blocks)` | Flattens nested toggle blocks for Notion PATCH (Notion only accepts nested children on POST, not PATCH) |
+
+**Internal helpers** (not on the public API; only callable from within
+`notion-block-builder.js`):
+
+`markdownToBlocks`, `parseInlineMarkdown`, `chunkText`, `calloutBlock`,
+`toggleBlock`, `codeBlock`, `extractToolCallBlocks`, `extractEntryContent`
 
 See [docs/NOTION_EXPORT.md](NOTION_EXPORT.md) for the full Notion export guide.
 

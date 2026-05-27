@@ -122,7 +122,7 @@ See [`cloudflare-worker/DEPLOY.md`](cloudflare-worker/DEPLOY.md) for step-by-ste
 
 ### Bulk Export via Dashboard
 1. Open the dashboard (`Alt+Shift+D` or click **Open Dashboard** in the popup)
-2. Click **Load All Threads** to paginate through all conversations
+2. Use the **Prev** / **Next** buttons in the toolbar to walk through your conversation history (each page is 50 threads; pagination buffers ahead for platforms with smaller API caps)
 3. Select the conversations you want to export
 4. Choose a destination: **Save to Notion** or **Export MD** (Markdown download)
 5. Click the corresponding button in the bulk action bar

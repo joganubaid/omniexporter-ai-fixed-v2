@@ -3,7 +3,7 @@
 > How OmniExporter AI converts AI conversations into rich Notion pages using the `NotionBlockBuilder` utility.
 
 **Source:** `src/utils/notion-block-builder.js`  
-**Last Updated:** 2026-03-16
+**Last Updated:** 2026-05-27 (v5.5.0 — public API trimmed to `buildNotionBlocks` + `flattenToggleBlocks`; the helpers in this doc that aren't those two are module-internal)
 
 ---
 

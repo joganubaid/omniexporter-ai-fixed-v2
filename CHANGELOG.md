@@ -172,7 +172,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [5.2.0] - 2026-02-19
 
 ### ⚡ Performance
-- Extracted `TestRunner` test suite into lazy-loaded `src/ui/test-framework.js` (reduces initial options.js parse by ~40KB)
+- (Removed in v5.5.0 review: this CHANGELOG line previously claimed a `TestRunner` test suite was extracted into `src/ui/test-framework.js` — that file was never committed to the repo; the claim was aspirational.)
 - Added `debounce()` utility to dashboard history search/filter input (300ms delay)
 - Cached DOM element references at initialization in `popup.js` (`DOM.saveToNotionBtn`, `DOM.openDashboard`, `DOM.toggleSync`, `DOM.platformStatus`, `DOM.syncStatus`, `DOM.status`)
 
@@ -424,7 +424,8 @@ This release focuses on fixing the three non-working platforms (ChatGPT, Gemini,
 
 ## Version History
 
-- **5.4.0** - Export format enhancements, rich content extraction (Current)
+- **5.5.0** - HAR-verified adapter fixes (all 6 platforms), OAuth persistence across browser restarts, per-platform ExportedUuidStore, Cloudflare worker improvements, permissions trim (Current)
+- **5.4.0** - Export format enhancements, rich content extraction
 - **5.3.0** - NotionBlockBuilder, adapter enrichments, Notion rich export
 - **5.0.0** - Platform fixes, OAuth2, logos
 - **4.2.0** - Multi-platform support, dashboard

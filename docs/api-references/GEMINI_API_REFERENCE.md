@@ -1,7 +1,7 @@
 # Gemini API Reference & Implementation Guide
 
 **OmniExporter AI - Comprehensive Agent Documentation**  
-**Version:** 5.2.0  
+**Version:** 5.5.0  
 **Last Updated:** 2026-02-21  
 **HAR Analysis Date:** 2026-02-21  
 **Purpose:** Complete reference for AI agents to validate and improve the Gemini adapter
