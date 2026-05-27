@@ -53,13 +53,14 @@ function chunkText(text, limit) {
 function parseInlineMarkdown(text) {
     if (!text) return [{ type: 'text', text: { content: '' } }];
 
-    // Tokenise inline markdown: bold, italic, inline code, links
+    // Tokenise inline markdown: bold, italic, inline code, links, inline math.
     // Order matters: bold (**) before italic (*), and code before both.
     // Group 1: `code`  — inline code
     // Group 2: [text](url) — markdown link (groups 3=text, 4=url)
     // Group 5: **bold** — bold text
     // Group 6: *italic* — italic text (requires non-space after/before *)
-    const TOKEN_RE = /(`[^`\n]+`)|(\[([^\]]+)\]\((https?:\/\/[^)]+)\))|(\*\*[^*\n]+\*\*)|(\*(?=[^\s*])[^*\n]+(?<=[^\s*])\*)/g;
+    // Group 7: $math$ — inline LaTeX (between single $; no spaces directly inside)
+    const TOKEN_RE = /(`[^`\n]+`)|(\[([^\]]+)\]\((https?:\/\/[^)]+)\))|(\*\*[^*\n]+\*\*)|(\*(?=[^\s*])[^*\n]+(?<=[^\s*])\*)|(\$(?=[^\s$])[^$\n]+(?<=[^\s$])\$)/g;
 
     const parts = [];
     let lastIndex = 0;
@@ -88,6 +89,10 @@ function parseInlineMarkdown(text) {
             // Italic: *text*
             const content = match[6].slice(1, -1);
             pushAnnotatedChunks(parts, content, { italic: true });
+        } else if (match[7]) {
+            // Inline LaTeX: $expression$ → Notion inline equation rich_text
+            const expr = match[7].slice(1, -1);
+            parts.push({ type: 'equation', equation: { expression: expr } });
         }
 
         lastIndex = match.index + match[0].length;
@@ -196,6 +201,74 @@ function dividerBlock() {
     return { type: 'divider', divider: {} };
 }
 
+// ============================================
+// Table block — for markdown pipe tables
+// ============================================
+/**
+ * Build a Notion `table` block from a 2D array of cell strings.
+ * Notion expects each cell as an array of rich_text segments.
+ * Caller is responsible for splitting markdown rows; this just packages.
+ *
+ * @param {string[][]} rows   — first row is header if hasHeader is true
+ * @param {boolean}    hasHeader
+ */
+function tableBlock(rows, hasHeader = true) {
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const tableWidth = Math.max(...rows.map(r => r.length));
+    // Normalise: pad short rows with empty cells so every row matches width.
+    const padded = rows.map(r => {
+        const out = [...r];
+        while (out.length < tableWidth) out.push('');
+        return out;
+    });
+    return {
+        type: 'table',
+        table: {
+            table_width: tableWidth,
+            has_column_header: !!hasHeader,
+            has_row_header: false,
+            children: padded.map(row => ({
+                type: 'table_row',
+                table_row: {
+                    cells: row.map(cell => parseInlineMarkdown(String(cell).trim().slice(0, NOTION_TEXT_LIMIT)))
+                }
+            }))
+        }
+    };
+}
+
+// ============================================
+// Equation block — for $$...$$ math
+// ============================================
+function equationBlock(expression) {
+    return {
+        type: 'equation',
+        equation: { expression: String(expression).trim().slice(0, NOTION_TEXT_LIMIT) }
+    };
+}
+
+// ============================================
+// Image block — for ![alt](url) markdown images
+// ============================================
+/**
+ * External image block. Notion validates the URL extension server-side;
+ * only common image types (png/jpg/jpeg/gif/webp/svg) are accepted as
+ * `external` images. Caller should pre-validate or accept the API error.
+ */
+function imageBlock(url, caption = '') {
+    const block = {
+        type: 'image',
+        image: {
+            type: 'external',
+            external: { url: String(url).trim() }
+        }
+    };
+    if (caption) {
+        block.image.caption = parseInlineMarkdown(caption.slice(0, NOTION_TEXT_LIMIT));
+    }
+    return block;
+}
+
 function calloutBlock(text, color) {
     const block = {
         type: 'callout',
@@ -262,6 +335,58 @@ function markdownToBlocks(markdown) {
             }
             blocks.push(codeBlock(codeLines.join('\n'), lang));
             i++; // skip closing ```
+            continue;
+        }
+
+        // LaTeX block math: $$ ... $$ (one line or multi-line).
+        // Single-line form `$$ E = mc^2 $$` becomes one equation block;
+        // multi-line opens on `$$` and runs until the next `$$`.
+        if (line.trim() === '$$') {
+            const mathLines = [];
+            i++;
+            while (i < lines.length && lines[i].trim() !== '$$') {
+                mathLines.push(lines[i]);
+                i++;
+            }
+            blocks.push(equationBlock(mathLines.join('\n')));
+            i++; // skip closing $$
+            continue;
+        }
+        const inlineMathBlock = line.match(/^\s*\$\$\s*(.+?)\s*\$\$\s*$/);
+        if (inlineMathBlock) {
+            blocks.push(equationBlock(inlineMathBlock[1]));
+            i++;
+            continue;
+        }
+
+        // Markdown image: ![alt text](https://example.com/image.png)
+        // Standalone image lines become Notion image blocks; inline images
+        // inside paragraphs stay as part of the paragraph (would need a
+        // mixed text+image-block split which Notion doesn't support inline).
+        const standaloneImg = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)\s*$/);
+        if (standaloneImg) {
+            blocks.push(imageBlock(standaloneImg[2], standaloneImg[1]));
+            i++;
+            continue;
+        }
+
+        // Markdown pipe table:
+        //   | a | b |
+        //   |---|---|
+        //   | 1 | 2 |
+        // The second line is the separator; data rows follow until a blank
+        // line or non-table line.
+        if (/^\s*\|/.test(line) && i + 1 < lines.length && /^\s*\|[\s|:-]+\|\s*$/.test(lines[i + 1])) {
+            const headerCells = line.split('|').slice(1, -1).map(c => c.trim());
+            const rows = [headerCells];
+            i += 2; // skip header + separator
+            while (i < lines.length && /^\s*\|/.test(lines[i]) && lines[i].trim()) {
+                const cells = lines[i].split('|').slice(1, -1).map(c => c.trim());
+                rows.push(cells);
+                i++;
+            }
+            const tbl = tableBlock(rows, true);
+            if (tbl) blocks.push(tbl);
             continue;
         }
 
