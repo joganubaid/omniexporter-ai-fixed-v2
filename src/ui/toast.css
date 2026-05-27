@@ -1,4 +1,32 @@
-/* OmniExporter AI - Toast Notification Styles */
+/* OmniExporter AI — Toast Notifications
+ * Warm cream-aesthetic to match the rest of the UI. Light variant default,
+ * follows prefers-color-scheme for dark mode.
+ */
+
+:root {
+    --toast-bg:        #FFFFFF;
+    --toast-text:      #262624;
+    --toast-border:    #E8E4D8;
+    --toast-shadow:    0 4px 12px rgba(38, 38, 36, 0.08), 0 2px 4px rgba(38, 38, 36, 0.04);
+    --toast-success:   #15803D;
+    --toast-error:     #B91C1C;
+    --toast-warning:   #B45309;
+    --toast-info:      #1D4ED8;
+    --toast-accent-bg: #FAF7F2;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --toast-bg:        #2A2825;
+        --toast-text:      #ECEAE3;
+        --toast-border:    #3A3833;
+        --toast-shadow:    0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+        --toast-success:   #4ADE80;
+        --toast-error:     #F87171;
+        --toast-warning:   #FBBF24;
+        --toast-info:      #93C5FD;
+        --toast-accent-bg: #322F2B;
+    }
+}
 
 /* Container */
 .omni-toast-container {
@@ -10,7 +38,7 @@
     flex-direction: column;
     gap: 8px;
     pointer-events: none;
-    max-width: 320px;
+    max-width: 360px;
 }
 
 /* Base Toast */
@@ -18,21 +46,21 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 16px;
-    background: #1f2937;
-    color: #f9fafb;
-    border-radius: 10px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), 0 2px 10px rgba(0, 0, 0, 0.2);
+    padding: 12px 14px;
+    background: var(--toast-bg);
+    color: var(--toast-text);
+    border: 1px solid var(--toast-border);
+    border-radius: 12px;
+    box-shadow: var(--toast-shadow);
     font-size: 13px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
     pointer-events: auto;
     transform: translateX(120%);
     opacity: 0;
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
     overflow: hidden;
-    min-width: 200px;
-    backdrop-filter: blur(10px);
+    min-width: 240px;
 }
 
 .omni-toast-visible {
@@ -45,31 +73,32 @@
     opacity: 0;
 }
 
-/* Toast Types */
+/* Toast Types — subtle accent strip + tinted icon, soft background */
 .omni-toast-success {
-    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-    border-left: 4px solid #34d399;
+    border-left: 3px solid var(--toast-success);
 }
+.omni-toast-success .omni-toast-icon { color: var(--toast-success); }
 
 .omni-toast-error {
-    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
-    border-left: 4px solid #f87171;
+    border-left: 3px solid var(--toast-error);
 }
+.omni-toast-error .omni-toast-icon { color: var(--toast-error); }
 
 .omni-toast-info {
-    background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-    border-left: 4px solid #60a5fa;
+    border-left: 3px solid var(--toast-info);
 }
+.omni-toast-info .omni-toast-icon { color: var(--toast-info); }
 
 .omni-toast-warning {
-    background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
-    border-left: 4px solid #fbbf24;
+    border-left: 3px solid var(--toast-warning);
 }
+.omni-toast-warning .omni-toast-icon { color: var(--toast-warning); }
 
 .omni-toast-loading {
-    background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
-    border-left: 4px solid #9ca3af;
+    border-left: 3px solid var(--toast-border);
+    background: var(--toast-accent-bg);
 }
+.omni-toast-loading .omni-toast-icon { color: var(--toast-text); opacity: 0.6; }
 
 /* Icon */
 .omni-toast-icon {
@@ -81,7 +110,8 @@
 }
 
 .omni-toast-icon svg {
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+    width: 18px;
+    height: 18px;
 }
 
 /* Spinner Animation */
@@ -104,27 +134,26 @@
     flex: 1;
     line-height: 1.4;
     font-weight: 500;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* Close Button */
 .omni-toast-close {
     flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.2);
+    background: transparent;
     border: none;
     color: inherit;
     font-size: 18px;
     cursor: pointer;
     padding: 2px 8px;
-    border-radius: 4px;
-    opacity: 0.7;
-    transition: all 0.2s;
+    border-radius: 6px;
+    opacity: 0.5;
+    transition: all 0.15s;
     line-height: 1;
 }
 
 .omni-toast-close:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--toast-accent-bg);
 }
 
 /* Progress Bar */
@@ -132,8 +161,9 @@
     position: absolute;
     bottom: 0;
     left: 0;
-    height: 3px;
-    background: rgba(255, 255, 255, 0.4);
+    height: 2px;
+    background: currentColor;
+    opacity: 0.3;
     width: 100%;
     animation: omni-toast-progress linear forwards;
     transform-origin: left;
