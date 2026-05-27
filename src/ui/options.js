@@ -1,5 +1,4 @@
-// OmniExporter AI - Options Page JavaScript
-// Enterprise Dashboard v5.2.0 - Phase 10-12
+// OmniExporter AI — Options page / dashboard.
 "use strict";
 
 // ============================================================================
@@ -12,7 +11,12 @@ let threadData      = [];   // all threads shown so far (all pages accumulated)
 let currentPage     = 1;
 let itemsPerPage    = 50;
 let hasMoreThreads  = true;
-let exportedUuids   = new Set();
+// Scoped to the currently-displayed platform. Union of:
+//   - this platform's {uuid → lastSyncedMs} map (kept in exportedUuidTimestamps)
+//   - the read-only pre-v2 legacy bucket (so existing users don't re-upload)
+// Reloaded whenever currentPlatform changes.
+let exportedUuids         = new Set();
+let exportedUuidTimestamps = new Map(); // current platform only, mutable
 let exportHistory   = [];
 let syncStatusMap   = {};
 let exportStartTime = null;
@@ -112,7 +116,7 @@ class ExportProgressManager {
 }
 
 // ============================================================================
-// SECTION: PHASE 4: DATA VALIDATOR
+// SECTION: DATA VALIDATOR
 // ============================================================================
 class DataValidator {
     /**
@@ -258,7 +262,7 @@ class DataValidator {
 }
 
 // ============================================================================
-// SECTION: PHASE 7: RESILIENT DATA EXTRACTOR (for options.js)
+// SECTION: RESILIENT DATA EXTRACTOR (for options.js)
 // ============================================================================
 class ResilientDataExtractor {
     /**
@@ -336,7 +340,7 @@ class ResilientDataExtractor {
 }
 
 // ============================================================================
-// SECTION: PHASE 4: DUPLICATE DETECTOR
+// SECTION: DUPLICATE DETECTOR
 // ============================================================================
 class DuplicateDetector {
     /**
@@ -388,7 +392,7 @@ class DuplicateDetector {
 }
 
 // ============================================================================
-// SECTION: PHASE 4: ERROR RECOVERY
+// SECTION: ERROR RECOVERY
 // ============================================================================
 class ErrorRecovery {
     static async handleExportError(error) {
@@ -424,7 +428,7 @@ class ErrorRecovery {
 }
 
 // ============================================================================
-// SECTION: PHASE 4: CONTENT SCRIPT HEALTH CHECKER
+// SECTION: CONTENT SCRIPT HEALTH CHECKER
 // ============================================================================
 // PLATFORM_CONTENT_SCRIPT_FILES and getContentScriptFiles() are defined in
 // src/utils/shared-utils.js (loaded before this script) to avoid duplication.
@@ -766,7 +770,7 @@ async function sendMessageWithTimeout(tabId, message, timeoutMs = 20000) {
 }
 
 // ============================================================================
-// SECTION: PHASE 5 FIX 5: CONNECTION STATUS MONITORING
+// SECTION: CONNECTION STATUS MONITORING
 // ============================================================================
 async function monitorConnectionStatus() {
     try {
@@ -852,6 +856,11 @@ async function handleOauthConnect() {
         updateOauthStatus({ notion_oauth_workspace_name: status.workspace });
         await chrome.storage.local.set({ notion_auth_method: 'oauth' });
 
+        // Storage flags are cleared inside NotionOAuth.storeTokens.
+        // Clear the user-visible badge/title set by background auto-sync.
+        chrome.action.setBadgeText({ text: '' });
+        chrome.action.setTitle({ title: 'OmniExporter AI' });
+
         // Read what ended up in storage after the whole flow
         const stored = await chrome.storage.local.get(['notionDbId', 'notionDbName']);
 
@@ -883,6 +892,11 @@ async function handleOauthDisconnect() {
 // SECTION: INITIALIZATION
 // ============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
+    // Surface the manifest version in the sidebar so it always matches the
+    // installed extension — no hardcoded version strings to drift out of sync.
+    const verEl = document.getElementById('brandVersion');
+    if (verEl) verEl.textContent = 'v' + chrome.runtime.getManifest().version;
+
     initNavigation();
     // initSubtabs removed — Activity/DevTools tabs deleted
     initDataSourceRadio();
@@ -890,19 +904,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load persisted data
     await loadSettings();
-    loadExportedUuids();
     loadExportHistory();
     loadFailures();
 
-    // Platform detection and initial data load
+    // Platform detection — must run before loadExportedUuids so the cache
+    // load picks the right per-platform key.
     await updatePlatformSelector();
+    await loadExportedUuids();
 
     // Only fetch history if we found a platform
     if (aiPlatformTabId) {
         fetchHistory(1);
         loadSpaces();
 
-        // Phase 5 Fix 2: Check for interrupted jobs
+        // Check for interrupted jobs
         const activeJob = await ExportProgressManager.getActiveJob();
         if (activeJob) {
             const resume = confirm(
@@ -917,11 +932,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // Phase 5 Fix 5: Start connection monitoring
+        // Start connection monitoring
         monitorConnectionStatus();
         const connectionMonitorInterval = setInterval(monitorConnectionStatus, 10000);
 
-        // Phase 6: Memory leak fix - cleanup interval on page unload
+        // Memory leak fix - cleanup interval on page unload
         // Use both beforeunload and pagehide for maximum reliability
         const cleanupInterval = () => {
             if (connectionMonitorInterval) {
@@ -959,7 +974,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     // Platform selector events
-    document.getElementById('platformSelector')?.addEventListener('change', (e) => {
+    document.getElementById('platformSelector')?.addEventListener('change', async (e) => {
         const selectedTabId = parseInt(e.target.value);
         if (selectedTabId) {
             aiPlatformTabId = selectedTabId;
@@ -968,6 +983,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 currentPlatform = selectedTab.platformName;
                 log(`Switched to ${currentPlatform}`, 'info');
                 updatePlatformIcon();
+                // Reload the dedup cache for the newly-selected platform so
+                // "already synced" badges reflect that platform's history.
+                await loadExportedUuids();
                 reqDeduplication.activeRequests.delete('fetchHistory');
                 fetchHistory(1);
                 loadSpaces();
@@ -999,7 +1017,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('testNotionBtn')?.addEventListener('click', testNotionConnection);
     // (Activity Log / Dev Tools tabs removed — listeners no-op via optional chaining)
 
-    // Phase 2: Offline Detection
+    // Offline Detection
     window.addEventListener('online', () => log('🌐 Back online!', 'success'));
     window.addEventListener('offline', () => log('🔌 Working offline. Some features may be limited.', 'error'));
     if (!navigator.onLine) log('🔌 Working offline.', 'error');
@@ -1272,19 +1290,24 @@ async function testNotionConnection() {
 }
 
 
-function loadExportedUuids() {
-    chrome.storage.local.get(['exportedUuids'], (data) => {
-        if (data.exportedUuids && Array.isArray(data.exportedUuids)) {
-            exportedUuids = new Set(data.exportedUuids);
-            log(`Loaded ${exportedUuids.size} previously exported threads`, 'info');
-        }
-    });
+async function loadExportedUuids() {
+    // Always load the legacy bucket — checked alongside per-platform caches as
+    // a dedup fallback for pre-v2 UUIDs whose platform was unknown.
+    const legacy = await ExportedUuidStore.loadLegacy();
+
+    if (!currentPlatform || currentPlatform === 'Unknown') {
+        exportedUuids = legacy;
+        exportedUuidTimestamps = new Map();
+        return;
+    }
+    exportedUuidTimestamps = await ExportedUuidStore.load(currentPlatform);
+    exportedUuids = new Set([...exportedUuidTimestamps.keys(), ...legacy]);
+    log(`Loaded ${exportedUuidTimestamps.size} previously exported ${currentPlatform} thread(s)`, 'info');
 }
 
-function saveExportedUuids() {
-    chrome.storage.local.set({
-        exportedUuids: Array.from(exportedUuids)
-    });
+async function saveExportedUuids() {
+    if (!currentPlatform || currentPlatform === 'Unknown') return;
+    await ExportedUuidStore.save(currentPlatform, exportedUuidTimestamps);
 }
 
 function loadExportHistory() {
@@ -1542,6 +1565,25 @@ async function changePage(delta) {
 
 
 
+/**
+ * Compact relative time: "just now", "5m ago", "3h ago", "2d ago", "3w ago",
+ * or for anything older than ~30 days, the absolute month-day-year date.
+ * Used in the synced badge so users can see when each thread last reached Notion.
+ */
+function formatRelativeTime(ms) {
+    if (!ms || typeof ms !== 'number') return '';
+    const delta = Date.now() - ms;
+    if (delta < 0 || delta < 45_000) return 'just now';
+    const minutes = Math.round(delta / 60_000);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(delta / 3_600_000);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(delta / 86_400_000);
+    if (days < 7) return `${days}d ago`;
+    if (days < 30) return `${Math.round(days / 7)}w ago`;
+    return new Date(ms).toLocaleDateString(undefined, { year: '2-digit', month: 'short', day: 'numeric' });
+}
+
 function renderThreadList(threads) {
     try {
         const listEl = document.getElementById('threadList');
@@ -1575,10 +1617,24 @@ function renderThreadList(threads) {
                 const safeTitle = InputSanitizer.clean(t.title || 'Untitled');
                 const safeUuid  = InputSanitizer.clean(t.uuid);
 
-                // Synced badge (shown in title cell to keep 3-col layout clean)
-                const syncedTag = (status === 'synced' || isExported)
-                    ? ' <span style="font-size:10px;color:#22c55e;margin-left:6px">✓</span>'
-                    : (status === 'failed' ? ' <span style="font-size:10px;color:#ef4444;margin-left:6px">✗</span>' : '');
+                // Synced badge with relative-time hint. Timestamp comes from
+                // exportedUuidTimestamps (per-platform store); for entries
+                // promoted from the pre-v2 legacy bucket the timestamp is the
+                // migration time, which we don't want to surface as "synced",
+                // so we omit the relative time when the entry came from legacy.
+                let syncedTag = '';
+                if (status === 'synced' || isExported) {
+                    const ts = exportedUuidTimestamps.get(t.uuid);
+                    const fromLegacy = !ts; // not in the per-platform map → must be legacy-only
+                    const relTime = ts ? formatRelativeTime(ts) : '';
+                    const fullTime = ts ? new Date(ts).toLocaleString() : 'unknown (synced before v5.5)';
+                    const tooltip = fromLegacy
+                        ? 'Synced (date unknown — pre-update history)'
+                        : `Synced ${relTime} (${fullTime})`;
+                    syncedTag = ` <span class="synced-badge" title="${InputSanitizer.clean(tooltip)}">✓${relTime ? ' ' + relTime : ''}</span>`;
+                } else if (status === 'failed') {
+                    syncedTag = ' <span class="failed-badge" title="Last sync failed">✗</span>';
+                }
 
                 item.innerHTML = `
                     <div class="tcol-check">
@@ -1718,7 +1774,7 @@ function updateSelection(uuid, checked) {
 // ============================================================================
 
 async function syncSingleThread(thread, forceReExport = false, retryCount = 0) {
-    // BUG-4 FIX: Add depth limit to prevent stack overflow on repeated rate limits
+    // Add depth limit to prevent stack overflow on repeated rate limits
     const MAX_RETRIES = 3;
 
     syncStatusMap[thread.uuid] = 'syncing';
@@ -1737,7 +1793,7 @@ async function syncSingleThread(thread, forceReExport = false, retryCount = 0) {
                 payload: { uuid: thread.uuid }
             }, 30000);
 
-            // Phase 4: Validate data before syncing
+            // Validate data before syncing
             const validation = DataValidator.validateThreadData(response.data, currentPlatform);
             console.log('[OmniExporter] Validation:', DataValidator.generateReport(validation));
 
@@ -1747,7 +1803,7 @@ async function syncSingleThread(thread, forceReExport = false, retryCount = 0) {
                 return;
             }
 
-            // Phase 4: Check for duplicates
+            // Check for duplicates
             const fingerprint = DuplicateDetector.generateFingerprint(response.data);
             const hasChanged = await DuplicateDetector.hasChanged(thread.uuid, fingerprint);
 
@@ -1768,14 +1824,15 @@ async function syncSingleThread(thread, forceReExport = false, retryCount = 0) {
             await DuplicateDetector.saveFingerprint(thread.uuid, fingerprint);
 
             syncStatusMap[thread.uuid] = 'synced';
+            exportedUuidTimestamps.set(thread.uuid, Date.now());
             exportedUuids.add(thread.uuid);
             saveExportedUuids();
 
         } catch (msgError) {
-            // Phase 4: Use ErrorRecovery for smart handling
+            // Use ErrorRecovery for smart handling
             const recovery = await ErrorRecovery.handleExportError(msgError);
 
-            // BUG-4 FIX: Check retry count before recursing
+            // Check retry count before recursing
             if (recovery.retry && recovery.delay && retryCount < MAX_RETRIES) {
                 log(`${recovery.message} (attempt ${retryCount + 1}/${MAX_RETRIES})`, 'warning');
                 await new Promise(r => setTimeout(r, recovery.delay));
@@ -2423,16 +2480,56 @@ async function toggleAutoSync() {
     }
 }
 
-function clearExportedCache() {
-    if (!confirm('Clear all exported records? This will allow re-exporting synced threads.')) return;
+async function clearExportedCache() {
+    // Scoped to the currently-displayed platform plus an optional escape
+    // hatch for the pre-v2 legacy bucket. We never silently wipe all
+    // platforms — a user clearing ChatGPT shouldn't unprotect Claude.
+    if (!currentPlatform || currentPlatform === 'Unknown') {
+        log('No platform selected — pick a platform from the toolbar first.', 'error');
+        return;
+    }
 
-    exportedUuids.clear();
+    const stats = await ExportedUuidStore.getStats();
+    const platformCount = stats.platforms[currentPlatform] || 0;
+    const legacyCount = stats.legacy;
+
+    if (platformCount === 0 && legacyCount === 0) {
+        log(`${currentPlatform} has no cached threads. Nothing to clear.`, 'info');
+        return;
+    }
+
+    // Build a confirmation message that reflects what's actually about to be
+    // cleared. The legacy bucket is shared across all platforms (it predates
+    // the per-platform split), so clearing it CAN cause re-uploads on other
+    // platforms too — we say so explicitly.
+    let confirmMsg = `Clear sync cache for ${currentPlatform} (${platformCount} thread${platformCount === 1 ? '' : 's'})?\n\n`;
+    confirmMsg += `Next sync will re-upload everything from ${currentPlatform} to Notion.`;
+    let clearLegacy = false;
+    if (legacyCount > 0) {
+        clearLegacy = confirm(
+            confirmMsg +
+            `\n\n— PLUS —\n\n` +
+            `${legacyCount} pre-update legacy thread${legacyCount === 1 ? '' : 's'} (shared across all platforms, no platform info available).\n\n` +
+            `Click OK to clear BOTH the per-${currentPlatform} cache AND the legacy bucket. ` +
+            `Other platforms may also see re-uploads of their pre-update history.\n\n` +
+            `Click Cancel to clear ONLY ${currentPlatform}'s per-platform cache.`
+        );
+    }
+    if (!clearLegacy && !confirm(confirmMsg)) return;
+
+    await ExportedUuidStore.clearPlatform(currentPlatform);
+    let msg = `Cleared ${currentPlatform} sync cache (${platformCount} entries).`;
+    if (clearLegacy) {
+        const removed = await ExportedUuidStore.forgetLegacy(
+            Object.keys((await chrome.storage.local.get(ExportedUuidStore.LEGACY_BUCKET))[ExportedUuidStore.LEGACY_BUCKET] || {})
+        );
+        msg += ` Also cleared ${removed} pre-update legacy entries.`;
+    }
+    await loadExportedUuids();
     syncStatusMap = {};
-    chrome.storage.local.set({ exportedUuids: [] }, () => {
-        log('Exported records cache cleared.', 'success');
-        const start = (currentPage - 1) * itemsPerPage;
-        renderThreadList(threadData.slice(start, start + itemsPerPage));
-    });
+    log(msg, 'success');
+    const start = (currentPage - 1) * itemsPerPage;
+    renderThreadList(threadData.slice(start, start + itemsPerPage));
 }
 
 async function retryFailedThread(uuid) {

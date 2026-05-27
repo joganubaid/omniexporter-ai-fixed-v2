@@ -1,5 +1,4 @@
-// OmniExporter AI - Shared UI Utilities v5.4.0
-// Shared between popup.js and options.js
+// OmniExporter AI — Shared utilities loaded into popup, options, and background.
 "use strict";
 
 // ============================================
@@ -239,7 +238,7 @@ async function withRetry(fn, maxRetries = RETRY_MAX_ATTEMPTS, baseDelayMs = RETR
 
 // ============================================
 // PLATFORM URL GENERATOR (Shared Utility)
-// BUG-2 FIX: Consolidated from background.js and popup.js
+// Consolidated from background.js and popup.js
 // Returns null for unknown platforms instead of fallback
 // ============================================
 const PlatformUrlBuilder = {
@@ -273,6 +272,183 @@ const PlatformUrlBuilder = {
 function getPlatformUrl(platform, uuid) {
     return PlatformUrlBuilder.buildUrl(platform, uuid);
 }
+
+// ============================================
+// EXPORTED UUID STORE — per-platform dedup
+// ============================================
+//
+// Tracks which conversation UUIDs have been synced to Notion, split per
+// platform so a ChatGPT-heavy user's history doesn't crowd out Claude/Gemini.
+// Each entry stores the timestamp of the last successful sync so we can later
+// answer "when was X uploaded?" without an extra round-trip.
+//
+// Storage shape (chrome.storage.local):
+//   exportedUuids_<Platform>  →  { <uuid>: <lastSyncedMs>, ... }
+//   exportedUuids__Legacy     →  { <uuid>: <migratedAtMs>, ... }   (read-only)
+//   exportedUuids_migrated_v2 →  true                              (one-shot flag)
+//
+// Design decisions (see roadmap below):
+//   - No pruning. Bound is the user's real conversation count, which is finite.
+//     A user with 2K convos × 6 platforms ≈ 360KB — comfortably under the 10MB
+//     chrome.storage.local cap (now that `unlimitedStorage` is dropped).
+//   - LRU eviction was rejected: dropping the oldest UUIDs would cause bulk
+//     "Load All" exports to re-upload them as Notion duplicates, and would
+//     silently re-upload any old thread the user resurrects with a new message.
+//   - Per-platform split (vs. one shared bucket) keeps each write small (only
+//     the active platform's cache is serialised per sync) and isolates
+//     corruption — a bad write in one platform doesn't poison the others.
+//   - Legacy bucket holds pre-v2 UUIDs whose platform was unknown; it's
+//     checked alongside the per-platform cache on every dedup, never written
+//     to. After a couple of releases the legacy bucket can be deleted.
+//
+// PHASE 2 ROADMAP — multi-device sync via Notion as source of truth:
+//   Add a `Source URL` (or `Source ID`) column to auto-created Notion DBs.
+//   On sync: local per-platform cache stays as the fast path. On cache miss,
+//   issue a batched `or`-filter query against Notion ("any page where
+//   Source URL ∈ {url1, url2, ...}") before uploading. Lets two browsers
+//   share dedup via Notion without any extra backend. Also enables a "Rebuild
+//   cache from Notion" command that scans the DB and back-fills the local
+//   cache after the user manually deletes pages. See README "Architecture
+//   Roadmap" once added.
+//
+const ExportedUuidStore = {
+    KEY_PREFIX: 'exportedUuids_',
+    LEGACY_BUCKET: 'exportedUuids__Legacy',
+    MIGRATION_FLAG: 'exportedUuids_migrated_v2',
+
+    _key(platform) {
+        return this.KEY_PREFIX + platform;
+    },
+
+    /**
+     * Load a platform's cache as Map<uuid, lastSyncedMs>. Mutate in memory
+     * and persist with save() — don't call has/add per-uuid against storage.
+     */
+    async load(platform) {
+        const key = this._key(platform);
+        const data = await chrome.storage.local.get(key);
+        return new Map(Object.entries(data[key] || {}));
+    },
+
+    /** Persist a Map<uuid, lastSyncedMs> (or plain object) for a platform. */
+    async save(platform, mapOrObj) {
+        const obj = mapOrObj instanceof Map ? Object.fromEntries(mapOrObj) : (mapOrObj || {});
+        await chrome.storage.local.set({ [this._key(platform)]: obj });
+    },
+
+    /**
+     * Set of UUIDs from pre-v2 builds whose platform was unknown. Checked as
+     * a dedup fallback so existing users don't re-upload everything after the
+     * upgrade. Drained over time by forgetLegacy() as the sync loops match
+     * against it and promote each UUID to its real per-platform bucket.
+     */
+    async loadLegacy() {
+        const data = await chrome.storage.local.get(this.LEGACY_BUCKET);
+        return new Set(Object.keys(data[this.LEGACY_BUCKET] || {}));
+    },
+
+    /**
+     * Remove UUIDs from the legacy bucket. Called after sync promotes them
+     * to their real per-platform cache, so the legacy bucket shrinks toward
+     * empty and "Clear cache" eventually reaches every cached entry.
+     */
+    async forgetLegacy(uuids) {
+        if (!uuids || !uuids.length) return 0;
+        const data = await chrome.storage.local.get(this.LEGACY_BUCKET);
+        const bucket = data[this.LEGACY_BUCKET] || {};
+        let removed = 0;
+        for (const uuid of uuids) {
+            if (uuid in bucket) { delete bucket[uuid]; removed++; }
+        }
+        if (Object.keys(bucket).length === 0) {
+            await chrome.storage.local.remove(this.LEGACY_BUCKET);
+        } else if (removed > 0) {
+            await chrome.storage.local.set({ [this.LEGACY_BUCKET]: bucket });
+        }
+        return removed;
+    },
+
+    /** Read-only count of legacy bucket entries (for UI / clear dialog). */
+    async legacyCount() {
+        const data = await chrome.storage.local.get(this.LEGACY_BUCKET);
+        return Object.keys(data[this.LEGACY_BUCKET] || {}).length;
+    },
+
+    /**
+     * Surgical "forget" — removes specific UUIDs from a platform's cache so
+     * the next sync re-uploads them. Use when the user has deleted those
+     * pages in Notion and wants them back.
+     */
+    async forget(platform, uuids) {
+        if (!uuids || !uuids.length) return 0;
+        const cache = await this.load(platform);
+        let removed = 0;
+        for (const uuid of uuids) {
+            if (cache.delete(uuid)) removed++;
+        }
+        await this.save(platform, cache);
+        return removed;
+    },
+
+    /**
+     * Wipe one platform's cache. Next sync re-uploads everything from that
+     * platform. Used when the user has bulk-deleted in Notion or recreated
+     * the database.
+     */
+    async clearPlatform(platform) {
+        await chrome.storage.local.remove(this._key(platform));
+    },
+
+    /** Wipe every platform's cache and the legacy bucket. Destructive. */
+    async clearAll() {
+        const platforms = await this.listPlatforms();
+        const keys = platforms.map(p => this._key(p)).concat([this.LEGACY_BUCKET, 'exportedUuids']);
+        await chrome.storage.local.remove(keys);
+    },
+
+    /** List platforms with any cached entries. */
+    async listPlatforms() {
+        const all = await chrome.storage.local.get(null);
+        return Object.keys(all)
+            .filter(k => k.startsWith(this.KEY_PREFIX) && k !== this.LEGACY_BUCKET && k !== this.MIGRATION_FLAG)
+            .map(k => k.slice(this.KEY_PREFIX.length));
+    },
+
+    /** Aggregate counts per-platform + legacy + total. For UI display. */
+    async getStats() {
+        const all = await chrome.storage.local.get(null);
+        const platforms = {};
+        let legacy = 0;
+        for (const [key, value] of Object.entries(all)) {
+            if (key === this.LEGACY_BUCKET) {
+                legacy = Object.keys(value || {}).length;
+            } else if (key.startsWith(this.KEY_PREFIX) && key !== this.MIGRATION_FLAG) {
+                platforms[key.slice(this.KEY_PREFIX.length)] = Object.keys(value || {}).length;
+            }
+        }
+        const total = Object.values(platforms).reduce((a, b) => a + b, 0) + legacy;
+        return { platforms, legacy, total };
+    },
+
+    /**
+     * Idempotent: moves the legacy flat `exportedUuids` array into the legacy
+     * bucket so per-platform stores can take over without re-uploading.
+     */
+    async migrateLegacyIfNeeded() {
+        const { [this.MIGRATION_FLAG]: done, exportedUuids } =
+            await chrome.storage.local.get([this.MIGRATION_FLAG, 'exportedUuids']);
+        if (done) return false;
+        if (Array.isArray(exportedUuids) && exportedUuids.length > 0) {
+            const now = Date.now();
+            const bucket = {};
+            for (const uuid of exportedUuids) bucket[uuid] = now;
+            await chrome.storage.local.set({ [this.LEGACY_BUCKET]: bucket });
+            await chrome.storage.local.remove('exportedUuids');
+        }
+        await chrome.storage.local.set({ [this.MIGRATION_FLAG]: true });
+        return true;
+    }
+};
 
 // ============================================
 // CONTENT SCRIPT FILE MAP (Shared Utility)

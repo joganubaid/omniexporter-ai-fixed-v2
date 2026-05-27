@@ -24,13 +24,11 @@
         "activeTab",
         "scripting",
         "storage",
-        "unlimitedStorage",
-        "tabs",
         "alarms",
         "contextMenus",
         "identity"
     ],
-    "minimum_chrome_version": "88",
+    "minimum_chrome_version": "102",
     "optional_permissions": [
         "downloads"
     ],
@@ -145,22 +143,6 @@
         }
     ],
     "web_accessible_resources": [
-        {
-            "resources": [
-                "src/adapters/gemini-page-interceptor.js"
-            ],
-            "matches": [
-                "https://gemini.google.com/*"
-            ]
-        },
-        {
-            "resources": [
-                "auth/callback.html"
-            ],
-            "matches": [
-                "https://omniexporter-oauth.jonub250383.workers.dev/*"
-            ]
-        },
         {
             "resources": [
                 "icons/logos/*.svg"

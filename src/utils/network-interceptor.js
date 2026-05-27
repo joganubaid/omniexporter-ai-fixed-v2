@@ -51,7 +51,7 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
         const originalSend = XMLHttpRequest.prototype.send;
         const self = this;
 
-        // SEC-4 FIX: Use a WeakSet instead of writing to XHR.prototype to avoid
+        // Use a WeakSet instead of writing to XHR.prototype to avoid
         // prototype pollution that affects all iframes and workers on the page.
         if (!this._xhrInterceptedInstances) this._xhrInterceptedInstances = new WeakSet();
         if (this._xhrPatched) return;

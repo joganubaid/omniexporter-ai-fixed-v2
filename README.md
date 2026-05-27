@@ -222,7 +222,7 @@ OmniExporter AI v5.2.0 includes several security hardening measures:
 - **`postMessage` origin validation** — Listeners in `gemini-adapter.js` and `gemini-inject.js` validate `event.origin` against the expected platform domain
 - **UUID validation** — `SecurityUtils.isValidUuid()` is called at `content.js` entry points before any API calls
 - **HTML sanitization** — `SecurityUtils.sanitizeHtml()` prevents XSS in exported content
-- **OAuth tokens in `chrome.storage.local`** — Encrypted at rest by Chrome; never written to disk by the extension
+- **OAuth tokens in `chrome.storage.local`** — Stored in Chrome's persistent local storage (file-backed under your profile; encrypted at rest where the OS keyring is available — macOS Keychain, Windows DPAPI, Linux libsecret/kwallet — and plain on platforms without a keyring). In-flight OAuth artifacts (state, PKCE verifier) live in `chrome.storage.session` and are wiped on browser restart.
 
 See [SECURITY.md](SECURITY.md) for the full security policy and vulnerability reporting process.
 
@@ -292,8 +292,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ## ⚠️ Known Limitations
 
-### Service Worker Keep-Alive
-The keep-alive alarm fires every **1 minute** (Chrome's enforced minimum for published extensions). If no AI site tab is open, the service worker may idle between alarms. Auto-sync will still run correctly, but there may be up to a 1-minute wake-up delay.
+### Service Worker Lifecycle
+MV3 service workers terminate after ~30s of inactivity. OmniExporter does **not** try to "keep the SW alive" with a no-op heartbeat alarm — empty alarms just briefly wake the worker without preventing termination once the event queue drains. All state lives in `chrome.storage`, and the SW is re-spawned automatically when an alarm fires, when a content script or popup sends a message, or when a context-menu/command/action event fires. Auto-sync runs on its own dedicated alarm and isn't affected by SW termination.
 
 ### Notion Block Limit
 Notion allows a maximum of 100 blocks per API request. OmniExporter handles this by creating a page with the first 100 blocks, then appending the rest in subsequent PATCH requests. Very long conversations (> 100 Q&A pairs) are fully exported across multiple API calls.
@@ -306,7 +306,7 @@ If Cloudflare intercepts a Notion API call, the extension detects the non-JSON o
 This guard applies only to Notion sync API calls. AI-site content extraction runs inside the page's own tab context and is not affected.
 
 ### Storage Quota
-The extension requests the `unlimitedStorage` permission to avoid Chrome's default 5MB `storage.local` cap. This is required for users with large chat histories and long sync logs.
+The extension uses Chrome's standard `chrome.storage.local` (10MB cap). Logs are auto-trimmed to ≤5MB by a periodic cleanup task; threads themselves are never persisted locally (they're streamed to Notion or downloaded). Heavy users with very long sync histories (thousands of exported UUIDs) may eventually hit the cap — a future release will add LRU pruning of `exportedUuids`.
 
 ---
 

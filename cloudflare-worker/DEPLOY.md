@@ -47,9 +47,11 @@ wrangler secret put NOTION_CLIENT_SECRET
 # Enter: YOUR_CLIENT_SECRET_HERE
 ```
 
-## Step 4b: Configure CORS Allow-List (Required after Sec-1 fix)
+## Step 4b: Configure the CORS Allow-List (env var, no code edit needed)
 
-The worker now restricts CORS to your specific extension ID instead of using `'*'`.
+The worker restricts CORS to a configurable list of Chrome extension origins.
+It reads them from an `ALLOWED_ORIGINS` environment variable — **no code edits
+required**, even for forks.
 
 **Find your extension ID:**
 1. Open Chrome and navigate to `chrome://extensions/`
@@ -57,17 +59,54 @@ The worker now restricts CORS to your specific extension ID instead of using `'*
 3. Load the extension unpacked from the repo root
 4. Copy the 32-character ID shown under the extension name (e.g. `abcdefghijklmnopabcdefghijklmnop`)
 
-**Add it to `cloudflare-worker/worker.js`:**
-```js
-const ALLOWED_ORIGINS = new Set([
-    'chrome-extension://YOUR_32_CHAR_EXTENSION_ID_HERE',
-]);
+**Set the variable** via the dashboard (easiest):
+
+1. **Workers & Pages → Your Worker → Settings → Variables and Secrets → Add variable**
+2. Name: `ALLOWED_ORIGINS`
+3. Value: `chrome-extension://YOUR_EXTENSION_ID`
+4. Save → the worker reloads automatically (no redeploy needed).
+
+Or commit the value to `wrangler.toml` under `[vars]` and run `wrangler deploy`. Either way, **no code edit required**.
+
+**Supporting multiple extensions on one worker** (e.g. dev install + Chrome Web Store
+ID + a fork you trust): set a comma-separated list — no whitespace requirements.
+```
+chrome-extension://abcd...,chrome-extension://efgh...,chrome-extension://ijkl...
 ```
 
-Then re-deploy with `wrangler deploy`.
-
 > [!IMPORTANT]
-> The extension ID changes if you load the extension from a different path or publish to the Chrome Web Store (which assigns a permanent ID). Update `ALLOWED_ORIGINS` and redeploy whenever your extension ID changes.
+> If `ALLOWED_ORIGINS` is unset, the worker accepts **any** `chrome-extension://` origin (bootstrap mode). Fine for local testing, weak for production — set it before publishing.
+
+---
+
+## Step 4c: Create the Rate-Limit KV Namespace (free, no credit card)
+
+The worker uses Cloudflare KV to share rate-limit state across all worker
+isolates. KV is on the **Workers Free plan** with no credit card needed.
+
+```bash
+cd cloudflare-worker
+wrangler kv namespace create RATE_LIMIT
+```
+
+Wrangler prints something like:
+```
+🌀 Creating namespace with title "omniexporter-oauth-RATE_LIMIT"
+✨ Success!
+Add the following to your configuration file in your kv_namespaces array:
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "abc123def456..."
+```
+
+Open `wrangler.toml`, uncomment the `kv_namespaces` block at the bottom, and
+paste the printed `id`. Then re-deploy with `wrangler deploy`.
+
+> [!NOTE]
+> Skipping this step is allowed — the worker falls back to per-isolate in-memory
+> tracking. That works for low traffic but means a single IP can effectively
+> get `10 × number_of_isolates` requests per minute. Always create the KV
+> namespace for production.
 
 ---
 
@@ -80,8 +119,16 @@ curl https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev/health
 
 Should return:
 ```json
-{"status":"ok","service":"omniexporter-oauth"}
+{
+  "status": "ok",
+  "service": "omniexporter-oauth",
+  "rate_limit": "kv",
+  "allowed_origins_configured": true
+}
 ```
+
+`rate_limit: "in-memory"` means you haven't completed Step 4c yet.
+`allowed_origins_configured: false` means you haven't completed Step 4b yet.
 
 ---
 

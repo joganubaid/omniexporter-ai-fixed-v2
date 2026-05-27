@@ -1,5 +1,4 @@
-// OmniExporter AI - Popup JavaScript
-// Phase 9: Multi-Platform Export v5.2.0
+// OmniExporter AI — Popup.
 "use strict";
 
 // ============================================
@@ -18,7 +17,7 @@ if (typeof Logger !== 'undefined') {
 }
 
 // ============================================
-// GLOBAL ERROR HANDLER (Audit Fix)
+// GLOBAL ERROR HANDLER
 // ============================================
 window.addEventListener('error', (event) => {
     logPopup('error', 'Uncaught error', { error: event.error?.message });
@@ -39,7 +38,7 @@ let selectedExportFormat = "markdown";
 
 // ============================================
 // PLATFORM URL BUILDER (from shared-utils.js)
-// BUG-2 FIX: Use shared getPlatformUrl function
+// Use shared getPlatformUrl function
 // Fallback if shared-utils.js is not loaded
 // ============================================
 if (typeof getPlatformUrl === 'undefined') {
@@ -182,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     DOM.openDashboard?.addEventListener('click', openDashboard);
     DOM.toggleSync?.addEventListener('click', toggleAutoSync);
 
-    // Phase 2: Offline Detection
+    // Offline Detection
     window.addEventListener('online', () => {
         setStatus('🌐 Back online', 'success');
         if (typeof Toast !== 'undefined') Toast.success('Back online');

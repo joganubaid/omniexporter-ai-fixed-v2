@@ -1,5 +1,5 @@
-// OmniExporter AI - Enterprise Edition v5.4.0
-// background.js - Enterprise Background Service Worker (Phase 10-12)
+// OmniExporter AI — background service worker.
+// Version is sourced from manifest.json; do not duplicate it here.
 "use strict";
 
 try {
@@ -65,31 +65,35 @@ Logger.init().then(() => {
 
 console.log("OmniExporter AI Service Worker Active");
 
-// ============================================
-// SERVICE WORKER KEEP-ALIVE (MV3 Fix)
-// MV3 service workers terminate after ~30s of inactivity
-// We use a periodic alarm to keep it responsive
-// ============================================
-const KEEP_ALIVE_ALARM = 'keepAlive';
-
-// FIX #1: Changed from 0.4 to 1 minute — Chrome enforces a 1-minute minimum for production
-// (non-developer-mode) extensions. 0.4 minutes only works when loaded unpacked.
-// Recreate the alarm if it is missing or has a period shorter than the required 1 minute
-// (e.g. left over from a previous dev-mode install).
-function createKeepAliveAlarm() {
-    chrome.alarms.get(KEEP_ALIVE_ALARM, (existing) => {
-        if (!existing || !existing.periodInMinutes || existing.periodInMinutes < 1) {
-            chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 1 });
-        }
-    });
-}
+// MV3 service-worker lifecycle note:
+// The SW terminates after ~30s of inactivity. We do NOT use a "keep-alive"
+// alarm to fight this — empty alarms only briefly wake the worker, they don't
+// prevent termination once the event queue drains. All state lives in
+// chrome.storage and the SW is re-spawned automatically when:
+//   - chrome.runtime.onMessage fires (content scripts / popup)
+//   - chrome.alarms.onAlarm fires (autoSyncAlarm, storageCleanup)
+//   - chrome.commands / chrome.contextMenus / chrome.action events fire
+// That covers every code path we care about.
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log("OmniExporter AI Service Worker Installed");
 
-    createKeepAliveAlarm();
+    // One-shot cleanup of legacy OAuth flow artifacts that older builds wrote
+    // to chrome.storage.local (they now live in chrome.storage.session).
+    chrome.storage.local.remove([
+        'notion_oauth_state',
+        'notion_oauth_state_created',
+        'notion_oauth_code_verifier'
+    ]);
 
-    // Initialize default settings
+    // Move pre-v2 flat exportedUuids array into the per-platform legacy bucket
+    // so existing users don't re-upload everything after the upgrade. Idempotent.
+    if (typeof ExportedUuidStore !== 'undefined') {
+        ExportedUuidStore.migrateLegacyIfNeeded()
+            .then(migrated => migrated && console.log('[OmniExporter] Legacy exportedUuids migrated to per-platform store'))
+            .catch(e => console.warn('[OmniExporter] exportedUuids migration failed:', e.message));
+    }
+
     chrome.storage.local.get(['autoSyncEnabled', 'syncInterval'], (res) => {
         if (res.autoSyncEnabled) {
             const interval = res.syncInterval || 60;
@@ -98,20 +102,17 @@ chrome.runtime.onInstalled.addListener(() => {
         }
     });
 
-    // Create context menus
     setupContextMenus();
 });
 
-// Also create keep-alive and context menus on startup (service worker restarts)
-// BUG-12 FIX: onInstalled is NOT called on SW restart — must re-register here.
+// onInstalled is NOT called on SW restart — re-register context menus here.
 chrome.runtime.onStartup.addListener(() => {
-    createKeepAliveAlarm();
     setupContextMenus();
     Logger.info('System', 'Service worker started up');
 });
 
 /**
- * BUG-12 FIX: Create context menus safely, removing any existing ones first.
+ * Create context menus safely, removing any existing ones first.
  * Called from both onInstalled and onStartup.
  */
 function setupContextMenus() {
@@ -136,12 +137,6 @@ function setupContextMenus() {
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === KEEP_ALIVE_ALARM) {
-        // Keep-alive ping - just log occasionally
-        // This prevents the service worker from going inactive
-        return;
-    }
-
     if (alarm.name === 'autoSyncAlarm') {
         console.log("Auto-sync alarm triggered");
         performAutoSync();
@@ -152,8 +147,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
+// Best-effort: clear any leftover keep-alive alarm from older builds so we
+// stop burning a wakeup every minute for nothing.
+chrome.alarms.clear('keepAlive');
+
 // ============================================
-// PHASE 7: RESILIENT DATA EXTRACTOR (for background.js)
+// RESILIENT DATA EXTRACTOR (for background.js)
 // ============================================
 // getPlatformUrl is now provided by shared-utils.js
 // Fallback definition if shared-utils.js failed to load
@@ -172,7 +171,7 @@ if (typeof getPlatformUrl === 'undefined') {
     }
 }
 
-// FIX #3: Sync lock is now validated against chrome.storage on every acquire.
+// Sync lock is now validated against chrome.storage on every acquire.
 // Without this, if the SW terminates mid-sync and restarts, globalSyncInProgress resets to
 // false — allowing a new sync to start while the previous run’s Notion requests are still in-flight.
 let globalSyncInProgress = false;
@@ -282,7 +281,7 @@ async function enforceStorageLimit() {
     }
 }
 
-// BUG-4 FIX: Guard alarm creation — SW restarts often and duplicate alarms cause errors.
+// Guard alarm creation — SW restarts often and duplicate alarms cause errors.
 chrome.alarms.get('storageCleanup', (existing) => {
     if (!existing) chrome.alarms.create('storageCleanup', { periodInMinutes: 5 });
 });
@@ -364,7 +363,7 @@ async function performAutoSync() {
 
     try {
         const settings = await chrome.storage.local.get([
-            'autoSyncEnabled', 'autoSyncNotion', 'notionApiKey', 'notionKey', 'notionDbId', 'exportedUuids', 'notion_auth_method'
+            'autoSyncEnabled', 'autoSyncNotion', 'notionApiKey', 'notionKey', 'notionDbId', 'notion_auth_method'
         ]);
 
         Logger.debug('AutoSync', 'Settings loaded', { enabled: settings.autoSyncEnabled, dbId: settings.notionDbId ? 'Present' : 'Missing', notionAuth: settings.notion_auth_method });
@@ -383,11 +382,30 @@ async function performAutoSync() {
 
         let authToken;
         try {
-            authToken = await NotionOAuth.getActiveToken();
+            // Background context — never pop a login window unprompted.
+            // If the token has expired, getActiveToken throws NOTION_REAUTH_REQUIRED
+            // and we surface the state via badge + storage flag so the user can
+            // reconnect on their own time.
+            authToken = await NotionOAuth.getActiveToken({ interactive: false });
         } catch (error) {
-            Logger.warn('AutoSync', 'Notion auth missing — skipped sync', { error: error.message });
-            // Track auth failure so the badge/UI can reflect the issue
-            await trackFailure({ uuid: '_auth_', reason: 'Notion auth: ' + error.message, platform: 'Notion' });
+            const isReauth = error.message && error.message.includes('NOTION_REAUTH_REQUIRED');
+            if (isReauth) {
+                chrome.action.setBadgeText({ text: '🔒' });
+                chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+                chrome.action.setTitle({
+                    title: 'OmniExporter — Notion session expired. Click to reconnect.'
+                });
+                // Only log the failure once per reauth-required state to avoid
+                // filling the failure log with one entry per alarm fire.
+                const { notion_reauth_logged } = await chrome.storage.local.get('notion_reauth_logged');
+                if (!notion_reauth_logged) {
+                    await trackFailure({ uuid: '_auth_', reason: 'Notion session expired — reconnect required', platform: 'Notion' });
+                    await chrome.storage.local.set({ notion_reauth_logged: true });
+                }
+            } else {
+                await trackFailure({ uuid: '_auth_', reason: 'Notion auth: ' + error.message, platform: 'Notion' });
+            }
+            Logger.warn('AutoSync', 'Notion auth unavailable — skipped sync', { error: error.message, reauth: isReauth });
             await releaseSyncLock();
             return;
         }
@@ -418,7 +436,7 @@ async function performAutoSync() {
 
             Logger.info('AutoSync', `Found ${tabs.length} AI platform tab(s)`, { platforms: tabs.map(t => t.url.split('/')[2]) });
 
-            // BUG-7 FIX: Iterate all open AI tabs instead of only the first.
+            // Iterate all open AI tabs instead of only the first.
             // Build a map of platform -> tab so each platform is processed once per run.
             // Prefer tabs whose URL includes a conversation/chat path over landing pages.
             const platformTabMap = new Map();
@@ -440,12 +458,32 @@ async function performAutoSync() {
                 }
             }
 
-            // REAL-2 FIX: Single shared Set lives outside the platform loop.
-            // Threads exported in the ChatGPT iteration are visible to the Claude iteration.
-            const sharedExportedUuids = new Set(settings.exportedUuids || []);
+            // Pre-v2 legacy bucket — UUIDs from before per-platform split (no
+            // platform info). Read once per run; checked alongside each
+            // platform's cache for dedup, never written to.
+            const legacyDedupSet = await ExportedUuidStore.loadLegacy();
 
             // Process each unique platform tab
             for (const [platform, tab] of platformTabMap) {
+
+            // Load this platform's exported-UUID cache as Map<uuid, lastSyncedMs>.
+            // Mutated in memory and persisted after each batch + at end.
+            const platformCache = await ExportedUuidStore.load(platform);
+            // Track legacy → platform promotions so we can shrink the legacy
+            // bucket at end of run. Without this, "Clear cache" on a platform
+            // can't reach the user's pre-v2 history (it lives in the legacy
+            // bucket, not the per-platform cache).
+            const promotedFromLegacy = [];
+            const isAlreadyExported = (uuid) => {
+                if (platformCache.has(uuid)) return true;
+                if (legacyDedupSet.has(uuid)) {
+                    platformCache.set(uuid, Date.now());
+                    legacyDedupSet.delete(uuid);
+                    promotedFromLegacy.push(uuid);
+                    return true;
+                }
+                return false;
+            };
 
             // Get checkpoint for this platform
             const checkpoint = await getSyncCheckpoint(platform);
@@ -464,23 +502,15 @@ async function performAutoSync() {
                 continue;
             }
 
-            // REAL-2 FIX: Use sharedExportedUuids (defined once before loop) so each platform
-            // sees UUIDs synced by previous platforms in this same run.
-            const newThreads = threads.filter(t => !sharedExportedUuids.has(t.uuid));
+            const newThreads = threads.filter(t => !isAlreadyExported(t.uuid));
 
             Logger.info('AutoSync', `Found ${newThreads.length} new threads since checkpoint`,
                 { total: threads.length, newCount: newThreads.length, platform });
 
-            // REAL-1 + REAL-4 FIX: Retry logic now uses syncFailures object.
-            // trackFailure() writes to this key — reads now match what's written.
-            // retryThreads pulls from syncFailures storage, NOT from current API response.
-            // This catches threads that failed in PREVIOUS runs (may not appear in current API results).
-            const platformThreadUuids = new Set(threads.map(t => t.uuid));
+            // Retry list: failed UUIDs from PREVIOUS runs that are not yet
+            // exported and have fewer than 3 attempts. syncFailures[platform]
+            // is a {uuid → attemptCount} map written by trackFailure().
             const { syncFailures = {} } = await chrome.storage.local.get('syncFailures');
-            // Derive platform-scoped failures.
-            // syncFailures[platform] is always a {uuid→count} object (trackFailure writes it that way).
-            // Previously there was a legacy root-level flat {uuid→count} path; that was fixed in
-            // trackFailure() — root-level keys now go into syncFailures['_unknown'].
             let platformFailures = {};
             const maybePlatformFailures = syncFailures && typeof syncFailures[platform] === 'object'
                 ? syncFailures[platform]
@@ -488,9 +518,8 @@ async function performAutoSync() {
             if (maybePlatformFailures && Object.values(maybePlatformFailures).every(v => typeof v === 'number')) {
                 platformFailures = maybePlatformFailures;
             }
-            // Build retry list: UUIDs for this platform that are NOT yet exported, attempt count < 3
             const retryUuids = Object.entries(platformFailures)
-                .filter(([uuid, count]) => !sharedExportedUuids.has(uuid) && count < 3)
+                .filter(([uuid, count]) => !isAlreadyExported(uuid) && count < 3)
                 .map(([uuid]) => uuid);
 
             // Merge: newThreads + any retry UUID not already in newThreads
@@ -511,11 +540,11 @@ async function performAutoSync() {
             }
 
             let successCount = 0, failedCount = 0;
-            // REAL-3 FIX: Removed Math.min(..., 10) cap — MAX_THREADS_PER_RUN controls the limit.
+            // Removed Math.min(..., 10) cap — MAX_THREADS_PER_RUN controls the limit.
             const BATCH_SIZE = 5;
             const MAX_THREADS_PER_RUN = 50;
 
-            // Process in batches — REAL-3 FIX: no artificial 10-thread cap
+            // Process in batches — no artificial 10-thread cap
             for (let i = 0; i < Math.min(newThreads.length, MAX_THREADS_PER_RUN); i += BATCH_SIZE) {
                 const batch = newThreads.slice(i, i + BATCH_SIZE);
                 console.log(`[AutoSync] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}...`);
@@ -558,7 +587,7 @@ async function performAutoSync() {
                         if (syncResult.success) {
                             successCount++;
                             totalSuccessCount++;
-                            sharedExportedUuids.add(thread.uuid); // REAL-2: update shared Set
+                            platformCache.set(thread.uuid, Date.now());
                         } else {
                             failedCount++;
                             totalFailedCount++;
@@ -587,36 +616,31 @@ async function performAutoSync() {
                 // Brief pause between batches
                 await new Promise(r => setTimeout(r, 2000));
 
-                // SW SUSPENSION FIX: Persist exportedUuids after each batch so progress
-                // isn't lost if Chrome suspends the Service Worker mid-sync.
-                await chrome.storage.local.set({
-                    exportedUuids: Array.from(sharedExportedUuids)
-                });
+                // Persist this platform's cache after each batch so progress
+                // isn't lost if Chrome suspends the SW mid-sync.
+                await ExportedUuidStore.save(platform, platformCache);
             }
 
             // Update checkpoint
             await updateSyncCheckpoint(platform, Date.now(), newThreads[0]?.uuid);
 
-            // Aggregate per-platform counts into global totals
-            if (Array.isArray(newThreads)) {
-                totalNewThreads += newThreads.length;
+            // Final persist for this platform (catches the last partial batch).
+            await ExportedUuidStore.save(platform, platformCache);
+
+            // Drain the legacy bucket for UUIDs we just promoted to per-platform.
+            if (promotedFromLegacy.length) {
+                await ExportedUuidStore.forgetLegacy(promotedFromLegacy);
+                Logger.info('AutoSync', `Promoted ${promotedFromLegacy.length} legacy UUID(s) to ${platform} cache`);
             }
-            if (typeof threads !== 'undefined' && Array.isArray(threads)) {
-                totalThreads += threads.length;
-            } else if (Array.isArray(newThreads)) {
-                // Fallback if threads is not available; approximate with newThreads
-                totalThreads += newThreads.length;
-            }
+
+            totalNewThreads += newThreads.length;
+            totalThreads += threads.length;
 
             } // end for (const [platform, tab] of platformTabMap)
 
-            // REAL-2 FIX: Save shared exportedUuids once after all platforms processed
-            await chrome.storage.local.set({
-                lastSyncDate: new Date().toISOString(),
-                exportedUuids: Array.from(sharedExportedUuids)
-            });
+            await chrome.storage.local.set({ lastSyncDate: new Date().toISOString() });
 
-            // REAL-11 FIX: Pass total threads (including already-exported) so skipped is correct
+            // Pass total threads (including already-exported) so skipped is correct
             // recordSyncJob will compute skipped = total - attempted
             await recordSyncJob(
                 totalThreads || totalNewThreads,
@@ -626,7 +650,7 @@ async function performAutoSync() {
             );
             console.log(`[AutoSync] All platforms complete: ${totalSuccessCount} synced, ${totalFailedCount} failed`);
 
-            // Missing 5 fix: update badge with newly synced thread count
+            // update badge with newly synced thread count
             const badgeText = totalSuccessCount > 0 ? String(totalSuccessCount) : '';
             chrome.action.setBadgeText({ text: badgeText });
             if (totalSuccessCount > 0) {
@@ -640,13 +664,92 @@ async function performAutoSync() {
             console.error("[AutoSync] Error:", e);
         }
     } finally {
-        // Always release the lock (BUG-1 FIX: runs even on early errors)
+        // Always release the lock (runs even on early errors)
         await releaseSyncLock();
     }
 }
 
+// ============================================
+// NOTION DATABASE SCHEMA CACHE
+// ============================================
+//
+// syncToNotion needs the Notion DB schema to know which optional properties
+// (URL, Tags, Platform, Chat Time, Exported, …) exist, what their types are,
+// and what name the title property uses. The schema rarely changes — once the
+// user has set up their database the columns are stable for weeks at a time.
+//
+// We cache the schema in chrome.storage.local under `notion_db_schema_<dbId>`
+// so that:
+//   - A 50-thread auto-sync makes ONE schema fetch instead of 50.
+//   - First sync after SW restart pulls schema once, then reuses.
+//   - User can force a refresh whenever they change DB columns (call with
+//     {refresh: true}).
+//
+// Cache invalidation triggers (all wired up below):
+//   1. TTL: 24 hours. Long enough to amortize, short enough that a forgotten
+//      column rename heals on its own within a day.
+//   2. notionDbId changes → cache cleared (storage.onChanged listener).
+//   3. notion_auth_method changes → cache cleared (different workspace likely).
+//   4. Schema fetch returns 401/403/404 during normal use → cache invalidated
+//      automatically so the next call re-fetches.
+//   5. Explicit {refresh: true} param → bypasses cache.
+//
+const NOTION_SCHEMA_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function getCachedNotionSchema(token, dbId, { refresh = false } = {}) {
+    if (!dbId) return null;
+    const cacheKey = `notion_db_schema_${dbId}`;
+
+    if (!refresh) {
+        const { [cacheKey]: cached } = await chrome.storage.local.get(cacheKey);
+        if (cached && cached.schema && cached.cachedAt &&
+            (Date.now() - cached.cachedAt) < NOTION_SCHEMA_TTL_MS) {
+            return cached.schema;
+        }
+    }
+
+    const response = await notionFetchWithBackoff(
+        `https://api.notion.com/v1/databases/${dbId}`,
+        { headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
+    );
+
+    if (!response.ok) {
+        // Auth/missing-db failures should NOT poison the cache. Drop any stale
+        // entry and surface the failure to the caller (which falls back to
+        // schema-less property mapping).
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+            await chrome.storage.local.remove(cacheKey);
+        }
+        console.warn(`[Schema] DB schema fetch failed (HTTP ${response.status}) for db ${dbId}`);
+        return null;
+    }
+
+    const schema = await response.json();
+    await chrome.storage.local.set({ [cacheKey]: { schema, cachedAt: Date.now() } });
+    return schema;
+}
+
+// Wipe the schema cache when the user changes the target DB or switches auth
+// methods — the cached schema almost certainly doesn't apply anymore.
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+
+    if (changes.notionDbId) {
+        if (changes.notionDbId.oldValue) {
+            chrome.storage.local.remove(`notion_db_schema_${changes.notionDbId.oldValue}`);
+        }
+    }
+    if (changes.notion_auth_method) {
+        // Drop every cached schema — auth change implies workspace change.
+        chrome.storage.local.get(null, items => {
+            const keys = Object.keys(items).filter(k => k.startsWith('notion_db_schema_'));
+            if (keys.length) chrome.storage.local.remove(keys);
+        });
+    }
+});
+
 /**
- * FIX #5: Notion-specific fetch with exponential backoff on 429.
+ * Notion-specific fetch with exponential backoff + jitter on 429/503.
  * Notion rate-limits at ~3 requests/second. A flat 1s delay is not retry logic.
  * maxRetries is the number of *retries* (not total attempts), so total attempts = maxRetries + 1.
  */
@@ -658,13 +761,17 @@ async function notionFetchWithBackoff(url, options, maxRetries = 4) {
         if (response.status !== 429 && response.status !== 503) return response;
         if (attempt === maxRetries) {
             console.warn(`[Notion] Rate limited (${response.status}) — max retries exhausted (${totalAttempts} attempts). Returning last response.`);
-            return response; // exhausted retries — return last response
+            return response;
         }
         const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
-        const wait = retryAfter > 0 ? retryAfter * 1000 : delay;
+        // ±25% full jitter. Without it, two clients that hit 429 at the same
+        // moment compute the same backoff and re-collide on retry (thundering
+        // herd). Randomising the wait spreads them out.
+        const base = retryAfter > 0 ? retryAfter * 1000 : delay;
+        const wait = Math.round(base * (0.75 + Math.random() * 0.5));
         console.warn(`[Notion] Rate limited (${response.status}), waiting ${wait}ms (attempt ${attempt + 1}/${totalAttempts})`);
         await new Promise(r => setTimeout(r, wait));
-        delay = Math.min(delay * 2, 30000); // cap at 30s
+        delay = Math.min(delay * 2, 30000); // cap at 30s before jitter
     }
 }
 
@@ -672,24 +779,21 @@ async function syncToNotion(data, settings) {
     try {
         const entries = data.detail?.entries || [];
         const children = [];
-        const token = await NotionOAuth.getActiveToken();
+        // Called only from the auto-sync alarm path — never pop a login window mid-sync.
+        // If the cached token expired between performAutoSync's auth check and now,
+        // bubble up NOTION_REAUTH_REQUIRED so the caller can badge and skip.
+        const token = await NotionOAuth.getActiveToken({ interactive: false });
         const notionHeaders = {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'Notion-Version': '2022-06-28'
         };
 
-        // Fetch database schema to know which properties exist
+        // Schema is cached for 24h; this is a no-op on warm cache. See
+        // getCachedNotionSchema for invalidation rules.
         let dbSchema = null;
         try {
-            const schemaResponse = await notionFetchWithBackoff(
-                `https://api.notion.com/v1/databases/${settings.notionDbId}`,
-                { headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
-            );
-            if (schemaResponse.ok) {
-                dbSchema = await schemaResponse.json();
-                console.log('[AutoSync] Database properties:', Object.keys(dbSchema.properties || {}));
-            }
+            dbSchema = await getCachedNotionSchema(token, settings.notionDbId);
         } catch (schemaErr) {
             console.warn('[AutoSync] Could not fetch schema, using defaults:', schemaErr.message);
         }
@@ -781,7 +885,7 @@ async function syncToNotion(data, settings) {
 
         console.log('[AutoSync] Creating page with', children.length, 'blocks');
 
-        // FIX #2: POST the first 100 blocks only (Notion per-request limit).
+        // POST the first 100 blocks only (Notion per-request limit).
         // Then PATCH /v1/blocks/{page_id}/children for any remaining blocks in batches of 100.
         const firstBatch = children.slice(0, 100);
         const response = await notionFetchWithBackoff('https://api.notion.com/v1/pages', {
@@ -794,7 +898,7 @@ async function syncToNotion(data, settings) {
             })
         });
 
-        // FIX #6: Check content-type before calling .json() — Cloudflare Turnstile
+        // Check content-type before calling .json() — Cloudflare Turnstile
         // challenges return text/html on captcha-blocked endpoints, which throws on .json().
         const contentType = response.headers.get('content-type') || '';
         if (!response.ok) {
@@ -833,7 +937,7 @@ async function syncToNotion(data, settings) {
         if (children.length > 100) {
             for (let i = 100; i < children.length; i += 100) {
                 const batch = children.slice(i, i + 100);
-                // BUG-2 FIX: Flatten toggle blocks before PATCH - Notion API doesn't accept nested children in PATCH
+                // Flatten toggle blocks before PATCH - Notion API doesn't accept nested children in PATCH
                 const flattenedBatch = typeof NotionBlockBuilder !== 'undefined' && NotionBlockBuilder.flattenToggleBlocks
                     ? NotionBlockBuilder.flattenToggleBlocks(batch)
                     : batch;
@@ -866,7 +970,7 @@ async function syncToNotion(data, settings) {
     }
 }
 
-// REAL-11 FIX: 4th param `attempted` = threads actually processed (new + retry).
+// 4th param `attempted` = threads actually processed (new + retry).
 // `total` should be the full threads.length including already-exported ones.
 // skipped = total - attempted (shows how many were already exported).
 async function recordSyncJob(total, success, failed, attempted = total) {
@@ -915,7 +1019,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
         return true; // Will respond asynchronously
     } else if (request.type === "TRIGGER_SYNC") {
-        // BUG-3 FIX: Properly await sync and return actual result
+        // Properly await sync and return actual result
         // Previously called performAutoSync() without awaiting and immediately sent success: true
         // Now we await the sync and return the actual result
         performAutoSync()
@@ -931,7 +1035,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
 });
 
-// REAL-4 FIX: trackFailure now writes to BOTH:
+// trackFailure now writes to BOTH:
 //   'failures' (array, for Activity Log display)
 //   'syncFailures' (object platform→{uuid→count}, for retry logic reads)
 async function trackFailure(failure) {
@@ -980,7 +1084,7 @@ async function trackFailure(failure) {
 // CONTEXT MENU CLICK HANDLER
 // ============================================
 
-// REAL-6 FIX: Context menu now actually triggers a download.
+// Context menu now actually triggers a download.
 // After extracting, send EXPORT_THREAD back to the content script which calls ExportManager.export().
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === 'exportThread') {

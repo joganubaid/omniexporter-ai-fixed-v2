@@ -369,7 +369,7 @@ function extractToolCallBlocks(markdown) {
 
     const toolBlocks = [];
 
-    // BUG-11 FIX: Changed from greedy [\s\S]* to lazy [\s\S]*? to prevent merging multiple tool calls
+    // Changed from greedy [\s\S]* to lazy [\s\S]*? to prevent merging multiple tool calls
     // Legacy format: ```tool_call:tool_name ... ```
     let cleaned = markdown.replace(
         /```tool_call:([^\n]*)\n([\s\S]*?)```/g,
@@ -635,7 +635,7 @@ function buildNotionBlocks(entries, platform, metadata) {
 // ============================================
 
 /**
- * BUG-2 FIX: Flatten blocks by extracting nested children from toggle blocks.
+ * Flatten blocks by extracting nested children from toggle blocks.
  * Notion's PATCH /v1/blocks/{id}/children endpoint does NOT accept nested children.
  * This function converts toggle blocks with children into a flat list where the
  * children are placed immediately after their parent toggle (with empty children array).

@@ -2,7 +2,7 @@
 // Export support: Markdown, JSON
 "use strict";
 
-// REAL-14 FIX: Wrap in window guard to prevent SyntaxError: 'Identifier already declared'
+// Wrap in window guard to prevent SyntaxError: 'Identifier already declared'
 // on SPA re-injection. ExportManager is injected as a content script and re-runs on navigation.
 var root = typeof window !== 'undefined' ? window : globalThis;
 if (!root.ExportManager) {

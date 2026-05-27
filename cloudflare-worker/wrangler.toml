@@ -2,9 +2,34 @@ name = "omniexporter-oauth"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
-# Environment variables - set these via Cloudflare dashboard
-# Go to: Workers & Pages → Your Worker → Settings → Variables
-# Add: NOTION_CLIENT_ID and NOTION_CLIENT_SECRET (encrypt them)
-
+# ───────────────────────────────────────────────────────────────────────────────
+# Plain-text vars (visible in the Cloudflare dashboard).
+# Override per environment via the dashboard if you don't want to commit them.
+# ───────────────────────────────────────────────────────────────────────────────
 [vars]
-# Variables are set in Cloudflare Dashboard, not here
+# Comma-separated list of Chrome extension origins allowed to call this worker.
+# Find your extension ID at chrome://extensions/ with Developer Mode on.
+# Examples:
+#   ALLOWED_ORIGINS = "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
+#   ALLOWED_ORIGINS = "chrome-extension://abcdefghijklmnopabcdefghijklmnop,chrome-extension://qrstuvwxyzabcdefghijklmnopqrstuv"
+# If left empty, the worker accepts any chrome-extension:// origin (bootstrap mode).
+ALLOWED_ORIGINS = ""
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Secrets (NOTION_CLIENT_ID, NOTION_CLIENT_SECRET) — set via:
+#   wrangler secret put NOTION_CLIENT_ID
+#   wrangler secret put NOTION_CLIENT_SECRET
+# Do NOT add them here; secrets in wrangler.toml are stored as plain text.
+# ───────────────────────────────────────────────────────────────────────────────
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Workers KV — used for cross-isolate rate limiting (free plan, no CC required).
+# Create the namespace once with:
+#   wrangler kv namespace create RATE_LIMIT
+# Wrangler prints the id; paste it below in place of the placeholder, then deploy.
+# The worker falls back to per-isolate in-memory tracking if this binding is missing,
+# so you can deploy and test before creating the KV namespace.
+# ───────────────────────────────────────────────────────────────────────────────
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
