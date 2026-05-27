@@ -26,9 +26,13 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                     fallback: '/rest/collections/list',
                     params: (version) => `?limit=30&offset=0&version=${version}&source=default`
                 }
-                // Archived Perplexity endpoints (HAR-verified, not currently used):
+                // Perplexity endpoints used directly (not routed through this
+                // config object — see perplexity-adapter.js):
+                //   threadDetail: /rest/thread/{uuid}?with_parent_info=true&...
+                //                 (active — used by fetchPerplexityDetailResilient
+                //                 with cursor pagination)
+                // Other HAR-verified endpoints not currently used by export:
                 //   listRecent:       /rest/thread/list_recent
-                //   threadDetail:     /rest/thread/{uuid}
                 //   collectionDetail: /rest/collections/get_collection
                 //   modelsConfig:     /rest/models/config
                 //   userSettings:     /rest/user/settings
@@ -177,12 +181,21 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             // HAR-verified payload for MaZiqc (chat list)
             listPayload: [13, null, [0, null, 1]],
             patterns: {
+                // HAR-verified (2026-05 build boq_assistant-bard-web-server_20260525.05_p0):
+                //   URL form:        /app/7703f71cf4997935        (16 hex, NO c_ prefix)
+                //   API/payload form: c_7703f71cf4997935           (16 hex, WITH c_ prefix)
+                // The frontend strips the c_ prefix from URLs but the RPC layer
+                // re-adds it. extractUuid in gemini-adapter.js normalises both
+                // shapes to the c_ form so dedup keys stay consistent regardless
+                // of whether the UUID came from the URL or the listChats response.
+                //
+                // Slugs under /app (e.g. /app/google-gemini, /app/download) and
+                // /gem (e.g. /gem/storybook) are agent/static pages, NOT chat IDs.
+                //
+                // Match order is most-specific first; the first matching pattern wins.
                 uuidExtract: [
-                    /\/app\/([a-zA-Z0-9._-]+)/,
-                    /\/gem\/([a-zA-Z0-9._-]+)/,
-                    /\/chat\/([a-zA-Z0-9._-]+)/,
-                    /\/(c_[a-f0-9]{16})/,      // Gemini chat IDs (e.g., c_ec00ff04a46f7fa6)
-                    /\/([a-zA-Z0-9._-]{10,})/  // Catch-all for long IDs
+                    /\/(?:app|chat|gem)\/(c_[a-f0-9]{16}|[a-f0-9]{16})\b/,
+                    /\b(c_[a-f0-9]{16})\b/
                 ]
             },
             dataFields: {

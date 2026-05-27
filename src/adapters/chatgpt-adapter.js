@@ -271,79 +271,26 @@ var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
 
     // Standard page-based (backwards compatible)
     getThreads: async (page, limit) => {
-        try {
-            // Check NetworkInterceptor first
-            if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
-                const all = window.NetworkInterceptor.getChatList();
-                const start = (page - 1) * limit;
-                return {
-                    threads: all.slice(start, start + limit),
-                    hasMore: start + limit < all.length,
-                    page
-                };
-            }
-
-            const offset = (page - 1) * limit;
-            try {
-                const result = await ChatGPTAdapter.getThreadsWithOffset(offset, limit);
-                return {
-                    threads: result.threads,
-                    hasMore: result.hasMore,
-                    page
-                };
-            } catch (apiError) {
-                console.warn('[ChatGPT] API failed, trying DOM fallback:', apiError.message);
-
-                // DOM Fallback - Scrape sidebar
-                const threads = [];
-                const seenUuids = new Set();
-
-                // Selectors for sidebar items
-                const selectors = [
-                    'a[href^="/c/"]',
-                    'a[href^="/chat/"]',
-                    'li a[href*="/c/"]',
-                    'nav a'
-                ];
-
-                document.querySelectorAll(selectors.join(', ')).forEach(a => {
-                    const href = a.getAttribute('href');
-                    const match = href.match(/\/(?:c|chat)\/([a-zA-Z0-9-]+)/);
-                    if (match && match[1]) {
-                        const uuid = match[1];
-                        if (!seenUuids.has(uuid)) {
-                            // Try to get title from text content, clean up newlines/extra spaces
-                            let title = a.textContent.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-                            // Fallback if title is empty or "New Chat"
-                            if (!title || title === 'New Chat') title = 'ChatGPT Thread';
-
-                            threads.push({
-                                uuid,
-                                title: title,
-                                last_query_datetime: new Date().toISOString(), // Approximation
-                                platform: 'ChatGPT'
-                            });
-                            seenUuids.add(uuid);
-                        }
-                    }
-                });
-
-                console.log(`[ChatGPT] DOM fallback found ${threads.length} threads`);
-
-                // DOM fallback returns whatever is visible in the sidebar — this
-                // is the full set; higher pages would return the same DOM so we
-                // report hasMore: false to prevent infinite pagination loops.
-                const start = (page - 1) * limit;
-                return {
-                    threads: threads.slice(start, start + limit),
-                    hasMore: false,
-                    page
-                };
-            }
-        } catch (error) {
-            console.error('[ChatGPT] getThreads failed completely:', error);
-            throw error;
+        // NetworkInterceptor (passively-captured real API responses) is the only
+        // acceptable fallback — DOM scraping was removed because the sidebar is
+        // virtualized and would silently return a tiny subset of the user's history.
+        if (window.NetworkInterceptor && window.NetworkInterceptor.getChatList().length > 0) {
+            const all = window.NetworkInterceptor.getChatList();
+            const start = (page - 1) * limit;
+            return {
+                threads: all.slice(start, start + limit),
+                hasMore: start + limit < all.length,
+                page
+            };
         }
+
+        const offset = (page - 1) * limit;
+        const result = await ChatGPTAdapter.getThreadsWithOffset(offset, limit);
+        return {
+            threads: result.threads,
+            hasMore: result.hasMore,
+            page
+        };
     },
 
     // ============================================
@@ -473,13 +420,38 @@ function transformChatGPTData(data) {
             console.warn('[ChatGPT] Unknown data structure:', Object.keys(data));
         }
 
-        // Helper to safely extract text content
-        // HAR-VERIFIED 2026-03-16: Handles tool calls, code interpreter, DALL-E, and browsing results
+        // Helper to safely extract text content.
+        // Content types observed in HAR (2026-05): text, multimodal_text, code,
+        // execution_output, tether_browsing_display, tether_quote,
+        // model_editable_context, system_error, thoughts, reasoning_recap.
         const extractContent = (msg) => {
             const contentType = msg.content?.content_type;
             // Skip only truly non-exportable system types
             const skipTypes = ['model_editable_context', 'system_error'];
             if (contentType && skipTypes.includes(contentType)) {
+                return '';
+            }
+
+            // GPT-5 reasoning models emit `thoughts` (full chain-of-thought as
+            // an array of {summary, content} steps) and `reasoning_recap` (a
+            // short timing summary like "Thought for 12s"). Both were silently
+            // dropped before. Render thoughts as a blockquoted reasoning block
+            // so it doesn't visually compete with the answer; skip the recap
+            // entirely (it's just a time tag with no content).
+            if (contentType === 'thoughts' && Array.isArray(msg.content?.thoughts)) {
+                const steps = msg.content.thoughts
+                    .map(t => {
+                        const summary = t.summary ? `**${t.summary}**\n` : '';
+                        const body = (t.content || '').trim();
+                        return `${summary}${body}`.trim();
+                    })
+                    .filter(Boolean);
+                if (steps.length === 0) return '';
+                const blockquoted = steps.join('\n\n').replace(/\n/g, '\n> ');
+                return `\n> 💭 **Reasoning:**\n> ${blockquoted}\n`;
+            }
+            if (contentType === 'reasoning_recap') {
+                // Just a timing tag ("Thought for 12s"). Not worth surfacing.
                 return '';
             }
 

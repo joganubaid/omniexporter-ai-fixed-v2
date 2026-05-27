@@ -1,46 +1,15 @@
-// OmniExporter AI - Gemini Adapter (Enterprise Edition)
-// Support for Google Gemini (gemini.google.com)
-// VERIFIED API: batchexecute with rpcids MaZiqc (list) and snvDe/hNvQHb (messages)
-// HAR-verified: 2026-02-16 — Headers, query params, payload structure confirmed
-// FIXED: Session params (bl, f.sid, at), headers (X-Same-Domain), response parsing
+// OmniExporter AI - Gemini Adapter
+// Talks to Google Gemini via the batchexecute RPC layer (rpcids MaZiqc for the
+// chat list, hNvQHb for message detail). Session params (bl, f.sid, at) are
+// pulled from the page via the gemini-inject.js content-script bridge.
 "use strict";
 
-// =============================================
-// PAGE CONTEXT SCRIPT INJECTOR
-// Content scripts run in isolated world - they CAN'T intercept page XHRs
-// Solution: Inject script into page context via web_accessible_resources
-// =============================================
-
-(function injectPageInterceptor() {
-    // Only run on Gemini pages
-    if (!window.location.hostname.includes('gemini.google.com')) return;
-
-    // Prevent duplicate injection.
-    // The previous guard used document.getElementById('omni-gemini-interceptor'), but the
-    // script removes itself from the DOM (this.remove()) after loading, so the ID is always
-    // absent and the guard never fired — allowing duplicate injection on every SPA navigation.
-    // A persistent window flag is used instead so it survives the DOM removal.
-    if (window.__omniGeminiInterceptorInjected) return;
-    window.__omniGeminiInterceptorInjected = true;
-
-    try {
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('src/adapters/gemini-page-interceptor.js');
-        script.onload = function () {
-            console.log('[GeminiAdapter] Page interceptor injected successfully');
-            this.remove(); // Clean up script tag after execution
-        };
-        script.onerror = function () {
-            console.warn('[GeminiAdapter] Failed to inject page interceptor');
-            // Reset flag on failure so a retry can succeed on next navigation
-            window.__omniGeminiInterceptorInjected = false;
-        };
-        (document.head || document.documentElement).appendChild(script);
-    } catch (e) {
-        console.warn('[GeminiAdapter] Injection error:', e.message);
-        window.__omniGeminiInterceptorInjected = false;
-    }
-})();
+// The historic page-world XHR interceptor (gemini-page-interceptor.js) used to
+// bump Gemini's hNvQHb message-limit from 20 → 100. As of the 2026-05 builds
+// Gemini's own frontend already sends 100, so the interceptor was a no-op and
+// has been removed. The direct adapter call (getThreadDetail below) now sends
+// 100 explicitly. If Gemini ever lowers the default again, re-introduce the
+// interceptor as a web-accessible page-world script.
 
 // =============================================
 // MESSAGE BRIDGE - Connect to gemini-inject.js
@@ -49,17 +18,16 @@
 var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
     pendingRequests: new Map(),
     isReady: false,
-    interceptorReady: false,
     // Cache session params to avoid repeated postMessage calls.
     // TTL is 60 s — short enough that a Gemini deploy (which changes the `bl` build-label)
     // won't leave stale params cached for long and cause 404s on every batchexecute call.
     // The cache is also invalidated explicitly when a batchexecute call returns 404.
     _sessionParamsCache: null,
     _sessionParamsCacheTime: 0,
-    _sessionParamsCacheTTL: 60000, // 60 seconds (was 5 minutes)
+    _sessionParamsCacheTTL: 60000,
 
     init() {
-        // REAL-9 FIX: Mark as initialized immediately so the outer guard works correctly
+        // Mark as initialized immediately so the outer guard works correctly
         this._listenerAdded = true;
         window.addEventListener('message', (event) => {
             if (event.source !== window) return;
@@ -80,10 +48,6 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
             case 'INJECT_READY':
                 this.isReady = true;
                 console.log('[GeminiAdapter] gemini-inject.js is ready');
-                break;
-            case 'INTERCEPTOR_READY':
-                this.interceptorReady = true;
-                console.log('[GeminiAdapter] Page interceptor ready - limit:', data?.limit);
                 break;
             case 'RESPONSE':
                 const pending = this.pendingRequests.get(requestId);
@@ -179,7 +143,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
     }
 };
 
-// REAL-9 FIX: Guard init() so only one window message listener is ever added.
+// Guard init() so only one window message listener is ever added.
 // On SPA re-injection, window.GeminiBridge already exists (preserved by window.X || guard).
 // Without this guard, each re-injection adds another listener, causing messages to be handled twice.
 if (!GeminiBridge._listenerAdded) {
@@ -193,7 +157,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     _reqCounter: Math.floor(Math.random() * 100) * 100000,
 
     // ============================================
-    // ENTERPRISE: Use platformConfig for endpoints
+    // Use platformConfig for endpoints
     // ============================================
     get config() {
         return typeof platformConfig !== 'undefined'
@@ -218,26 +182,29 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
      * @returns {string} The extracted UUID, or a stable fallback (never timestamp-based)
      */
     extractUuid: (url) => {
-        // Try platformConfig patterns first
+        // Normalise: Gemini's URL strips the `c_` prefix (/app/7703f71cf4997935)
+        // but the RPC layer uses the prefixed form (c_7703f71cf4997935). Dedup
+        // requires consistent keys, so we always return the prefixed form.
+        const normalise = (id) => id && (id.startsWith('c_') ? id : `c_${id}`);
+
         if (typeof platformConfig !== 'undefined') {
             const uuid = platformConfig.extractUuid('Gemini', url);
-            if (uuid) return uuid;
+            if (uuid) return normalise(uuid);
         }
 
-        // Fallback patterns
-        const appMatch = url.match(/gemini\.google\.com\/app\/([a-zA-Z0-9_-]+)/);
-        if (appMatch) return appMatch[1];
-        const gemMatch = url.match(/gemini\.google\.com\/gem\/([a-zA-Z0-9_-]+)/);
-        if (gemMatch) return gemMatch[1];
-        // Return a stable empty string instead of `'gemini_' + Date.now()`.
-        // A timestamp-based fallback created a new UUID on every extractUuid() call,
-        // so the same conversation produced a different ID each time — defeating the
-        // deduplication logic and creating a new Notion page on every export attempt.
+        // Adapter-level fallback (used if platformConfig failed to load).
+        // 16 hex chars after /app|chat|gem/, optional c_ prefix. Slugs like
+        // /app/google-gemini and /app/download are agent/static pages, not chats.
+        const chatMatch = url.match(/gemini\.google\.com\/(?:app|chat|gem)\/(c_[a-f0-9]{16}|[a-f0-9]{16})\b/);
+        if (chatMatch) return normalise(chatMatch[1]);
+
+        // No match → empty string (NOT a timestamp-based fallback, which would
+        // generate a different "UUID" on every call and break dedup).
         return '';
     },
 
     // ============================================
-    // HAR-VERIFIED: Required headers for batchexecute
+    // Required headers for batchexecute
     // Source: HAR capture 2026-02-16
     // ============================================
     _getHeaders: () => {
@@ -257,8 +224,8 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Get ALL threads (Load All feature)
-    // BUG-4 FIX: Loop with cursor pagination instead of single page fetch
+    // Get ALL threads (Load All feature)
+    // Loop with cursor pagination instead of single page fetch
     // ============================================
     getAllThreads: async function (progressCallback = null) {
         try {
@@ -309,7 +276,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Offset-based fetching
+    // Offset-based fetching
     // ============================================
     /**
      * Fetch threads using offset-based pagination with in-memory cache.
@@ -335,12 +302,12 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // HAR-VERIFIED: Build batchexecute request body
+    // Build batchexecute request body
     // f.req payload: [[[rpcid, JSON.stringify(payload), null, "generic"]]]
     // at param: XSRF token appended to body
     // ============================================
     _buildBatchRequest: (rpcid, payload, atToken = null) => {
-        // HAR-verified: f.req must be TRIPLE-nested [[[rpcid, data, null, "generic"]]]
+        // f.req must be TRIPLE-nested [[[rpcid, data, null, "generic"]]]
         const inner = [[[rpcid, JSON.stringify(payload), null, "generic"]]];
         const reqData = JSON.stringify(inner);
         let body = `f.req=${encodeURIComponent(reqData)}`;
@@ -353,21 +320,31 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // HAR-VERIFIED: Build batchexecute URL with all query params
+    // Build batchexecute URL with all query params
     // Params from HAR: rpcids, source-path, bl, f.sid, hl, _reqid, rt
     // ============================================
     _buildBatchUrl: function (rpcid, sessionParams = {}) {
         const params = new URLSearchParams();
         params.set('rpcids', rpcid);
-        params.set('source-path', '/app');
+        // HAR-verified: Gemini's own frontend sends the current page path as
+        // source-path (e.g. /app/<chatId> when on a specific chat). Mirror it
+        // to look indistinguishable from real frontend traffic; falls back to
+        // /app for non-chat contexts.
+        params.set('source-path',
+            (typeof window !== 'undefined' && window.location?.pathname) || '/app');
 
-        // bl (build ID) — critical, request fails without it
-        if (sessionParams.bl) {
-            params.set('bl', sessionParams.bl);
-        } else {
-            // Fallback: use a generic bl value (will be updated when inject script reads it)
-            params.set('bl', 'boq_assistant-bard-web-server_20260210.04_p0');
+        // `bl` (build label) is required — Gemini 404s on every batchexecute
+        // call without a valid current value. Don't silently fall back to a
+        // hardcoded stale value: that just turns a clear "session params
+        // missing" failure into a confusing 404 on the next call. Fail loud
+        // so the user sees an actionable error and refreshes the tab.
+        if (!sessionParams.bl) {
+            throw new Error(
+                'Gemini session not ready — could not read build label (bl) from page. ' +
+                'Refresh the Gemini tab and try again.'
+            );
         }
+        params.set('bl', sessionParams.bl);
 
         // f.sid (session ID) — from WIZ_global_data.FdrFJe
         if (sessionParams.fsid) {
@@ -388,7 +365,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // HAR-VERIFIED: Make batchexecute API call
+    // Make batchexecute API call
     // Uses correct headers, URL params, and body format
     // ============================================
     _batchExecute: async function (rpcid, payload) {
@@ -426,7 +403,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // HAR-VERIFIED: Parse batchexecute response
+    // Parse batchexecute response
     // Response format: ")]}'\n\n105\n[[...JSON...]]\n25\n[[...JSON...]]\n"
     // The data line is the one containing ["wrb.fr", rpcid, dataStr, ...]
     // ============================================
@@ -472,7 +449,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // HAR-VERIFIED: Get thread list via MaZiqc RPC
+    // Get thread list via MaZiqc RPC
     // Payload: [13, null, [0, null, 1]]  (13 = category for conversations)
     // Response: [null, null, [[id, title, null, null, null, [secs, nanos], ...], ...]]
     // ============================================
@@ -575,7 +552,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Offset-based fetching (mirrors ClaudeAdapter pattern)
+    // Offset-based fetching (mirrors ClaudeAdapter pattern)
     // Builds a full in-memory cache via cursor pagination, then slices.
     // Used by handleGetThreadListOffset for correct "Load All" behaviour.
     // ============================================
@@ -603,15 +580,29 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // HAR-VERIFIED: Get thread detail via hNvQHb RPC
-    // Payload: ["c_chatId", 10, null, 1, [1], [4], null, 1]
-    // Response structure:
-    //   data[0] = array of conversation turns
-    //   turn[2] = user message: [2][0][0] = query text, [2][5] = role (0=user)
-    //   turn[3] = model response: [3][0][0][1][0] = answer markdown
-    //   turn[3][0][0][1] array wraps the full answer text
-    //   Timestamp: last element [unixSeconds, nanos]
-    // Verified: 2026-02-17 with chat c_ec00ff04a46f7fa6
+    // Get thread detail via hNvQHb RPC.
+    // Payload (HAR-verified 2026-05): [chatId, 100, null, 1, [1], [4], null, 1]
+    //   [0] chatId        — c_<16 hex>, REQUIRED prefix
+    //   [1] messageLimit  — 100 matches what Gemini's own frontend sends; 10
+    //                       (previous value) silently truncated long chats
+    //   [2] cursor        — null = first page (see TRUNCATION note below)
+    //   [3] 1, [4] [1], [5] [4], [6] null, [7] 1 — fixed flags
+    //
+    // Response structure (data[0] = array of conversation turns):
+    //   turn[2]: user message,  turn[2][0][0] = query text,  turn[2][5] = role
+    //   turn[3]: model response, turn[3][0][0][1][0] = answer markdown
+    //   Timestamp: last element of each turn [unixSeconds, nanos]
+    //
+    // ⚠ KNOWN LIMITATION — long-chat truncation:
+    // We send messageLimit=100 with cursor=null (no pagination). For chats
+    // with more than 100 messages, only the most recent 100 are exported and
+    // older messages are silently dropped. Real Gemini frontend uses cursor
+    // pagination to scroll back further, but the cursor format isn't covered
+    // by any HAR we have. Expect a user report at some point: "my longest
+    // chat is missing the early messages." When that happens, implement
+    // cursor-based loop here using the second element of the response as the
+    // continuation token (verify exact field against a fresh HAR of an
+    // active scroll-up). Track as a follow-up before then.
     // ============================================
     /**
      * Fetch full message detail for a conversation by UUID via the hNvQHb batchexecute RPC.
@@ -622,12 +613,8 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     getThreadDetail: async function (uuid) {
         console.log(`[GeminiAdapter] Fetching thread detail for: ${uuid}`);
 
-        // Ensure uuid has the c_ prefix (Gemini chat IDs use it)
         const chatId = uuid.startsWith('c_') ? uuid : `c_${uuid}`;
-
-        // HAR-verified payload for hNvQHb
-        // [chatId, messageLimit, cursor, 1, [1], [4], null, 1]
-        const payload = [chatId, 10, null, 1, [1], [4], null, 1];
+        const payload = [chatId, 100, null, 1, [1], [4], null, 1];
 
         try {
             console.log(`[Gemini] Fetching messages with hNvQHb for ${chatId}`);
@@ -641,7 +628,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
             let title = '';
             let model = '';
 
-            // HAR-verified: data[0] is the array of conversation turns
+            // data[0] is the array of conversation turns
             // Each turn: [[chatId, responseId], null, userMsg, modelResponse]
             const turns = data[0];
             if (!Array.isArray(turns)) {

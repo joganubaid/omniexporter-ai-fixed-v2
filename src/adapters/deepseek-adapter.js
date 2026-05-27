@@ -9,7 +9,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     name: "DeepSeek",
 
     // ============================================
-    // ENTERPRISE: Use platformConfig for endpoints
+    // Use platformConfig for endpoints
     // ============================================
     get config() {
         return typeof platformConfig !== 'undefined'
@@ -59,7 +59,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Get auth token from localStorage
+    // Get auth token from localStorage
     // DeepSeek stores token as JSON: {value: "...", ...}
     // FIXED: Added multiple token source attempts
     // ============================================
@@ -107,7 +107,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                 }
             }
 
-            // BUG-3 FIX: Removed broad localStorage scan that matched ANY base64-ish string.
+            // Removed broad localStorage scan that matched ANY base64-ish string.
             // The scan was too permissive — it could return Stripe keys, analytics tokens, etc.
             // as a Bearer token. The proper async fallback is _fetchTokenFromAPI().
 
@@ -135,7 +135,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         }
     },
 
-    // HAR-VERIFIED: Token is also returned by /api/v0/users/current as biz_data.token
+    // Token is also returned by /api/v0/users/current as biz_data.token
     // Use this as ultimate async fallback when _getAuthToken() returns null
     _fetchTokenFromAPI: async () => {
         // Dedup concurrent API token fetch requests
@@ -160,7 +160,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                 const token = data?.data?.biz_data?.token || data?.biz_data?.token;
                 if (token) {
                     console.log('[DeepSeek] Token retrieved from /users/current API');
-                    // SEC-3 FIX: Cache in-memory only — do NOT write back to localStorage.
+                    // Cache in-memory only — do NOT write back to localStorage.
                     // Any injected script on the same origin can read localStorage.
                     DeepSeekAdapter._cachedToken = token;
                 }
@@ -177,13 +177,13 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Retry with exponential backoff + Auth
-    // HAR-verified: DeepSeek requires x-client-* headers on ALL requests
+    // Retry with exponential backoff + Auth
+    // DeepSeek requires x-client-* headers on ALL requests
     // ============================================
     _fetchWithRetry: async (url, options = {}, maxRetries = 3) => {
         let lastError;
 
-        // HAR-verified: token is plain string like "1N55fnYvy+9Zfj5..."
+        // token is plain string like "1N55fnYvy+9Zfj5..."
         // Try localStorage first, fall back to live API fetch
         let token = DeepSeekAdapter._getAuthToken();
         if (!token) {
@@ -228,7 +228,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Fetch single page with cursor
+    // Fetch single page with cursor
     // ============================================
     _fetchPage: async (cursor = null, limit = 50) => {
         // HAR-VERIFIED (2026-02-17):
@@ -253,7 +253,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         // HAR-verified path: data.data.biz_data.chat_sessions + data.data.biz_data.has_more
         const bizData = data.data?.biz_data || data.biz_data || data.data || data;
         const sessions = bizData.chat_sessions || bizData.sessions || [];
-        // HAR-verified: has_more is direct boolean in biz_data (no cursor field)
+        // has_more is direct boolean in biz_data (no cursor field)
         const hasMore = bizData.has_more === true;
         // Next cursor = last session's { updated_at, id }
         const nextCursor = hasMore && sessions.length > 0
@@ -275,7 +275,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Fetch ALL threads (Load All)
+    // Fetch ALL threads (Load All)
     // ============================================
     getAllThreads: async (progressCallback = null) => {
         const allThreads = [];
@@ -328,7 +328,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Offset-based fetching (for options.js)
+    // Offset-based fetching (for options.js)
     // ============================================
     /**
      * Fetch threads using offset-based pagination with cursor caching.
@@ -459,22 +459,44 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         // HAR-VERIFIED (2026-02-17): DeepSeek messages do NOT use a 'content' field.
         // Real structure: { role, fragments: [{type:"text",content:"..."},...], ... }
         // content field is always empty string ""; real text is in fragments[].content
-        // HAR-VERIFIED 2026-03-16: DeepSeek R1 uses <think>...</think> tags for reasoning
+        // DeepSeek R1 uses <think>...</think> tags for reasoning
         const dsExtractContent = (msg) => {
             try {
-                // PRIMARY: fragments array (HAR-verified real structure)
-                // HAR co5m: fragments = [{type:"REQUEST"/"RESPONSE", content:"..."}]
-                // type "REQUEST" = user message, "RESPONSE" = assistant message
-                // type "thinking"/"reasoning" = DeepSeek R1 chain-of-thought
+                // PRIMARY: fragments array (HAR-verified real structure).
+                // Fragment types seen (HAR 2026-05):
+                //   REQUEST   = user message text       (uses .content)
+                //   RESPONSE  = assistant message text  (uses .content, optional .references)
+                //   FILE      = user-attached file      (uses .files[].file_name, NO .content)
+                //   thinking/reasoning = R1 chain-of-thought (uses .content)
+                //
+                // ⚠ FILE fragments don't have a `content` field — previously the
+                // extractor returned '' for them and silently dropped any user
+                // attachments from the export. Handled explicitly below.
                 if (Array.isArray(msg.fragments) && msg.fragments.length > 0) {
                     const parts = [];
                     for (const f of msg.fragments) {
-                        const text = f?.content ?? f?.text ?? f?.body ?? f?.value ?? '';
+                        if (!f || typeof f !== 'object') continue;
+
+                        // FILE fragment — surface attachments inline so they
+                        // aren't lost from the export.
+                        if (f.type === 'FILE' && Array.isArray(f.files) && f.files.length > 0) {
+                            const fileParts = f.files.map(file => {
+                                const name = file.file_name || file.name || 'attachment';
+                                const size = file.file_size
+                                    ? ` (${Math.round(file.file_size / 1024)} KB)`
+                                    : '';
+                                return `📎 [File: ${name}${size}]`;
+                            });
+                            parts.push(fileParts.join('\n'));
+                            continue;
+                        }
+
+                        const text = f.content ?? f.text ?? f.body ?? f.value ?? '';
                         const fragText = typeof text === 'string' ? text : '';
                         if (!fragText) continue;
 
                         // Handle thinking/reasoning fragments separately
-                        if (f?.type === 'thinking' || f?.type === 'reasoning') {
+                        if (f.type === 'thinking' || f.type === 'reasoning') {
                             parts.push(`\n> 💭 **Thinking:**\n> ${fragText.replace(/\n/g, '\n> ')}\n`);
                         } else {
                             // REQUEST, RESPONSE, text, or any other type — treat as plain content

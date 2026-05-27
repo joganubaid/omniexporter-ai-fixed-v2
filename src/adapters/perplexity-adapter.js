@@ -1,6 +1,12 @@
 // OmniExporter AI - Perplexity Platform Adapter
 "use strict";
 
+// HAR-verified 2026-05: Perplexity uses supported_block_use_cases as a
+// capability flag — block types we don't advertise are stripped from the
+// response. Mirror what the real frontend sends so we get every content
+// type the server can produce (knowledge cards, widgets, media, agentic
+// outputs from Perplexity's "Comet" browser agent, etc.). Missing flags =
+// silently dropped content.
 var PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES || [
     'answer_modes', 'media_items', 'knowledge_cards', 'inline_entity_cards',
     'place_widgets', 'finance_widgets', 'prediction_market_widgets', 'sports_widgets',
@@ -9,7 +15,11 @@ var PERPLEXITY_BLOCK_USE_CASES = window.PERPLEXITY_BLOCK_USE_CASES = window.PERP
     'diff_blocks', 'inline_knowledge_cards', 'entity_group_v2', 'refinement_filters',
     'canvas_mode', 'maps_preview', 'answer_tabs', 'price_comparison_widgets',
     'preserve_latex', 'generic_onboarding_widgets', 'in_context_suggestions',
-    'pending_followups', 'inline_claims'
+    'pending_followups', 'inline_claims',
+    // Added 2026-05 — agentic / Comet browser-agent block types.
+    'unified_assets', 'workflow_steps', 'background_agents', 'asset_diff_assets',
+    'ask_user_question_empty_options', 'ask_user_question_delta',
+    'write_delta', 'bash_delta', 'run_subagent_delta', 'confirm_action_delta'
 ];
 
 var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {

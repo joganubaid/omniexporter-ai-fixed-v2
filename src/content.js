@@ -78,7 +78,7 @@ if (window.__omniExporterLoaded) {
                 }
             },
 
-            // SEC-5 FIX: Also reject error-shaped objects like {error: "not found"}
+            // Also reject error-shaped objects like {error: "not found"}
             // Previously accepted any truthy object, including API error responses.
             isValidApiResponse: (data) => {
                 if (!data || typeof data !== 'object') return false;
@@ -127,7 +127,7 @@ if (window.__omniExporterLoaded) {
                     document.removeEventListener('visibilitychange', visibilityHandler);
                 });
 
-                // BUG-6 FIX: SPA Navigation Handler - Now properly notifies background
+                // SPA Navigation Handler - Now properly notifies background
                 // Previously just logged the UUID without taking any action
                 const navigationHandler = () => {
                     const adapter = getPlatformAdapter();
@@ -161,7 +161,7 @@ if (window.__omniExporterLoaded) {
                     window.removeEventListener('popstate', navigationHandler);
                 });
 
-                // BUG-2 FIX: Store the truly-original functions behind a window sentinel.
+                // Store the truly-original functions behind a window sentinel.
                 // Without this, re-injection captures the already-patched version, stacking indefinitely.
                 if (!history.__omniOriginalPushState) {
                     history.__omniOriginalPushState = history.pushState;
@@ -199,7 +199,7 @@ if (window.__omniExporterLoaded) {
             }
 
             async handleMessage(request, sendResponse) {
-                // Phase 4: Health check handler
+                // Health check handler
                 if (request.type === 'HEALTH_CHECK') {
                     sendResponse({ healthy: true, timestamp: Date.now() });
                     return;
@@ -229,7 +229,7 @@ if (window.__omniExporterLoaded) {
                     } else if (request.type === "GET_PLATFORM_INFO") {
                         sendResponse({ success: true, platform: adapter.name });
                     } else if (request.type === "EXPORT_THREAD") {
-                        // REAL-6 FIX: Context menu export handler — calls ExportManager directly.
+                        // Context menu export handler — calls ExportManager directly.
                         // Background sends this message after extracting thread content.
                         try {
                             const { data, format = 'markdown' } = request.payload;
@@ -294,7 +294,7 @@ function normalizeEntries(detail, platform) {
         entries = detail.messages;
     }
 
-    // BUG-11 FIX: Use Array.isArray() before .length to guard against non-array truthy values.
+    // Use Array.isArray() before .length to guard against non-array truthy values.
     if (!Array.isArray(entries) || entries.length === 0) {
         return [];
     }
@@ -436,7 +436,7 @@ async function handleGetThreadList(adapter, payload, sendResponse) {
 
 /**
  * Handle Thread List Fetching with Direct Offset (for Load All feature)
- * ENTERPRISE: Supports all 6 platforms with anti-bot measures
+ * Supports all 6 platforms with anti-bot measures
  */
 async function handleGetThreadListOffset(adapter, payload, sendResponse) {
     try {
@@ -444,7 +444,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
         const limit = payload.limit || 50;
 
         // ANTI-BOT: Add random delay between ALL requests including the first.
-        // REAL-8 FIX: First request (offset===0) used to fire immediately with no delay.
+        // First request (offset===0) used to fire immediately with no delay.
         // Perplexity and Claude have bot detection that can trigger on unnaturally fast first requests.
         const delay = offset === 0
             ? 100 + Math.random() * 300   // 100–400ms on first request
@@ -482,7 +482,17 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
             const spaceId  = payload.spaceId || null;
 
             // Always send limit=20 — the API ignores larger values anyway.
-            const body = { limit: 20, offset, ascending: false, search_term: "" };
+            // HAR-verified (2026-05) body shape — exclude_asi:false and
+            // include_assets:true are required to (a) not silently filter out
+            // ASI-mode threads, and (b) include asset references in list items.
+            const body = {
+                limit: 20,
+                offset,
+                ascending: false,
+                search_term: "",
+                exclude_asi: false,
+                include_assets: true
+            };
             if (spaceId) body.collection_uuid = spaceId;
 
             const pResp = await fetch(`${baseUrl}${endpoint}`, {
@@ -517,7 +527,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
             console.log(`[Perplexity] offset=${offset} got=${pThreads.length} hasMore=${pHasMore}`);
             sendResponse({ success: true, data: { threads: pThreads, offset, hasMore: pHasMore } });
         }
-        // ENTERPRISE: DeepSeek with cursor-based offset simulation
+        // DeepSeek with cursor-based offset simulation
         else if (adapter.name === 'DeepSeek' && adapter.getThreadsWithOffset) {
             const result = await adapter.getThreadsWithOffset(offset, limit);
             sendResponse({
@@ -530,7 +540,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 }
             });
         }
-        // ENTERPRISE: ChatGPT with native offset support + anti-bot headers
+        // ChatGPT with native offset support + anti-bot headers
         else if (adapter.name === 'ChatGPT') {
             try {
                 if (typeof platformConfig === 'undefined') {
@@ -572,15 +582,21 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                         data: { threads, offset, hasMore, total }
                     });
                 } else if (response.status === 403 || response.status === 429) {
-                    // Bot detection likely - use DOM fallback
-                    console.warn('[ChatGPT] API blocked (403/429), using DOM fallback');
-                    const result = await adapter.getThreads(1, limit);
-                    sendResponse({ success: true, data: { threads: result.threads || result, offset: 0, hasMore: false } });
+                    // Bot detection or rate limit. Don't fall back to DOM scraping —
+                    // the sidebar is virtualized and would silently return only the
+                    // first ~20 visible threads, hiding the rest of the user's history.
+                    const reason = response.status === 429
+                        ? 'rate-limited'
+                        : 'blocked by bot detection';
+                    sendResponse({
+                        success: false,
+                        error: `ChatGPT API ${reason} (HTTP ${response.status}). Refresh the ChatGPT tab and try again.`
+                    });
                 } else {
-                    // Other error - try page-based fallback
-                    const page = Math.floor(offset / limit) + 1;
-                    const result = await adapter.getThreads(page, limit);
-                    sendResponse({ success: true, data: result });
+                    sendResponse({
+                        success: false,
+                        error: `ChatGPT API returned HTTP ${response.status}. Refresh the ChatGPT tab and try again.`
+                    });
                 }
             } catch (e) {
                 console.error('[ChatGPT] Error:', e.message);
@@ -622,17 +638,15 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 console.log(`[Gemini] offset=${offset} got=${threads.length} hasMore=${hasMore}`);
                 sendResponse({ success: true, data: { threads, offset, hasMore } });
             } catch (e) {
-                console.warn('[Gemini] API failed, trying DOM fallback:', e.message);
-                const threads = [];
-                document.querySelectorAll('[class*="conversation-title"],[class*="chat-item"],a[href*="/app/"]').forEach((item, i) => {
-                    if (i >= limit) return;
-                    const href = item.closest('a')?.getAttribute('href') || '';
-                    const uuid = href.match(/\/app\/([a-zA-Z0-9_-]+)/)?.[1];
-                    if (uuid && SecurityUtils.isValidUuid(uuid)) {
-                        threads.push({ uuid, title: item.textContent?.trim() || 'Gemini Chat', platform: 'Gemini' });
-                    }
+                // No DOM fallback — Gemini's sidebar is virtualized and would
+                // silently return only the first handful of threads, hiding the
+                // rest of the user's history. Surface the real API failure so the
+                // user can act (refresh the tab, log back in, etc.).
+                console.error('[Gemini] MaZiqc API failed:', e.message);
+                sendResponse({
+                    success: false,
+                    error: `Gemini API unavailable: ${e.message}. Refresh the Gemini tab and try again.`
                 });
-                sendResponse({ success: true, data: { threads, offset, hasMore: false } });
             }
         }
         // CLAUDE: One V2 API call per message.
@@ -649,7 +663,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 const orgId   = await ClaudeAdapter.getOrgId();
                 const baseUrl = platformConfig.getBaseUrl('Claude');
                 const v2Ep    = platformConfig.buildEndpoint('Claude', 'conversationsV2', { org: orgId });
-                // HAR-verified: V2 uses &offset=N (not cursor=uuid — that returns same page forever)
+                // V2 uses &offset=N (not cursor=uuid — that returns same page forever)
                 const url = `${baseUrl}${v2Ep}&offset=${offset}`;
 
                 const resp = await ClaudeAdapter._fetchWithRetry(url);
@@ -672,10 +686,10 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 sendResponse({ success: false, error: e.message });
             }
         }
-        // ENTERPRISE: Grok support (HAR-verified endpoints)
+        // Grok support (HAR-verified endpoints)
         else if (adapter.name === 'Grok') {
             try {
-                // BUG-5 FIX: Grok API only returns pageSize=60 conversations at a time.
+                // Grok API only returns pageSize=60 conversations at a time.
                 // For offsets beyond 60, we need to use Grok's native cursor-based pagination
                 // or document the 60-thread limit. Currently documenting the limit and using
                 // in-memory cache to avoid breaking pagination.
@@ -687,7 +701,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
                 if (cacheValid && adapter._allThreadsCache.length > 0) {
                     allChats = adapter._allThreadsCache;
                 } else {
-                    // HAR-verified: ?pageSize=60 required, fields are conversationId/modifyTime
+                    // ?pageSize=60 required, fields are conversationId/modifyTime
                     // Note: Grok API currently does not support cursor pagination in this endpoint
                     // Maximum 60 conversations can be fetched per request
                     const response = await fetch('https://grok.com/rest/app-chat/conversations?pageSize=60', {
@@ -701,7 +715,7 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
 
                     if (response.ok) {
                         const data = await response.json();
-                        // HAR-verified: response is { conversations: [{conversationId, title, modifyTime, createTime}] }
+                        // response is { conversations: [{conversationId, title, modifyTime, createTime}] }
                         allChats = data.conversations || data.data || data.items || [];
 
                         // Update cache
@@ -714,10 +728,10 @@ async function handleGetThreadListOffset(adapter, payload, sendResponse) {
 
                 // Now slice from the full cached list
                 const threads = allChats.slice(offset, offset + limit).map(t => ({
-                    // HAR-verified: field is 'conversationId' not 'id'
+                    // field is 'conversationId' not 'id'
                     uuid: t.conversationId || t.id || t.uuid,
                     title: t.title || t.name || 'Grok Chat',
-                    // HAR-verified: fields are 'modifyTime' and 'createTime'
+                    // fields are 'modifyTime' and 'createTime'
                     last_query_datetime: t.modifyTime || t.createTime || t.updatedAt
                 }));
 
@@ -859,12 +873,6 @@ if (document.readyState === 'loading') {
 } else {
     initializePlatformAdapters();
 }
-
-// ============================================
-// (duplicate ContentScriptManager instantiation removed — manager already initialized above)
-
-// Expose manager reference for re-injection guard
-window.__omniExporterManager = manager;
 
 } // end if (!window.__omniExporterLoaded)
 

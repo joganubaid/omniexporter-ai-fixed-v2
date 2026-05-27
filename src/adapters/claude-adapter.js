@@ -21,8 +21,14 @@ var ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Anti-bot headers
-    // HAR-VERIFIED 2026-03-16: Real browser traffic includes anthropic-* headers
+    // Anti-bot headers — mirror what claude.ai/web sends on real-browser traffic.
+    // HAR-verified 2026-05-26 against build SHA below.
+    //
+    // ⚠ anthropic-client-sha drifts on every Anthropic frontend deploy. If you
+    // see Claude API calls start returning 4xx unexpectedly, refresh this value:
+    //   1. Open claude.ai in DevTools → Network tab
+    //   2. Click any /api/organizations/... request
+    //   3. Copy the anthropic-client-sha request header value here
     // ============================================
     _getHeaders: () => {
         const headers = {
@@ -32,7 +38,6 @@ var ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
-            // HAR-verified 2026-05-26: all anthropic-* headers present on every real browser request
             'anthropic-client-platform': 'web_claude_ai',
             'anthropic-client-version': '1.0.0',
             'anthropic-client-sha': '9f94910bb319abfbb3f61a3950f57e2804cf87be',
@@ -66,6 +71,14 @@ var ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
 
                 if (response.status === 401 || response.status === 403) {
                     throw new Error('Authentication required - please login to Claude');
+                }
+
+                // Honor Claude's x-should-retry response header. When set to
+                // "false", Anthropic is telling us the error is permanent
+                // (e.g. 400 invalid request) and retrying will just waste
+                // budget. Bail out immediately with the underlying status.
+                if (response.headers.get('x-should-retry') === 'false') {
+                    throw new Error(`Claude returned HTTP ${response.status} (x-should-retry: false)`);
                 }
 
                 if (response.status === 429) {
@@ -328,10 +341,10 @@ var ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
 };
 
 // ============================================
-// Full Fidelity content block extractor
-// HAR-VERIFIED 2026-03-16: Claude content[] arrays contain 5+ block types:
-//   text, tool_use, tool_result, token_budget, local_resource
-// Previously only content[0]?.text was read — entire tool/artifact content was dropped.
+// Full Fidelity content block extractor.
+// HAR-verified 2026-05-26 — Claude content[] arrays contain these block types:
+//   text, thinking, tool_use, tool_result, token_budget, local_resource
+// Anything else passes through the `default` arm (we still grab .text if present).
 // ============================================
 function extractAllContentBlocks(contentArray) {
     if (!Array.isArray(contentArray)) {

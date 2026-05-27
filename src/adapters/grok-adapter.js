@@ -8,7 +8,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     name: "Grok",
 
     // ============================================
-    // ENTERPRISE: Use platformConfig for endpoints
+    // Use platformConfig for endpoints
     // ============================================
     get config() {
         return typeof platformConfig !== 'undefined'
@@ -52,7 +52,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Anti-bot headers (HAR-verified)
+    // Anti-bot headers (HAR-verified)
     // Grok uses cookie-based auth (sso + sso-rw cookies)
     // No extra auth headers needed — cookies sent via credentials:'include'
     // ============================================
@@ -68,7 +68,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Retry with exponential backoff
+    // Retry with exponential backoff
     // ============================================
     _fetchWithRetry: async (url, options = {}, maxRetries = 3) => {
         let lastError;
@@ -108,65 +108,37 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Get ALL threads (Load All feature)
-    // BUG-5 FIX: Replaced single pageSize=60 call with paginated loop.
+    // Get ALL threads (Load All feature)
+    // Replaced single pageSize=60 call with paginated loop.
     // Grok silently returned only 60 conversations for users with more.
     // ============================================
     getAllThreads: async (progressCallback = null) => {
+        // ⚠ Grok's /rest/app-chat/conversations endpoint is single-page only.
+        // HAR-verified (2026-05): the response is {conversations:[...], textSearchMatches:[]}
+        // with NO nextPageToken, cursor, or hasMore field — there is no
+        // continuation mechanism. pageSize=60 is the hard cap and any user
+        // with more than 60 chats simply can't reach the older ones via this
+        // endpoint. If/when Grok ships a v2 list endpoint with pagination,
+        // wire it here.
         try {
-            const allThreads = [];
-            const seenUuids = new Set();
-            let pageToken = null;
-            let pageNum = 0;
+            const url = `${GrokAdapter.apiBase}/conversations?pageSize=60`;
+            const response = await GrokAdapter._fetchWithRetry(url);
+            const data = await response.json();
+            const chats = data.conversations || [];
 
-            do {
-                // HAR-verified: pageSize=50 supported; nextPageToken for continuation
-                const url = pageToken
-                    ? `${GrokAdapter.apiBase}/conversations?pageSize=50&pageToken=${encodeURIComponent(pageToken)}`
-                    : `${GrokAdapter.apiBase}/conversations?pageSize=50`;
+            const allThreads = chats.map(chat => ({
+                uuid: chat.conversationId || chat.id,
+                title: chat.title || 'Grok Chat',
+                platform: 'Grok',
+                last_query_datetime: chat.modifyTime || chat.createTime || new Date().toISOString(),
+                starred: !!chat.starred
+            })).filter(t => t.uuid);
 
-                let response, data;
-                try {
-                    response = await GrokAdapter._fetchWithRetry(url);
-                    data = await response.json();
-                } catch (pageError) {
-                    console.warn(`[Grok] Page ${pageNum} fetch failed:`, pageError.message);
-                    // Break pagination on error but return what we have so far
-                    break;
-                }
-
-                const chats = data.conversations || data.data || data.items || [];
-
-                for (const chat of chats) {
-                    const uuid = chat.conversationId || chat.id || chat.uuid;
-                    if (uuid && !seenUuids.has(uuid)) {
-                        seenUuids.add(uuid);
-                        allThreads.push({
-                            uuid,
-                            title: chat.title || chat.name || 'Grok Chat',
-                            platform: 'Grok',
-                            last_query_datetime: chat.modifyTime || chat.createTime || chat.updatedAt || new Date().toISOString()
-                        });
-                    }
-                }
-
-                pageToken = data.nextPageToken || data.cursor || null;
-                pageNum++;
-
-                if (progressCallback) progressCallback(allThreads.length, !!pageToken);
-
-                // Safety limit
-                if (pageNum > 100 || allThreads.length > 5000) break;
-
-                if (pageToken) await new Promise(r => setTimeout(r, 300));
-
-            } while (pageToken);
-
-            // Update cache
             GrokAdapter._allThreadsCache = allThreads;
             GrokAdapter._cacheTimestamp = Date.now();
 
-            console.log(`[Grok] getAllThreads complete: ${allThreads.length} conversations`);
+            if (progressCallback) progressCallback(allThreads.length, false);
+            console.log(`[Grok] getAllThreads complete: ${allThreads.length} conversations (Grok caps at 60)`);
             return allThreads;
         } catch (error) {
             console.error('[Grok] getAllThreads failed:', error);
@@ -175,7 +147,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Offset-based fetching
+    // Offset-based fetching
     // ============================================
     /**
      * Fetch threads using offset-based pagination.
@@ -237,7 +209,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
     },
 
     // ============================================
-    // ENTERPRISE: Resilient thread detail fetching
+    // Resilient thread detail fetching
     // HAR-VERIFIED 3-step flow:
     //   1. GET /conversations/{uuid}/response-node?includeThreads=true → gets responseIds[]
     //   2. POST /conversations/{uuid}/load-responses {responseIds:[...]} → gets messages
@@ -295,57 +267,65 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
             }, 2);
             const loadData = await loadResponse.json();
 
-            // HAR-verified: response is { responses: [{responseId, message, sender:"human"/"assistant", createTime}] }
+            // response is { responses: [{responseId, message, sender:"human"/"assistant", createTime}] }
             const rawMessages = loadData.responses || loadData.messages || loadData.items || [];
 
             console.log(`[Grok] Step 2 complete: ${rawMessages.length} messages loaded`);
 
             // ── STEP 3: Transform messages into entries ─────────────────────
-            // HAR-VERIFIED 2026-03-16: Handle media references and structured content
+            // Handle media references and structured content
             const entries = [];
             let currentQuery = '';
 
             rawMessages.forEach(msg => {
-                // HAR-verified: sender is "human" or "assistant" (lowercase)
+                // sender is "human" or "assistant" (lowercase)
                 const sender = (msg.sender || msg.role || msg.author || '').toLowerCase();
-                // HAR-verified: content field is "message" (not "content" or "text")
+                // content field is "message" (not "content" or "text")
                 let content = msg.message || msg.content || msg.text || '';
 
-                // Handle structured media references in response nodes
-                if (msg.mediaReferences && Array.isArray(msg.mediaReferences) && msg.mediaReferences.length > 0) {
-                    const mediaParts = msg.mediaReferences.map(ref => {
-                        if (ref.type === 'image' || ref.mediaType === 'image') {
-                            return `🖼️ [Image: ${ref.prompt || ref.alt || ref.url || 'generated image'}]`;
-                        }
-                        if (ref.type === 'video' || ref.mediaType === 'video') {
-                            return `🎬 [Video: ${ref.title || ref.url || 'generated video'}]`;
-                        }
-                        return `📎 [Media: ${ref.url || ref.title || 'attachment'}]`;
-                    });
-                    if (mediaParts.length > 0) {
-                        content = content ? `${content}\n\n${mediaParts.join('\n')}` : mediaParts.join('\n');
-                    }
+                // HAR-verified Grok field names (2026-05). Earlier code looked for
+                // `mediaReferences` / `searchResults` / `codeBlocks` — none of those
+                // exist in real Grok responses, so attachments and citations were
+                // silently dropped. Real fields: imageAttachments, fileAttachments,
+                // generatedImageUrls, webSearchResults.
+
+                // Image attachments + Grok-generated images
+                const imageRefs = [
+                    ...(Array.isArray(msg.imageAttachments) ? msg.imageAttachments : []),
+                    ...(Array.isArray(msg.generatedImageUrls)
+                        ? msg.generatedImageUrls.map(u => (typeof u === 'string' ? { url: u } : u))
+                        : [])
+                ];
+                if (imageRefs.length > 0) {
+                    const parts = imageRefs.map(ref =>
+                        `🖼️ [Image: ${ref.prompt || ref.alt || ref.url || ref.imageUrl || 'image'}]`
+                    );
+                    content = content ? `${content}\n\n${parts.join('\n')}` : parts.join('\n');
                 }
 
-                // Handle code blocks in structured response
-                if (msg.codeBlocks && Array.isArray(msg.codeBlocks)) {
-                    const codeParts = msg.codeBlocks.map(cb => {
-                        const lang = cb.language || '';
-                        return `\n\`\`\`${lang}\n${cb.code || cb.content || ''}\n\`\`\`\n`;
-                    });
-                    if (codeParts.length > 0) {
-                        content = content ? `${content}\n${codeParts.join('\n')}` : codeParts.join('\n');
-                    }
+                // File attachments (PDFs, docs, etc.)
+                if (Array.isArray(msg.fileAttachments) && msg.fileAttachments.length > 0) {
+                    const parts = msg.fileAttachments.map(f =>
+                        `📎 [File: ${f.fileName || f.name || f.url || 'attachment'}]`
+                    );
+                    content = content ? `${content}\n\n${parts.join('\n')}` : parts.join('\n');
                 }
 
-                // Handle web search results
-                if (msg.searchResults && Array.isArray(msg.searchResults)) {
-                    const sources = msg.searchResults.map(s =>
+                // Web search citations. Prefer `citedWebSearchResults` (only
+                // the sources Grok actually cited inline in the answer) over
+                // `webSearchResults` (everything the model retrieved, much of
+                // it unused). Falls back to the broader set if cited isn't
+                // populated, and to the legacy `searchResults` name in case
+                // Grok renames again.
+                const webResults =
+                    (Array.isArray(msg.citedWebSearchResults) && msg.citedWebSearchResults.length > 0 && msg.citedWebSearchResults) ||
+                    msg.webSearchResults ||
+                    msg.searchResults;
+                if (Array.isArray(webResults) && webResults.length > 0) {
+                    const sources = webResults.map(s =>
                         `> 🔗 [${s.title || 'Source'}](${s.url || '#'})`
                     );
-                    if (sources.length > 0) {
-                        content = content ? `${content}\n\n${sources.join('\n')}` : sources.join('\n');
-                    }
+                    content = content ? `${content}\n\n${sources.join('\n')}` : sources.join('\n');
                 }
 
                 if (!content.trim()) return;
@@ -389,7 +369,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
             let conversationModel = '';
             if (!title) {
                 try {
-                    // HAR-verified: response is {conversation: {conversationId, title, ...}} OR {}
+                    // response is {conversation: {conversationId, title, ...}} OR {}
                     const metaUrl = `${GrokAdapter.apiBase}/conversations_v2/${uuid}?includeWorkspaces=true&includeTaskResult=true`;
                     const metaResp = await GrokAdapter._fetchWithRetry(metaUrl, {}, 1);
                     const metaData = await metaResp.json();
@@ -433,7 +413,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
 
 
     // ============================================
-    // HAR-VERIFIED 2026-03-16: Fetch workspaces
+    // Fetch workspaces
     // GET /rest/workspaces?pageSize=50&orderBy=ORDER_BY_LAST_USE_TIME
     // Response: { workspaces: [{workspaceId, name, ...}] }
     // ============================================

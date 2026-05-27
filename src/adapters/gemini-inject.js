@@ -119,27 +119,34 @@
             return null;
         }
 
-        // Extract all session parameters needed for batchexecute API calls
-        // HAR analysis: bl=boq_assistant-bard-web-server_YYYYMMDD.NN_p0
-        //               f.sid=<numeric>, at=<XSRF token>
+        // Extract all session parameters needed for batchexecute API calls.
+        // HAR (2026-05): bl=boq_assistant-bard-web-server_YYYYMMDD.NN_p0
+        //                f.sid=<numeric>
+        //                at=<SNlM0e XSRF token>:<page-load ms timestamp>
+        //
+        // The :<timestamp> suffix is what Gemini's own frontend sends. The
+        // value is reused for the entire session (verified across 40+ calls
+        // in one HAR with the same `at` value). We capture it ONCE per
+        // session-params read and let it ride.
         getSessionParams() {
             const params = { at: null, bl: null, fsid: null };
+            let rawAt = null;
 
             // From WIZ_global_data (primary source)
             if (typeof window.WIZ_global_data !== 'undefined') {
-                params.at = window.WIZ_global_data.SNlM0e || null;   // XSRF token → "at" POST param
+                rawAt = window.WIZ_global_data.SNlM0e || null;       // XSRF token
                 params.bl = window.WIZ_global_data.cfb2h || null;    // Build version → "bl" query param
                 params.fsid = window.WIZ_global_data.FdrFJe || null; // Session ID → "f.sid" query param
             }
 
             // Fallback: parse from page HTML if WIZ_global_data missing
-            if (!params.at || !params.bl) {
+            if (!rawAt || !params.bl) {
                 const scripts = document.querySelectorAll('script');
                 for (const script of scripts) {
                     const text = script.textContent || '';
-                    if (!params.at) {
+                    if (!rawAt) {
                         const atMatch = text.match(/"SNlM0e":"([^"]+)"/);
-                        if (atMatch) params.at = atMatch[1];
+                        if (atMatch) rawAt = atMatch[1];
                     }
                     if (!params.bl) {
                         const blMatch = text.match(/"cfb2h":"([^"]+)"/);
@@ -150,6 +157,13 @@
                         if (sidMatch) params.fsid = sidMatch[1];
                     }
                 }
+            }
+
+            // Append :<timestamp> exactly as Gemini's frontend does. If the
+            // raw token already has a colon (some builds bake it in) leave
+            // it alone, otherwise append the current ms timestamp.
+            if (rawAt) {
+                params.at = rawAt.includes(':') ? rawAt : `${rawAt}:${Date.now()}`;
             }
 
             console.log('[OmniExporter] Session params:', {
@@ -184,13 +198,7 @@
     // INITIALIZATION
     // ============================================
     const bridge = new WebBridge();
-    // Note: XHR interception for Gemini API calls is handled exclusively by
-    // gemini-page-interceptor.js which runs in the PAGE context (injected via
-    // <script> tag by gemini-adapter.js). This content script runs in Chrome's
-    // isolated world and therefore cannot intercept the page's XMLHttpRequests.
-    // A previously included XHRInterceptor class here only patched the isolated
-    // world's XHR (useless) and was never queried, so it has been removed.
-
-    // Sec 3 fix: debug window object removed — it exposed bridge.getGlobalData() (XSRF token)
-    // to any page script. Internal instances are kept as local constants.
+    // Local-only reference — the bridge intentionally has no window-attached
+    // handle so page scripts can't reach getGlobalData() (which would expose
+    // the XSRF token).
 })();
