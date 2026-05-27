@@ -24,6 +24,21 @@ root.ExportManager = class ExportManager {
         return text ? text.replace(/<[^>]+>/g, '') : '';
     }
 
+    // YAML-safe scalar: double-quoted with internal " and \ escaped, newlines collapsed.
+    // Keeps frontmatter parseable for titles containing quotes, colons, or unicode.
+    static _yamlString(value) {
+        if (value == null) return '""';
+        const s = String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ');
+        return `"${s}"`;
+    }
+
+    // True for plain-text URLs that look like images (common image suffixes or
+    // known image-host hostnames). Used to surface image attachments inline.
+    static _looksLikeImageUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        return /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(url);
+    }
+
     static export(data, format = 'markdown', platform = 'Unknown') {
         const formatConfig = this.formats[format];
         if (!formatConfig) {
@@ -64,13 +79,23 @@ root.ExportManager = class ExportManager {
             : new Date().toISOString().split('T')[0];
         const model = data.detail?.model || data.model || null;
 
+        // Count tagged metadata across all turns for the frontmatter summary
+        const allMeta = entries.map(e => this._extractEntryMeta(e));
+        const totalSources = allMeta.reduce((sum, m) => sum + m.sources.length, 0);
+        const totalAttachments = allMeta.reduce((sum, m) => sum + m.attachments.length, 0);
+        const totalMedia = allMeta.reduce((sum, m) => sum + m.media.length, 0);
+
         let md = '---\n';
-        md += `title: "${title}"\n`;
+        md += `title: ${this._yamlString(title)}\n`;
         md += `date: ${date}\n`;
-        md += `platform: ${platform}\n`;
-        md += `uuid: ${data.uuid || 'unknown'}\n`;
+        md += `platform: ${this._yamlString(platform)}\n`;
+        md += `uuid: ${this._yamlString(data.uuid || 'unknown')}\n`;
         md += `entries: ${entries.length}\n`;
-        if (model) md += `model: ${model}\n`;
+        if (model) md += `model: ${this._yamlString(model)}\n`;
+        if (totalSources > 0) md += `sources: ${totalSources}\n`;
+        if (totalAttachments > 0) md += `attachments: ${totalAttachments}\n`;
+        if (totalMedia > 0) md += `media: ${totalMedia}\n`;
+        md += `tags: [chat, ${platform.toLowerCase()}]\n`;
         md += '---\n\n';
         md += `# ${title}\n\n`;
         md += `**Platform:** ${platform} | **Conversations:** ${entries.length} | **Date:** ${date}\n`;
@@ -79,25 +104,44 @@ root.ExportManager = class ExportManager {
 
         entries.forEach((entry, index) => {
             const query = entry.query || entry.query_str || '';
-            const meta = this._extractEntryMeta(entry);
+            const meta = entries.length === allMeta.length ? allMeta[index] : this._extractEntryMeta(entry);
+            const turnDate = entry.updated_datetime || entry.created_datetime || null;
 
             md += `---\n\n`;
-            md += `## Turn ${index + 1}\n\n`;
+            md += `## Turn ${index + 1}`;
+            if (turnDate) {
+                try {
+                    md += ` — *${new Date(turnDate).toISOString().replace('T', ' ').slice(0, 19)} UTC*`;
+                } catch (_) { /* ignore bad dates */ }
+            }
+            md += `\n\n`;
 
             // === User message ===
-            if (query) {
+            if (query || meta.attachments.length > 0) {
                 md += `### User\n\n`;
-                // Attachments
+                // Attachments — inline-render images, collapsible-render extracted text
                 if (meta.attachments.length > 0) {
                     meta.attachments.forEach(att => {
                         const name = att.file_name || att.fileName || 'file';
-                        md += `> *Attachment: ${name}*`;
-                        if (att.extracted_content) md += ` (${att.extracted_content.length} chars)`;
-                        md += '\n';
+                        const url = att.url || att.fileUrl || att.preview_url || '';
+                        const safeUrl = this._sanitizeUrl(url);
+
+                        if (safeUrl && this._looksLikeImageUrl(safeUrl)) {
+                            md += `![${name}](${safeUrl})\n\n`;
+                        } else if (att.extracted_content) {
+                            // Use ~~~ fence when content already contains ``` to avoid breaking out
+                            const fence = att.extracted_content.includes('```') ? '~~~' : '```';
+                            md += `<details>\n<summary><strong>Attachment: ${name}</strong> (${att.extracted_content.length} chars)</summary>\n\n`;
+                            md += `${fence}\n${att.extracted_content}\n${fence}\n\n`;
+                            md += `</details>\n\n`;
+                        } else {
+                            md += `> *Attachment: ${name}*`;
+                            if (safeUrl) md += ` — [link](${safeUrl})`;
+                            md += '\n\n';
+                        }
                     });
-                    md += '\n';
                 }
-                md += `${query}\n\n`;
+                if (query) md += `${query}\n\n`;
             }
 
             // === Assistant response ===
