@@ -345,7 +345,13 @@ async function fetchThreadsSinceCheckpoint(tabId, platform, checkpoint) {
 }
 
 async function performAutoSync() {
-    console.log('[AutoSync] performAutoSync initiated');
+    // One trace ID per auto-sync run. Threaded through every Logger.* call
+    // and Notion fetch in this function so the dashboard's log viewer can
+    // group all related entries under one trace.
+    const traceId = Logger.startTrace('autosync');
+    const syncTimer = Logger.time('AutoSync', 'full sync run', traceId);
+    console.log(`[AutoSync] performAutoSync initiated (trace=${traceId})`);
+
     // Totals across all platforms (for summary logging / recordSyncJob)
     let totalThreads = 0;
     let totalNewThreads = 0;
@@ -360,8 +366,10 @@ async function performAutoSync() {
         const settings = await chrome.storage.local.get([
             'autoSyncEnabled', 'autoSyncNotion', 'notionApiKey', 'notionKey', 'notionDbId', 'notion_auth_method'
         ]);
+        // Stash trace ID on the settings bag so downstream syncToNotion gets it.
+        settings._traceId = traceId;
 
-        Logger.debug('AutoSync', 'Settings loaded', { enabled: settings.autoSyncEnabled, dbId: settings.notionDbId ? 'Present' : 'Missing', notionAuth: settings.notion_auth_method });
+        Logger.debug('AutoSync', 'Settings loaded', { enabled: settings.autoSyncEnabled, dbId: settings.notionDbId ? 'Present' : 'Missing', notionAuth: settings.notion_auth_method }, { traceId });
 
         if (!settings.autoSyncEnabled || !settings.notionDbId) {
             Logger.warn('AutoSync', 'Skipped: Not configured or disabled');
@@ -643,7 +651,8 @@ async function performAutoSync() {
                 totalFailedCount,
                 totalNewThreads
             );
-            console.log(`[AutoSync] All platforms complete: ${totalSuccessCount} synced, ${totalFailedCount} failed`);
+            Logger.info('AutoSync', `All platforms complete: ${totalSuccessCount} synced, ${totalFailedCount} failed`,
+                { totalSuccessCount, totalFailedCount, totalThreads, totalNewThreads }, { traceId });
 
             // update badge with newly synced thread count
             const badgeText = totalSuccessCount > 0 ? String(totalSuccessCount) : '';
@@ -656,11 +665,12 @@ async function performAutoSync() {
 
 
         } catch (e) {
-            console.error("[AutoSync] Error:", e);
+            Logger.error('AutoSync', 'Sync run failed', { error: e.message }, { traceId });
         }
     } finally {
         // Always release the lock (runs even on early errors)
         await releaseSyncLock();
+        syncTimer.end({ totalSuccessCount, totalFailedCount });
     }
 }
 
@@ -691,7 +701,7 @@ async function performAutoSync() {
 //
 const NOTION_SCHEMA_TTL_MS = 24 * 60 * 60 * 1000;
 
-async function getCachedNotionSchema(token, dbId, { refresh = false } = {}) {
+async function getCachedNotionSchema(token, dbId, { refresh = false, traceId = null } = {}) {
     if (!dbId) return null;
     const cacheKey = `notion_db_schema_${dbId}`;
 
@@ -699,13 +709,17 @@ async function getCachedNotionSchema(token, dbId, { refresh = false } = {}) {
         const { [cacheKey]: cached } = await chrome.storage.local.get(cacheKey);
         if (cached && cached.schema && cached.cachedAt &&
             (Date.now() - cached.cachedAt) < NOTION_SCHEMA_TTL_MS) {
+            Logger.debug('Notion', `Schema cache hit (age ${Math.round((Date.now() - cached.cachedAt) / 1000)}s)`,
+                { dbId, ageSec: Math.round((Date.now() - cached.cachedAt) / 1000) }, { traceId });
             return cached.schema;
         }
     }
 
     const response = await notionFetchWithBackoff(
         `https://api.notion.com/v1/databases/${dbId}`,
-        { headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
+        { headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' } },
+        4,
+        traceId
     );
 
     if (!response.ok) {
@@ -715,12 +729,14 @@ async function getCachedNotionSchema(token, dbId, { refresh = false } = {}) {
         if (response.status === 401 || response.status === 403 || response.status === 404) {
             await chrome.storage.local.remove(cacheKey);
         }
-        console.warn(`[Schema] DB schema fetch failed (HTTP ${response.status}) for db ${dbId}`);
+        Logger.warn('Notion', `DB schema fetch failed (HTTP ${response.status}) for db ${dbId}`,
+            { status: response.status, dbId }, { traceId });
         return null;
     }
 
     const schema = await response.json();
     await chrome.storage.local.set({ [cacheKey]: { schema, cachedAt: Date.now() } });
+    Logger.debug('Notion', 'Schema fetched + cached', { dbId, columns: Object.keys(schema.properties || {}).length }, { traceId });
     return schema;
 }
 
@@ -747,15 +763,24 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
  * Notion-specific fetch with exponential backoff + jitter on 429/503.
  * Notion rate-limits at ~3 requests/second. A flat 1s delay is not retry logic.
  * maxRetries is the number of *retries* (not total attempts), so total attempts = maxRetries + 1.
+ *
+ * Uses Logger.tracedFetch for each attempt — logs method, scrubbed URL,
+ * status, duration. Pass a `traceId` so the entries can be grouped under
+ * the originating auto-sync run.
  */
-async function notionFetchWithBackoff(url, options, maxRetries = 4) {
+async function notionFetchWithBackoff(url, options, maxRetries = 4, traceId = null) {
     let delay = 1000;
     const totalAttempts = maxRetries + 1;
     for (let attempt = 0; attempt < totalAttempts; attempt++) {
-        const response = await fetch(url, options);
+        const response = await Logger.tracedFetch(url, options, {
+            module: 'Notion',
+            traceId,
+            label: `notion attempt ${attempt + 1}/${totalAttempts}`
+        });
         if (response.status !== 429 && response.status !== 503) return response;
         if (attempt === maxRetries) {
-            console.warn(`[Notion] Rate limited (${response.status}) — max retries exhausted (${totalAttempts} attempts). Returning last response.`);
+            Logger.warn('Notion', `Rate limited (${response.status}) — max retries exhausted (${totalAttempts} attempts). Returning last response.`,
+                null, { traceId });
             return response;
         }
         const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
@@ -764,13 +789,17 @@ async function notionFetchWithBackoff(url, options, maxRetries = 4) {
         // herd). Randomising the wait spreads them out.
         const base = retryAfter > 0 ? retryAfter * 1000 : delay;
         const wait = Math.round(base * (0.75 + Math.random() * 0.5));
-        console.warn(`[Notion] Rate limited (${response.status}), waiting ${wait}ms (attempt ${attempt + 1}/${totalAttempts})`);
+        Logger.warn('Notion', `Rate limited (${response.status}), waiting ${wait}ms (attempt ${attempt + 1}/${totalAttempts})`,
+            { wait, attempt }, { traceId });
         await new Promise(r => setTimeout(r, wait));
         delay = Math.min(delay * 2, 30000); // cap at 30s before jitter
     }
 }
 
 async function syncToNotion(data, settings) {
+    // Inherit the trace ID from performAutoSync (stashed on settings) so all
+    // Notion API calls for this thread group under the same auto-sync run.
+    const traceId = settings?._traceId || Logger.startTrace('manual-sync');
     try {
         const entries = data.detail?.entries || [];
         const children = [];
@@ -788,9 +817,10 @@ async function syncToNotion(data, settings) {
         // getCachedNotionSchema for invalidation rules.
         let dbSchema = null;
         try {
-            dbSchema = await getCachedNotionSchema(token, settings.notionDbId);
+            dbSchema = await getCachedNotionSchema(token, settings.notionDbId, { traceId });
         } catch (schemaErr) {
-            console.warn('[AutoSync] Could not fetch schema, using defaults:', schemaErr.message);
+            Logger.warn('Notion', 'Schema fetch threw, falling back to defaults',
+                { error: schemaErr.message }, { traceId });
         }
 
         // Find the title property (could be named differently)
@@ -891,7 +921,7 @@ async function syncToNotion(data, settings) {
                 properties,
                 children: firstBatch
             })
-        });
+        }, 4, traceId);
 
         // Check content-type before calling .json() — Cloudflare Turnstile
         // challenges return text/html on captcha-blocked endpoints, which throws on .json().
@@ -944,7 +974,9 @@ async function syncToNotion(data, settings) {
                             method: 'PATCH',
                             headers: notionHeaders,
                             body: JSON.stringify({ children: flattenedBatch })
-                        }
+                        },
+                        4,
+                        traceId
                     );
                     if (!patchResp.ok) {
                         console.warn(`[AutoSync] Failed to append block batch ${i}–${i + batch.length} (status: ${patchResp.status})`);
