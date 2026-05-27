@@ -83,11 +83,11 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                const response = await fetch(url, {
+                const response = await Logger.tracedFetch(url, {
                     credentials: 'include',
                     headers,
                     ...options
-                });
+                }, { module: 'Grok', label: `attempt ${attempt + 1}/${maxRetries}` });
 
                 if (response.ok) return response;
 

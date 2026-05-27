@@ -361,7 +361,8 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
         let lastError;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                const response = await fetch(url, options);
+                const response = await Logger.tracedFetch(url, options,
+                    { module: 'Gemini', label: `batchexecute attempt ${attempt + 1}/${maxRetries}` });
                 if (response.ok) return response;
 
                 if (response.status === 401 || response.status === 403) {

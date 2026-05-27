@@ -151,7 +151,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
 
         DeepSeekAdapter._tokenFetchPromise = (async () => {
             try {
-                const resp = await fetch('https://chat.deepseek.com/api/v0/users/current', {
+                const resp = await Logger.tracedFetch('https://chat.deepseek.com/api/v0/users/current', {
                     credentials: 'include',
                     headers: {
                         'Accept': 'application/json',
@@ -160,7 +160,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                         'x-client-locale': 'en_US',
                         'x-app-version': '20241129.1'
                     }
-                });
+                }, { module: 'DeepSeek', label: 'users/current (token fetch)' });
                 if (!resp.ok) return null;
                 const data = await resp.json();
                 const token = data?.data?.biz_data?.token || data?.biz_data?.token;
@@ -213,11 +213,11 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                const response = await fetch(url, {
+                const response = await Logger.tracedFetch(url, {
                     credentials: 'include',
                     headers,
                     ...options
-                });
+                }, { module: 'DeepSeek', label: `attempt ${attempt + 1}/${maxRetries}` });
                 if (response.ok) return response;
                 if (response.status === 401 || response.status === 403) {
                     throw new Error('Authentication required - please login to DeepSeek');

@@ -61,11 +61,11 @@ var ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                const response = await fetch(url, {
+                const response = await Logger.tracedFetch(url, {
                     credentials: 'include',
                     headers,
                     ...options
-                });
+                }, { module: 'Claude', label: `attempt ${attempt + 1}/${maxRetries}` });
 
                 if (response.ok) return response;
 

@@ -49,13 +49,13 @@ var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
 
         ChatGPTAdapter._tokenFetchPromise = (async () => {
             try {
-                const response = await fetch('https://chatgpt.com/api/auth/session', {
+                const response = await Logger.tracedFetch('https://chatgpt.com/api/auth/session', {
                     credentials: 'include',
                     headers: {
                         'Accept': 'application/json',
                         'Cache-Control': 'no-cache'
                     }
-                });
+                }, { module: 'ChatGPT', label: 'auth/session' });
 
                 if (!response.ok) {
                     console.warn('[ChatGPT] Session API returned:', response.status);
@@ -143,11 +143,11 @@ var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                const response = await fetch(url, {
+                const response = await Logger.tracedFetch(url, {
                     credentials: 'include',
                     headers,
                     ...options
-                });
+                }, { module: 'ChatGPT', label: `attempt ${attempt + 1}/${maxRetries}` });
 
                 if (response.ok) return response;
 

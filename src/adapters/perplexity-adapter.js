@@ -56,7 +56,7 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
             const body = { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, ascending: false, search_term: "" };
             if (spaceId) body.collection_uuid = spaceId;
 
-            const response = await fetch(url, {
+            const response = await Logger.tracedFetch(url, {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -66,7 +66,7 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
                     "x-app-apiversion": (typeof platformConfig !== 'undefined' ? platformConfig.activeVersions?.get('Perplexity') : null) || "2.18"
                 },
                 body: JSON.stringify(body)
-            });
+            }, { module: 'Perplexity', label: 'list_ask_threads' });
 
             if (!response.ok) {
                 platformConfig.markEndpointFailed('Perplexity', 'listThreads');
@@ -146,10 +146,10 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
                 if (spaceId) body.collection_uuid = spaceId;
 
                 try {
-                    const response = await fetch(url, {
+                    const response = await Logger.tracedFetch(url, {
                         method: "POST", credentials: "include", headers,
                         body: JSON.stringify(body)
-                    });
+                    }, { module: 'Perplexity', label: `getAllThreads page ${pageNum}` });
 
                     if (!response.ok) {
                         console.warn(`[Perplexity] getAllThreads page ${pageNum} HTTP ${response.status}`);
@@ -240,10 +240,10 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
             const endpoint = platformConfig.buildEndpoint('Perplexity', 'spaces');
             const url = baseUrl + endpoint;
             const version = (typeof platformConfig !== 'undefined' ? platformConfig.activeVersions?.get('Perplexity') : null) || '2.18';
-            const response = await fetch(url, {
+            const response = await Logger.tracedFetch(url, {
                 credentials: "include",
                 headers: { "accept": "*/*", "x-app-apiclient": "default", "x-app-apiversion": version }
-            });
+            }, { module: 'Perplexity', label: 'list_collections (spaces)' });
             if (!response.ok) { platformConfig.markEndpointFailed('Perplexity', 'spaces'); return []; }
             const data = await response.json();
             const collections = Array.isArray(data) ? data : [];
@@ -269,7 +269,8 @@ async function _perplexityFetchWithRetry(url, options = {}, maxRetries = 3) {
     let lastError;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
-            const response = await fetch(url, options);
+            const response = await Logger.tracedFetch(url, options,
+                { module: 'Perplexity', label: `thread detail attempt ${attempt + 1}/${maxRetries}` });
             if (response.status === 429 || response.status >= 500) {
                 const retryAfterHeader = response.headers.get('Retry-After');
                 let delayMs;
