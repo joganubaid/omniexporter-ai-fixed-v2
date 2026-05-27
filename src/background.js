@@ -106,8 +106,17 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // onInstalled is NOT called on SW restart — re-register context menus here.
+// Also re-run the exportedUuids migration (it's idempotent, guarded by
+// `exportedUuids_migrated_v2` flag) so a user who reloads the extension
+// without ever uninstalling still gets migrated. Without this, the migration
+// only ever ran on install/update, which missed the SW-restart edge case.
 chrome.runtime.onStartup.addListener(() => {
     setupContextMenus();
+    if (typeof ExportedUuidStore !== 'undefined') {
+        ExportedUuidStore.migrateLegacyIfNeeded()
+            .then(migrated => migrated && console.log('[OmniExporter] Legacy exportedUuids migrated on startup'))
+            .catch(e => console.warn('[OmniExporter] exportedUuids migration failed:', e.message));
+    }
     Logger.info('System', 'Service worker started up');
 });
 
@@ -151,25 +160,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // stop burning a wakeup every minute for nothing.
 chrome.alarms.clear('keepAlive');
 
-// ============================================
-// RESILIENT DATA EXTRACTOR (for background.js)
-// ============================================
-// getPlatformUrl is now provided by shared-utils.js
-// Fallback definition if shared-utils.js failed to load
-if (typeof getPlatformUrl === 'undefined') {
-    console.warn('[OmniExporter] getPlatformUrl not loaded from shared-utils.js, using fallback');
-    function getPlatformUrl(platform, uuid) {
-        const urls = {
-            'Perplexity': `https://www.perplexity.ai/search/${uuid}`,
-            'ChatGPT': `https://chatgpt.com/c/${uuid}`,
-            'Claude': `https://claude.ai/chat/${uuid}`,
-            'Gemini': `https://gemini.google.com/app/${uuid}`,
-            'Grok': `https://grok.com/chat/${uuid}`,
-            'DeepSeek': `https://chat.deepseek.com/c/${uuid}`
-        };
-        return urls[platform] || null;
-    }
-}
+// getPlatformUrl comes from shared-utils.js (loaded via importScripts above).
+// We deliberately don't carry a fallback copy of the URL map here — if
+// shared-utils.js fails to load, the extension has bigger problems
+// (RateLimiter, ExportedUuidStore, etc. all live there), and a duplicate URL
+// map would just rot out of sync with the canonical PlatformUrlBuilder.
 
 // Sync lock is now validated against chrome.storage on every acquire.
 // Without this, if the SW terminates mid-sync and restarts, globalSyncInProgress resets to
@@ -208,7 +203,7 @@ async function releaseSyncLock() {
 }
 
 // ============================================
-// ALARM CLEANUP (Fix #2)
+// ALARM CLEANUP ()
 // ============================================
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === 'local') {
@@ -356,7 +351,7 @@ async function performAutoSync() {
     let totalNewThreads = 0;
     let totalSuccessCount = 0;
     let totalFailedCount = 0;
-    // Fix #1: Acquire global lock before sync
+    // Acquire global lock before sync
     if (!(await acquireSyncLock())) {
         return; // Another sync is in progress
     }

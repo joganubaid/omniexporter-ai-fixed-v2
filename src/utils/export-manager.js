@@ -447,8 +447,6 @@ root.ExportManager = class ExportManager {
 
 }
 } // end if (!window.ExportManager)
-
-// Export for use in Node.js test environments
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = window.ExportManager;
-}
+// ExportManager is attached to window inside the block above; popup/options
+// pages access it via the global. No CommonJS shim — the extension is never
+// `require()`'d.

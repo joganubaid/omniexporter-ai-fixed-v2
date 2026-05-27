@@ -249,11 +249,18 @@ const PlatformUrlBuilder = {
         'Claude': (uuid) => `https://claude.ai/chat/${uuid}`,
         'Gemini': (uuid) => `https://gemini.google.com/app/${uuid}`,
         'Grok': (uuid) => `https://grok.com/chat/${uuid}`,
-        'DeepSeek': (uuid) => `https://chat.deepseek.com/c/${uuid}`
+        'DeepSeek': (uuid) => `https://chat.deepseek.com/a/chat/s/${uuid}`
     },
 
     /**
-     * Build a platform-specific URL for a conversation UUID
+     * Build a platform-specific URL for a conversation UUID.
+     *
+     * Note on URL encoding: UUIDs are bounded by SecurityUtils.isValidUuid
+     * (`^[a-zA-Z0-9_-]{8,128}$`) before reaching here, so they only contain
+     * characters that are safe to interpolate raw — encodeURIComponent on the
+     * allowed alphabet is a no-op. We intentionally skip the wrapper to keep
+     * the URLs identical to what each platform's frontend produces.
+     *
      * @param {string} platform - Platform name (Perplexity, ChatGPT, etc.)
      * @param {string} uuid - Conversation UUID
      * @returns {string|null} URL or null if platform is unknown

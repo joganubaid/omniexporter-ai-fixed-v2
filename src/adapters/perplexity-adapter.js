@@ -41,6 +41,12 @@ var PerplexityAdapter = window.PerplexityAdapter = window.PerplexityAdapter || {
     // - API hard-caps at 20 items per request regardless of limit sent
     // - total_threads is WRONG (reports ~99 even when account has 500+)
     // - has_next_page on items[0] is the ONLY reliable "more pages" signal
+    //
+    // TODO(v6): The third arg (`spaceId`) is platform-specific — other adapters
+    // either take a cursor (Gemini) or no third arg at all (Claude/ChatGPT/
+    // Grok/DeepSeek). Standardise to `getThreads(page, limit, options = {})`
+    // across all 6 adapters, with `options.spaceId` here. See README
+    // "Architecture Roadmap" → "Standardise the getThreads() adapter signature".
     getThreads: async (page, limit, spaceId = null) => {
         try {
             const endpoint = platformConfig.buildEndpoint('Perplexity', 'listThreads');

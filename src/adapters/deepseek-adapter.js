@@ -22,6 +22,12 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         return config ? config.baseUrl + '/api/v0' : 'https://chat.deepseek.com/api/v0';
     },
 
+    // TODO(v6): URL paths (`/chat_session/fetch_page`, `/chat/history_messages`,
+    // `/users/current`) are built via string interpolation on `apiBase`
+    // instead of going through `platformConfig.buildEndpoint('DeepSeek', ...)`.
+    // Migrate to the registry the next time you have to touch this for an API
+    // change. See README "Architecture Roadmap".
+
     // Cursor cache for pagination (enables Load All and offset-based fetching)
     _cursorCache: [],
     _allThreadsCache: [],
@@ -215,6 +221,12 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
                 if (response.ok) return response;
                 if (response.status === 401 || response.status === 403) {
                     throw new Error('Authentication required - please login to DeepSeek');
+                }
+                if (response.status === 429) {
+                    const waitTime = Math.pow(2, attempt + 2) * 1000;
+                    console.warn(`[DeepSeek] Rate limited, waiting ${waitTime}ms`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    continue;
                 }
                 lastError = new Error(`HTTP ${response.status}`);
             } catch (e) {
@@ -628,9 +640,10 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
 
         // All endpoints failed
         const message = 'DeepSeek API unreachable - Check login or try refreshing';
-        console.error(`[DeepSeek] All API endpoints failed`);
         if (typeof Logger !== 'undefined') {
             Logger.error('DeepSeekAdapter', 'getThreadDetail failed', { error: message, uuid });
+        } else {
+            console.error(`[DeepSeek] All API endpoints failed`);
         }
         throw new Error(message);
     },

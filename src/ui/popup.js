@@ -21,51 +21,25 @@ if (typeof Logger !== 'undefined') {
 // ============================================
 window.addEventListener('error', (event) => {
     logPopup('error', 'Uncaught error', { error: event.error?.message });
-    if (typeof OmniToast !== 'undefined') {
-        OmniToast.show('An error occurred. Check console for details.', 'error');
+    if (typeof Toast !== 'undefined') {
+        Toast.error('An error occurred. Check console for details.');
     }
 });
 
 window.addEventListener('unhandledrejection', (event) => {
     logPopup('error', 'Unhandled promise rejection', { reason: event.reason?.message || String(event.reason) });
-    if (typeof OmniToast !== 'undefined') {
-        OmniToast.show('Operation failed. Please try again.', 'error');
+    if (typeof Toast !== 'undefined') {
+        Toast.error('Operation failed. Please try again.');
     }
 });
 
 let currentPlatform = "Unknown";
 let selectedExportFormat = "markdown";
 
-// ============================================
-// PLATFORM URL BUILDER (from shared-utils.js)
-// Use shared getPlatformUrl function
-// Fallback if shared-utils.js is not loaded
-// ============================================
-if (typeof getPlatformUrl === 'undefined') {
-    console.warn('[Popup] getPlatformUrl not loaded from shared-utils.js, using fallback');
-    function getPlatformUrl(platform, uuid) {
-        const urls = {
-            'Perplexity': (uuid) => `https://www.perplexity.ai/search/${uuid}`,
-            'ChatGPT': (uuid) => `https://chatgpt.com/c/${uuid}`,
-            'Claude': (uuid) => `https://claude.ai/chat/${uuid}`,
-            'Gemini': (uuid) => `https://gemini.google.com/app/${uuid}`,
-            'Grok': (uuid) => `https://grok.com/chat/${uuid}`,
-            'DeepSeek': (uuid) => `https://chat.deepseek.com/c/${uuid}`
-        };
-        const builder = urls[platform];
-        if (!builder) {
-            console.warn(`[Popup] Unknown platform: ${platform}`);
-            return null;
-        }
-        return builder(uuid || '');
-    }
-}
-
-// ============================================
-// FIX 11: RETRY LOGIC WITH EXPONENTIAL BACKOFF
-// ============================================
-// (withRetry, NotionErrorMapper, RateLimiter, LoadingManager, InputSanitizer
-//  are provided by shared-utils.js)
+// getPlatformUrl, withRetry, NotionErrorMapper, RateLimiter, LoadingManager,
+// InputSanitizer all come from shared-utils.js (loaded via <script> tag in
+// popup.html before this file). We deliberately don't carry fallback copies
+// of any of them — drift risk outweighs the marginal resilience.
 
 const notionRateLimiter = new RateLimiter(30);
 
@@ -78,80 +52,10 @@ const SCHEMA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // PERFORMANCE & SECURITY UTILITIES (Phase 2)
 // ============================================
 
-// ============================================
-// CONNECTION STATUS MANAGER (Phase 13)
-// ============================================
-class ConnectionStatusManager {
-    static setStatus(status) {
-        const el = document.getElementById('connection-status');
-        if (!el) return;
-
-        // Remove all status classes
-        el.classList.remove('connected', 'disconnected', 'checking');
-
-        // Add new status class
-        if (status) {
-            el.classList.add(status);
-        }
-
-        // Update title for accessibility
-        const titles = {
-            connected: 'Connected to platform',
-            disconnected: 'Disconnected',
-            checking: 'Checking connection...'
-        };
-        el.title = titles[status] || '';
-    }
-
-    static connected() { this.setStatus('connected'); }
-    static disconnected() { this.setStatus('disconnected'); }
-    static checking() { this.setStatus('checking'); }
-}
-
-// ============================================
-// LOADING OVERLAY (Phase 13)
-// ============================================
-class LoadingOverlay {
-    static overlay = null;
-
-    static show(message = 'Loading...') {
-        this.hide(); // Remove any existing overlay
-
-        this.overlay = document.createElement('div');
-        this.overlay.className = 'loading-overlay';
-
-        const spinner = document.createElement('div');
-        spinner.className = 'loading-spinner';
-        const textEl = document.createElement('div');
-        textEl.className = 'loading-text';
-        textEl.textContent = message;
-        this.overlay.appendChild(spinner);
-        this.overlay.appendChild(textEl);
-        document.body.appendChild(this.overlay);
-
-        // Trigger animation
-        requestAnimationFrame(() => {
-            this.overlay.classList.add('visible');
-        });
-    }
-
-    static hide() {
-        if (this.overlay) {
-            this.overlay.classList.remove('visible');
-            setTimeout(() => {
-                this.overlay?.remove();
-                this.overlay = null;
-            }, 200);
-        }
-    }
-
-    static update(message) {
-        const textEl = this.overlay?.querySelector('.loading-text');
-        if (textEl) {
-            textEl.textContent = message;
-        }
-    }
-}
+// (ConnectionStatusManager + LoadingOverlay classes removed — both were
+// defined but never instantiated. The popup uses Toast notifications for
+// progress/status feedback; LoadingManager from shared-utils.js handles
+// button loading states.)
 
 // (RequestDeduplicator is provided by shared-utils.js)
 const reqDeduplication = new RequestDeduplicator();
@@ -240,7 +144,7 @@ function updateNavBarActive(platform) {
 
 
 // ============================================
-// PLATFORM DETECTION (Fix #3: Content Script Injection)
+// PLATFORM DETECTION (Content Script Injection)
 // ============================================
 // PLATFORM_CONTENT_SCRIPT_FILES and getContentScriptFiles() are defined in
 // src/utils/shared-utils.js (loaded before this script) to avoid duplication.
@@ -286,7 +190,7 @@ async function detectPlatform() {
             if (chrome.runtime.lastError) {
                 logPopup('debug', 'Content script not ready, injecting...');
 
-                // Fix #3: Inject content script and retry
+                // Inject content script and retry
                 const injected = await ensureContentScript(tab.id, tab.url);
                 if (injected) {
                     // Wait for script to initialize
@@ -680,6 +584,18 @@ function updateSyncUI(isEnabled) {
 
 // ============================================
 // UTILITIES
+//
+// TODO(v6): formatToMarkdown / downloadFile / getNotionDatabaseSchema /
+// buildNotionProperties are each defined in BOTH popup.js (here) AND
+// options.js with slightly divergent behaviour:
+//   - options.js adds a `Tags` multi-select to buildNotionProperties
+//   - options.js uses notionRateLimiter for getNotionDatabaseSchema (popup
+//     uses raw fetch)
+//   - formatToMarkdown output differs in heading formatting + YAML escaping
+//   - downloadFile filename-sanitisation rules differ
+// Consolidating into shared-utils.js would require auditing both call sites
+// for behaviour regression. Hold until there's a real reason to touch one
+// (e.g., a Notion property feature that needs to work in both places).
 // ============================================
 function formatToMarkdown(data) {
     const entries = data.detail?.entries || [];
@@ -780,7 +696,10 @@ async function buildNotionProperties(data, dbId, apiKey, entries = []) {
         if (availableProps['Chat Time'] && threadTime) {
             try {
                 properties['Chat Time'] = { date: { start: new Date(threadTime).toISOString() } };
-            } catch (e) { }
+            } catch (e) {
+                // Invalid date — skip the field rather than failing the whole sync.
+                console.debug('[Popup] Chat Time skipped (invalid date):', threadTime);
+            }
         }
         if (availableProps['Space Name'] && data.spaceName) {
             properties['Space Name'] = { rich_text: [{ type: "text", text: { content: data.spaceName } }] };

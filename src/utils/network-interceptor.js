@@ -63,7 +63,12 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
             try {
                 this._interceptedUrl = url;
                 this._interceptedMethod = method;
-            } catch (e) { }
+            } catch (e) {
+                // Property assignment can fail on locked-down XHR proxies
+                // (some Chrome enterprise policies do this). Non-fatal —
+                // we just lose this XHR for interception purposes.
+                console.debug('[NetworkInterceptor] XHR.open property assign failed:', e.message);
+            }
             return originalOpen.apply(this, arguments);
         };
 
@@ -75,10 +80,14 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
                     this.addEventListener('load', function () {
                         try {
                             self.processResponse(this._interceptedUrl, this.responseText, this._interceptedMethod);
-                        } catch (e) { }
+                        } catch (e) {
+                            console.debug('[NetworkInterceptor] processResponse threw:', e.message);
+                        }
                     });
                 }
-            } catch (e) { }
+            } catch (e) {
+                console.debug('[NetworkInterceptor] XHR.send setup failed:', e.message);
+            }
             return originalSend.apply(this, arguments);
         };
     },
@@ -106,10 +115,18 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
                         clone.text().then(text => {
                             try {
                                 self.processResponse(url.toString(), text, (options && options.method) || 'GET');
-                            } catch (e) { }
-                        }).catch(() => { });
-                    } catch (e) { }
-                }).catch(() => { });
+                            } catch (e) {
+                                console.debug('[NetworkInterceptor] fetch processResponse threw:', e.message);
+                            }
+                        }).catch(e => console.debug('[NetworkInterceptor] fetch clone.text() rejected:', e?.message));
+                    } catch (e) {
+                        console.debug('[NetworkInterceptor] fetch resp.clone() failed:', e.message);
+                    }
+                }).catch(() => {
+                    // Original fetch rejected — caller's own .catch() will see it.
+                    // We intentionally don't log here because the caller is the
+                    // right place to react.
+                });
 
                 return result;
             }
@@ -118,7 +135,7 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
 
     // Process and identify chat list responses
     processResponse(url, responseText, method) {
-        // Sec 4 fix: only process traffic from known AI platform API endpoints
+        // only process traffic from known AI platform API endpoints
         // This prevents intercepting unrelated requests (banking, social, etc.)
         const AI_URL_PATTERNS = [
             /perplexity\.ai\/rest\/|perplexity\.ai\/p\//,
@@ -154,7 +171,10 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
                 console.log('[NetworkInterceptor] Captured chat list for', platform, ':', this.chatListData.length, 'items');
             }
         } catch (e) {
-            // Silently ignore parse errors
+            // Most likely a non-JSON response that snuck past our pattern
+            // matcher (HTML error pages, redirects, etc.) — not a bug, but
+            // worth tracing in debug.
+            console.debug('[NetworkInterceptor] processResponse parse failed:', e.message);
         }
     },
 
@@ -184,6 +204,7 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
 
             return false;
         } catch (e) {
+            console.debug('[NetworkInterceptor] isChatListResponse threw:', e.message);
             return false;
         }
     },
@@ -214,6 +235,7 @@ var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor |
                     item.create_time || item.createdAt || new Date().toISOString()
             })).filter(i => i.uuid);
         } catch (e) {
+            console.debug('[NetworkInterceptor] extractChatList threw:', e.message);
             return [];
         }
     },

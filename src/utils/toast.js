@@ -1,5 +1,13 @@
 // OmniExporter AI - Toast Notification System
-// Lightweight toast notifications for user feedback
+// Lightweight toast notifications for user feedback.
+//
+// Iconography convention (intentional mix, not a bug):
+//   - In-page toasts (this file) use SVG icons inside the toast UI element so
+//     the icon size matches the toast and looks consistent in light/dark mode.
+//   - Inline log/status text in the options dashboard uses emoji prefixes
+//     (✅ / ⚠️ / ❌) because the log lines are pure text and emoji renders
+//     in the platform's font without needing an inline SVG. Both are
+//     equivalent in meaning.
 "use strict";
 
 class Toast {
@@ -148,7 +156,6 @@ class Toast {
     }
 }
 
-// Export for use
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Toast;
-}
+// The Toast class is exposed as a global via the `class` declaration above;
+// popup.html / options.html include this file via <script>. No CommonJS shim
+// needed — the extension is never bundled or `require()`'d.

@@ -5,7 +5,6 @@
 (function () {
     'use strict';
 
-    const BRIDGE_ID = 'omniexporter-gemini-bridge';
     const MESSAGE_TYPE = 'OMNIEXPORTER_GEMINI';
 
     // ============================================
@@ -84,15 +83,30 @@
 
         // ============================================
         // GEMINI DATA EXTRACTION
+        //
+        // ⚠ NOTE ON ISOLATED-WORLD: This script is loaded as a regular content
+        // script (manifest.json content_scripts), which means it runs in
+        // Chrome's ISOLATED world. From there, `window.WIZ_global_data` is
+        // Gemini's page-context global and is NOT directly accessible — the
+        // isolated `window` is a sandboxed copy. The `if (typeof
+        // window.WIZ_global_data !== 'undefined')` checks below therefore
+        // almost always evaluate false in production; the inline-script-text
+        // scan fallback at the bottom of each method is what actually
+        // extracts the values.
+        //
+        // The direct reads are kept for two reasons: (1) cheap fast-path if
+        // some Chrome version ever surfaces the global in isolated world, and
+        // (2) ergonomic readability — the field names make the intent clear.
+        // If you want the primary path to actually fire, this script needs to
+        // be split into its own `content_scripts` entry with `"world":
+        // "MAIN"` in manifest.json (Chrome 102+ feature).
         // ============================================
 
         getGlobalData() {
-            // WIZ_global_data contains Gemini's configuration and auth
             if (typeof window.WIZ_global_data !== 'undefined') {
                 return {
                     exists: true,
                     keys: Object.keys(window.WIZ_global_data),
-                    // Extract useful data
                     SNlM0e: window.WIZ_global_data.SNlM0e, // XSRF token ("at" param)
                     cfb2h: window.WIZ_global_data.cfb2h,   // Build ID ("bl" param)
                     FdrFJe: window.WIZ_global_data.FdrFJe, // Session ID ("f.sid" param)
@@ -102,12 +116,13 @@
         }
 
         getAuthToken() {
-            // Primary: WIZ_global_data.SNlM0e (this is the "at" XSRF token)
+            // Primary (rarely fires from isolated world — see note above)
             if (window.WIZ_global_data?.SNlM0e) {
                 return { token: window.WIZ_global_data.SNlM0e };
             }
 
-            // Fallback: Search in inline page scripts (exclude external/injected scripts)
+            // Fallback (always works): scan inline <script> tags for the JSON literal
+            // that Gemini's HTML embeds the SNlM0e token in.
             const scripts = document.querySelectorAll('script:not([src])');
             for (const script of scripts) {
                 const content = script.textContent;
@@ -174,25 +189,14 @@
 
             return params;
         }
-
-        getConversations() {
-            // Strategy: DOM Parsing REMOVED (Strict API Only)
-            return [];
-        }
-
-        getConversationDetail(conversationId) {
-            // Get title (Allowed as browser metadata, not content scraping)
-            const title = document.title?.replace(' - Gemini', '').replace('Gemini', '').trim() ||
-                'Gemini Conversation';
-
-            return {
-                id: conversationId,
-                title,
-                messages: [],
-                platform: 'Gemini'
-            };
-        }
+        // (getConversations / getConversationDetail removed — bridge dispatch
+        // table at lines ~47-58 never routes to them, and after DOM scraping
+        // was removed they both returned empty placeholders anyway. Chat
+        // listing happens via MaZiqc RPC and detail via hNvQHb RPC, both
+        // executed from gemini-adapter.js in the content-script context.)
     }
+
+    // (Also removed: unused BRIDGE_ID constant.)
 
     // ============================================
     // INITIALIZATION

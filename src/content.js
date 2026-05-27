@@ -43,47 +43,13 @@ if (window.__omniExporterLoaded) {
     // ============================================
     if (!window.SecurityUtils) {
         window.SecurityUtils = {
-            // Validate UUID format to prevent injection
+            // Validate UUID format before using in any API call.
+            // Allow alphanumeric, underscore, hyphen, 8-128 chars.
+            // All adapters call this on extracted UUIDs to block injection
+            // (e.g. someone navigating to /chat/<malicious-string>).
             isValidUuid: (uuid) => {
                 if (!uuid || typeof uuid !== 'string') return false;
-                // Allow alphanumeric, underscore, hyphen, 8-128 chars
                 return /^[a-zA-Z0-9_-]{8,128}$/.test(uuid);
-            },
-
-            // Sanitize HTML to prevent XSS
-            sanitizeHtml: (str) => {
-                if (typeof str !== 'string') return '';
-                return str.replace(/[&<>"']/g, (m) => ({
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#39;'
-                })[m]);
-            },
-
-            // Fetch with timeout to prevent hanging
-            fetchWithTimeout: async (url, options = {}, timeoutMs = 30000) => {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-                try {
-                    const response = await fetch(url, {
-                        ...options,
-                        signal: controller.signal
-                    });
-                    return response;
-                } finally {
-                    clearTimeout(timeout);
-                }
-            },
-
-            // Also reject error-shaped objects like {error: "not found"}
-            // Previously accepted any truthy object, including API error responses.
-            isValidApiResponse: (data) => {
-                if (!data || typeof data !== 'object') return false;
-                if (data.error && typeof data.error === 'string') return false;
-                return true;
             }
         };
     }
@@ -127,31 +93,20 @@ if (window.__omniExporterLoaded) {
                     document.removeEventListener('visibilitychange', visibilityHandler);
                 });
 
-                // SPA Navigation Handler - Now properly notifies background
-                // Previously just logged the UUID without taking any action
+                // SPA Navigation Handler — tracks the current conversation UUID
+                // in a window-local sentinel so the next EXTRACT_CONTENT call
+                // sees the new UUID instead of the stale one captured at script
+                // load time. The background SW doesn't need to know about
+                // navigation events — message dispatch + alarm wakeups cover
+                // the real cases — so we no longer send a SPA_NAVIGATION
+                // message (there was no handler for it on the SW side).
                 const navigationHandler = () => {
                     const adapter = getPlatformAdapter();
-                    if (adapter) {
-                        const newUuid = adapter.extractUuid(window.location.href);
-                        const prevUuid = window.__omniCurrentUuid;
-
-                        if (newUuid && newUuid !== prevUuid) {
-                            console.log('[OmniExporter] SPA navigation detected, new conversation:', newUuid);
-                            window.__omniCurrentUuid = newUuid;
-
-                            // Notify background to update badge/platform info
-                            chrome.runtime.sendMessage({
-                                type: 'SPA_NAVIGATION',
-                                payload: {
-                                    platform: adapter.name,
-                                    uuid: newUuid,
-                                    url: window.location.href
-                                }
-                            }).catch(err => {
-                                // Ignore errors if background is not listening
-                                console.debug('[OmniExporter] SPA navigation message failed:', err.message);
-                            });
-                        }
+                    if (!adapter) return;
+                    const newUuid = adapter.extractUuid(window.location.href);
+                    if (newUuid && newUuid !== window.__omniCurrentUuid) {
+                        console.debug('[OmniExporter] SPA navigation, new conversation:', newUuid);
+                        window.__omniCurrentUuid = newUuid;
                     }
                 };
 
@@ -436,7 +391,23 @@ async function handleGetThreadList(adapter, payload, sendResponse) {
 
 /**
  * Handle Thread List Fetching with Direct Offset (for Load All feature)
- * Supports all 6 platforms with anti-bot measures
+ * Supports all 6 platforms with anti-bot measures.
+ *
+ * TODO(v6): The `if (adapter.name === 'X')` chain below special-cases each
+ * platform because their list APIs differ (POST body vs query params, cursor
+ * vs offset, fixed pageSize cap, etc.). Two refactors would simplify this:
+ *
+ *   1. Standardise `adapter.getThreads(page, limit, options = {})` across all
+ *      6 adapters so the orchestrator doesn't need to know the third arg's
+ *      meaning. See README "Architecture Roadmap".
+ *   2. Move the platform-specific request-building (Perplexity POST body,
+ *      ChatGPT bearer-token headers, Claude V2 URL, Grok pageSize=60) into
+ *      each adapter's own `getThreadsWithOffset(offset, limit)` method. The
+ *      orchestrator would just call `adapter.getThreadsWithOffset(offset, limit)`
+ *      uniformly and return whatever shape comes back.
+ *
+ * Neither refactor changes user behaviour — they just remove the per-platform
+ * switch statement and make adding a 7th platform a single-file change.
  */
 async function handleGetThreadListOffset(adapter, payload, sendResponse) {
     try {
@@ -797,7 +768,7 @@ async function handleGetSpaces(adapter, sendResponse) {
     }
 }
 
-// --- Platform Detection & Adapters (Fix #5: Capability Validation) ---
+// --- Platform Detection & Adapters (Capability Validation) ---
 
 /**
  * Validate adapter has required methods

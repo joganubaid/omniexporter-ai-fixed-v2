@@ -21,6 +21,13 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
         return config ? config.baseUrl + '/rest/app-chat' : 'https://grok.com/rest/app-chat';
     },
 
+    // TODO(v6): URL paths in this adapter (`/conversations`, `/response-node`,
+    // `/load-responses`, `/conversations_v2/...`) are built via string
+    // interpolation on `this.apiBase` instead of going through
+    // `platformConfig.buildEndpoint('Grok', ...)`. Migrate to the registry the
+    // next time you have to touch this for an API change. See README
+    // "Architecture Roadmap" → "Consistent platform-config.js usage".
+
     // Cache for pagination
     _allThreadsCache: [],
     _cacheTimestamp: 0,
@@ -200,9 +207,10 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
             };
         } catch (e) {
             const message = e?.message || 'Unknown error';
-            console.error('[Grok] getThreads failed:', message);
             if (typeof Logger !== 'undefined') {
                 Logger.error('GrokAdapter', 'getThreads failed', { error: message });
+            } else {
+                console.error('[Grok] getThreads failed:', message);
             }
             throw e;
         }
@@ -395,9 +403,10 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
 
         } catch (error) {
             const message = error?.message || 'Unknown error';
-            console.error(`[Grok] getThreadDetail failed for ${uuid}:`, message);
             if (typeof Logger !== 'undefined') {
                 Logger.error('GrokAdapter', 'getThreadDetail failed', { error: message, uuid });
+            } else {
+                console.error(`[Grok] getThreadDetail failed for ${uuid}:`, message);
             }
             // Return empty rather than throwing so bulk export can continue
             return {

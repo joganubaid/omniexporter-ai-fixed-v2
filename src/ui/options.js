@@ -30,21 +30,11 @@ let apiOffset      = 0;    // tracks how far into the platform API we've read
 let apiHasMore     = true; // whether the API still has data beyond apiOffset
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ============================================================
-// SHARED PLATFORM URL MAP (Bug 6 fix — mirrors popup.js)
-// ============================================================
-const PLATFORM_URLS = {
-    'Perplexity': uuid => `https://www.perplexity.ai/search/${uuid}`,
-    'ChatGPT':    uuid => `https://chatgpt.com/c/${uuid}`,
-    'Claude':     uuid => `https://claude.ai/chat/${uuid}`,
-    'Gemini':     uuid => `https://gemini.google.com/app/${uuid}`,
-    'Grok':       uuid => `https://grok.com/chat/${uuid}`,
-    'DeepSeek':   uuid => `https://chat.deepseek.com/a/chat/s/${uuid}`,
-};
-function getPlatformUrl(platform, uuid) {
-    const builder = PLATFORM_URLS[platform] || PLATFORM_URLS['Perplexity'];
-    return builder(uuid || '');
-}
+// getPlatformUrl is provided by shared-utils.js (loaded before this file via
+// <script> in options.html). The canonical URL map lives in PlatformUrlBuilder
+// in shared-utils.js. Don't carry a local copy — this is the file where the
+// DeepSeek URL drift was caught (HAR-verified format is /a/chat/s/{id}, not
+// /c/{id}); centralising it here prevents the next round of drift.
 
 // ============================================================================
 // SECTION: PERFORMANCE & SECURITY UTILITIES (Phase 2)
@@ -261,83 +251,10 @@ class DataValidator {
     }
 }
 
-// ============================================================================
-// SECTION: RESILIENT DATA EXTRACTOR (for options.js)
-// ============================================================================
-class ResilientDataExtractor {
-    /**
-     * Extract answer from entry with multiple fallback strategies
-     */
-    static extractAnswer(entry) {
-        // Strategy 1: blocks structure (Perplexity, ChatGPT, Claude, Grok)
-        if (entry.blocks && Array.isArray(entry.blocks)) {
-            let answer = '';
-            for (const block of entry.blocks) {
-                // Handle blocks with markdown_block (all platforms use this structure)
-                if (block.markdown_block) {
-                    const content = block.markdown_block.answer ||
-                        (block.markdown_block.chunks || []).join('\n');
-                    if (content) answer += content + '\n\n';
-                }
-                // Alternative block types
-                if (block.text_block?.content) {
-                    answer += block.text_block.content + '\n\n';
-                }
-            }
-            if (answer.trim()) return answer.trim();
-        }
-
-        // Strategy 2: Direct properties
-        if (entry.answer) return entry.answer;
-        if (entry.text) return entry.text;
-        if (entry.content) return typeof entry.content === 'string' ? entry.content : '';
-
-        // Strategy 3: Response field (potential future format)
-        if (entry.response?.text) return entry.response.text;
-        if (entry.response?.content) return entry.response.content;
-
-        return '';
-    }
-
-    /**
-     * Extract query from entry
-     */
-    static extractQuery(entry) {
-        return entry.query || entry.query_str || entry.question || entry.prompt || '';
-    }
-
-    /**
-     * Extract title
-     */
-    static extractTitle(data) {
-        if (data.title && data.title !== 'Untitled') return data.title.slice(0, 100);
-        if (data.name) return data.name.slice(0, 100);
-
-        // Try first query
-        const entries = data.detail?.entries || [];
-        if (entries.length > 0) {
-            const firstQuery = this.extractQuery(entries[0]);
-            if (firstQuery) return firstQuery.slice(0, 100);
-        }
-
-        return 'Untitled';
-    }
-
-    /**
-     * Extract sources from Perplexity entry
-     */
-    static extractSources(entry) {
-        if (!entry.blocks) return [];
-
-        for (const block of entry.blocks) {
-            if (block.intended_usage === 'web_results' && block.web_result_block?.web_results) {
-                return block.web_result_block.web_results;
-            }
-        }
-
-        return entry.sources || entry.citations || [];
-    }
-}
+// (ResilientDataExtractor class removed — was defined but never instantiated.
+// Per-platform answer/query/title extraction now happens in each adapter's
+// own getThreadDetail. Generic extraction utilities live in DataExtractor
+// in src/platform-config.js if needed.)
 
 // ============================================================================
 // SECTION: DUPLICATE DETECTOR
@@ -458,97 +375,13 @@ class ContentScriptHealthChecker {
         });
     }
 
-    /**
-     * Inject content script if not present
-     */
-    async ensureContentScript(tabId) {
-        try {
-            const isReady = await this.isContentScriptReady(tabId);
-            if (isReady) {
-                console.log('[HealthCheck] Content script already active');
-                return { success: true, injected: false };
-            }
-
-            console.log('[HealthCheck] Content script not responding, injecting...');
-
-            const tab = await chrome.tabs.get(tabId);
-            const supportedDomains = ['perplexity.ai', 'chatgpt.com', 'claude.ai', 'gemini.google.com', 'grok.com', 'x.com/i/grok', 'chat.deepseek.com'];
-            const isSupported = supportedDomains.some(d => tab.url?.includes(d));
-
-            if (!isSupported) {
-                return { success: false, error: 'Tab is not on a supported platform' };
-            }
-
-            // Inject the full platform-specific file set so that Logger, ExportManager,
-            // and the platform adapter are defined before content.js runs.
-            // Previously only platform-config.js and content.js were injected, which
-            // left Logger/ExportManager/adapter globals undefined (silent failures).
-            const files = getContentScriptFiles(tab.url || '');
-            await chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                files
-            });
-
-            await new Promise(r => setTimeout(r, 500));
-
-            const isReadyNow = await this.isContentScriptReady(tabId);
-            if (isReadyNow) {
-                console.log('[HealthCheck] Content script injected successfully');
-                return { success: true, injected: true };
-            } else {
-                return { success: false, error: 'Content script injection failed verification' };
-            }
-
-        } catch (error) {
-            console.error('[HealthCheck] Injection error:', error);
-            return { success: false, error: error.message };
-        }
-    }
-
-    /**
-     * Send message with automatic retry and injection
-     */
-    async sendMessageWithHealthCheck(tabId, message, timeout = 15000) {
-        for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
-            try {
-                const healthStatus = await this.ensureContentScript(tabId);
-                if (!healthStatus.success) {
-                    throw new Error(healthStatus.error);
-                }
-
-                const response = await new Promise((resolve, reject) => {
-                    const timer = setTimeout(() => {
-                        reject(new Error(`Message timeout after ${timeout}ms`));
-                    }, timeout);
-
-                    chrome.tabs.sendMessage(tabId, message, (response) => {
-                        clearTimeout(timer);
-
-                        if (chrome.runtime.lastError) {
-                            reject(new Error(chrome.runtime.lastError.message));
-                        } else if (!response) {
-                            reject(new Error('No response from content script'));
-                        } else if (!response.success) {
-                            reject(new Error(response.error || 'Request failed'));
-                        } else {
-                            resolve(response);
-                        }
-                    });
-                });
-
-                return response;
-
-            } catch (error) {
-                console.log(`[HealthCheck] Attempt ${attempt}/${this.retryAttempts} failed:`, error.message);
-
-                if (attempt === this.retryAttempts) {
-                    throw error;
-                }
-
-                await new Promise(r => setTimeout(r, 1000 * attempt));
-            }
-        }
-    }
+    // (ensureContentScript + sendMessageWithHealthCheck removed — both were
+    // defined but never called externally. Popup has its own ensureContentScript
+    // implementation; auto-sync code path uses chrome.tabs.sendMessage with
+    // its own timeout/retry logic. If the dashboard ever needs proactive
+    // content-script injection, see src/ui/popup.js:ensureContentScript and
+    // src/utils/shared-utils.js:getContentScriptFiles for the canonical
+    // implementation.)
 
     /**
      * Test connection to a tab
@@ -892,10 +725,13 @@ async function handleOauthDisconnect() {
 // SECTION: INITIALIZATION
 // ============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
-    // Surface the manifest version in the sidebar so it always matches the
-    // installed extension — no hardcoded version strings to drift out of sync.
-    const verEl = document.getElementById('brandVersion');
-    if (verEl) verEl.textContent = 'v' + chrome.runtime.getManifest().version;
+    // Surface the manifest version in the sidebar + About tab so they always
+    // match the installed extension — no hardcoded version strings to drift.
+    const v = chrome.runtime.getManifest().version;
+    const brandEl = document.getElementById('brandVersion');
+    if (brandEl) brandEl.textContent = 'v' + v;
+    const aboutEl = document.getElementById('aboutVersion');
+    if (aboutEl) aboutEl.textContent = v;
 
     initNavigation();
     // initSubtabs removed — Activity/DevTools tabs deleted
@@ -1051,9 +887,6 @@ function initNavigation() {
 }
 
 
-// Subtabs removed (Activity Log / Dev Tools deleted) — keep stub to avoid ReferenceError
-function initSubtabs() {}
-
 // ============================================================================
 // SECTION: DATA SOURCE & DATE FILTER
 // ============================================================================
@@ -1118,24 +951,11 @@ async function loadSettings() {
     if (data.notionDbId) {
         document.getElementById('notionDbId').value = data.notionDbId;
     }
+    // (Removed: load of notionOauthClientId/Secret/RedirectUri inputs that
+    // don't exist in the current options.html. OAuth client_id comes from
+    // config.js, the worker holds the secret, and chrome.identity supplies
+    // the redirect URI dynamically — no UI inputs needed.)
 
-    // OAuth credentials (optional - may not exist in simplified UI)
-    const clientIdInput = document.getElementById('notionOauthClientId');
-    const clientSecretInput = document.getElementById('notionOauthClientSecret');
-    const redirectUriInput = document.getElementById('notionOauthRedirectUri');
-
-    if (clientIdInput && data.notion_oauth_client_id) {
-        clientIdInput.value = data.notion_oauth_client_id;
-    }
-    if (clientSecretInput && data.notion_oauth_client_secret) {
-        clientSecretInput.value = data.notion_oauth_client_secret;
-    }
-
-    // Redirect URI (optional in simplified UI)
-    if (redirectUriInput) {
-        const redirectUri = chrome.identity.getRedirectURL('notion');
-        redirectUriInput.value = redirectUri;
-    }
 
     // Auth method (optional - simplified UI may not have this)
     const authRadio = document.querySelector(`input[name="notionAuthMethod"]`);
@@ -1197,10 +1017,16 @@ async function saveAllSettings() {
             syncImages: document.getElementById('syncImages')?.checked || false,
             syncCitations: document.getElementById('syncCitations')?.checked || false,
             skipExported: document.getElementById('skipExported')?.checked || false,
-            notion_auth_method: authMethod,
-            notion_oauth_client_id: getVal('notionOauthClientId') || null,
-            notion_oauth_client_secret: getVal('notionOauthClientSecret') || null
+            notion_auth_method: authMethod
+            // (Removed: notion_oauth_client_id/_secret — the inputs they read
+            // don't exist in options.html. Client ID is loaded from config.js;
+            // the secret lives on the Cloudflare Worker.)
         };
+        // TODO: The autoSyncNotion / includeMetadata / syncImages /
+        // syncCitations / skipExported flags above are persisted to storage
+        // but no sync code currently consults them. Either wire them up in
+        // background.js performAutoSync + ExportManager (real feature work)
+        // or remove the checkboxes from options.html + drop these settings.
 
         // Notion API key validation (only if token selected)
         if (authMethod === 'token' && settings.notionApiKey && !settings.notionApiKey.startsWith('secret_') && !settings.notionApiKey.startsWith('ntn_')) {
@@ -1310,14 +1136,10 @@ async function saveExportedUuids() {
     await ExportedUuidStore.save(currentPlatform, exportedUuidTimestamps);
 }
 
-function loadExportHistory() {
-    chrome.storage.local.get(['exportHistory'], (data) => {
-        if (data.exportHistory && Array.isArray(data.exportHistory)) {
-            exportHistory = data.exportHistory;
-            renderExportHistory();
-        }
-    });
-}
+// (loadExportHistory removed here — canonical definition is at line ~2090
+// alongside renderExportHistory. JS function-hoisting meant the later
+// definition always won anyway; keeping it next to the renderer keeps both
+// concerns together.)
 
 function loadFailures() {
     chrome.storage.local.get(['failures'], (data) => {
@@ -1706,15 +1528,6 @@ function updatePagination() {
     if (prevBtn) prevBtn.disabled = currentPage === 1;
     if (nextBtn) nextBtn.disabled = !hasMoreThreads && endItem >= threadData.length;
 }
-
-// loadAllThreads removed — replaced by Next-button buffer pagination above.
-// Kept as no-op so any lingering references don't throw.
-async function loadAllThreads() {
-    console.warn('[OmniExporter] loadAllThreads() called but is no longer used.');
-}
-
-// ── Dead loadAllThreads body removed ─────────────────────────────────────────
-
 
 
 
@@ -2318,7 +2131,15 @@ function renderExportHistory() {
 // ============================================================================
 
 /**
- * Fetches Notion database schema and caches it
+ * Fetches Notion database schema and caches it.
+ *
+ * TODO(v6): Duplicate of `getNotionDatabaseSchema` in popup.js (different
+ * implementation — this one uses `notionRateLimiter.throttle`, popup uses
+ * raw fetch). Consolidate into a single helper in shared-utils.js when one
+ * of them needs maintenance. Same goes for `formatToMarkdown`,
+ * `downloadFile`, `buildNotionProperties` below — all duplicated here vs
+ * popup.js with small behaviour drifts. See TODO note at the top of
+ * popup.js UTILITIES section.
  */
 async function getNotionDatabaseSchema(dbId, apiKey) {
     if (notionSchemaCache && (Date.now() - schemaCacheTime < SCHEMA_CACHE_TTL)) {

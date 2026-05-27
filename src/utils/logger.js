@@ -546,11 +546,9 @@ var Logger = globalThis.Logger;
 // Auto-initialize when loaded
 Logger.init();
 
-// Export for use in other scripts
-// Ensure backward compat for CommonJS and content scripts
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = globalThis.Logger;
-}
+// Logger is attached to globalThis at the top of this file (works in both
+// service-worker and content-script contexts). Also expose on window so
+// dashboard/popup pages can use it without the globalThis dance.
 if (typeof window !== 'undefined') {
     window.Logger = globalThis.Logger;
 }

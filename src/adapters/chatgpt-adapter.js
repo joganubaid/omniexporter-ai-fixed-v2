@@ -98,13 +98,13 @@ var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
             'Sec-Fetch-Site': 'same-origin'
         };
 
-        // Fix #1: Add Bearer token (CRITICAL - HAR shows this on every request)
+        // Add Bearer token (CRITICAL - HAR shows this on every request)
         const token = await ChatGPTAdapter._getAccessToken();
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        // Fix #3: Read OAI-Device-Id from cookie (HAR: oai-did cookie)
+        // Read OAI-Device-Id from cookie (HAR: oai-did cookie)
         const deviceId = ChatGPTAdapter._getCookie('oai-did');
         if (deviceId) {
             headers['OAI-Device-Id'] = deviceId;
@@ -112,7 +112,7 @@ var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
 
         headers['OAI-Language'] = 'en-US';
 
-        // Fix #2: Add OAI-Client-Version and OAI-Client-Build-Number
+        // Add OAI-Client-Version and OAI-Client-Build-Number
         // Try extracting from page scripts, fall back to reasonable defaults
         try {
             const nextData = extractFromNextData();
@@ -238,7 +238,7 @@ var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
         try {
             const baseUrl = platformConfig.getBaseUrl('ChatGPT');
             const endpoint = platformConfig.buildEndpoint('ChatGPT', 'conversations');
-            // Fix #4: Include is_archived & is_starred params (HAR-verified)
+            // Include is_archived & is_starred params (HAR-verified)
             const url = `${baseUrl}${endpoint}?offset=${offset}&limit=${limit}&order=updated&is_archived=false&is_starred=false`;
 
             const response = await ChatGPTAdapter._fetchWithRetry(url);

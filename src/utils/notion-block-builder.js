@@ -671,17 +671,15 @@ function flattenToggleBlocks(blocks) {
     return flattened;
 }
 
+// Public API — only the two methods external callers actually use.
+// Background.js and options.js/popup.js call these; the other helpers
+// (markdownToBlocks, parseInlineMarkdown, chunkText, calloutBlock,
+// toggleBlock, codeBlock, extractEntryContent, extractToolCallBlocks) are
+// internal-only — accessible to anything in this file's scope but not
+// exposed on the global to avoid hinting at a stable API we don't maintain.
 _nbbRoot.NotionBlockBuilder = {
     buildNotionBlocks: buildNotionBlocks,
-    flattenToggleBlocks: flattenToggleBlocks,
-    markdownToBlocks: markdownToBlocks,
-    parseInlineMarkdown: parseInlineMarkdown,
-    chunkText: chunkText,
-    extractEntryContent: extractEntryContent,
-    extractToolCallBlocks: extractToolCallBlocks,
-    calloutBlock: calloutBlock,
-    toggleBlock: toggleBlock,
-    codeBlock: codeBlock
+    flattenToggleBlocks: flattenToggleBlocks
 };
 
 } // end window guard

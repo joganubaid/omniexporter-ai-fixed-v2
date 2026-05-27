@@ -564,12 +564,8 @@ var NotionOAuth = {
     }
 };
 
-// Export for use in other scripts
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = NotionOAuth;
-}
-
-// Make available globally
+// Make available globally — background.js loads this via importScripts,
+// options.js/popup.js via <script>. No CommonJS shim needed.
 if (typeof globalThis !== 'undefined') {
     globalThis.NotionOAuth = NotionOAuth;
 }

@@ -78,7 +78,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
                 }
             }, 10000);
 
-            // Sec 2 fix: use specific origin instead of '*' to prevent token interception
+            // use specific origin instead of '*' to prevent token interception
             window.postMessage({
                 type: 'OMNIEXPORTER_GEMINI',
                 direction: 'to-page',
@@ -275,31 +275,8 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
         }
     },
 
-    // ============================================
-    // Offset-based fetching
-    // ============================================
-    /**
-     * Fetch threads using offset-based pagination with in-memory cache.
-     * @param {number} offset - Number of threads to skip
-     * @param {number} limit - Maximum number of threads to return
-     * @returns {Promise<{threads: Array, offset: number, hasMore: boolean, total: number}>}
-     */
-    getThreadsWithOffset: async function (offset = 0, limit = 50) {
-        // Check cache validity
-        const cacheValid = GeminiAdapter._cacheTimestamp > Date.now() - GeminiAdapter._cacheTTL;
-
-        if (!cacheValid || GeminiAdapter._allThreadsCache.length === 0) {
-            await GeminiAdapter.getAllThreads();
-        }
-
-        const threads = GeminiAdapter._allThreadsCache.slice(offset, offset + limit);
-        return {
-            threads,
-            offset,
-            hasMore: offset + limit < GeminiAdapter._allThreadsCache.length,
-            total: GeminiAdapter._allThreadsCache.length
-        };
-    },
+    // (getThreadsWithOffset is defined further down — kept there because it
+    // groups with the other offset/cursor pagination helpers.)
 
     // ============================================
     // Build batchexecute request body
@@ -322,6 +299,14 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     // ============================================
     // Build batchexecute URL with all query params
     // Params from HAR: rpcids, source-path, bl, f.sid, hl, _reqid, rt
+    //
+    // TODO(v6): This URL is built by hand with 7 dynamic query params instead
+    // of going through `platformConfig.buildEndpoint('Gemini', ...)`. Unlike
+    // Grok/DeepSeek, the dynamic-param density here (bl from page bridge,
+    // f.sid from page bridge, _reqid counter, source-path from page URL) may
+    // make a generic registry expression awkward. If you do migrate, consider
+    // adding template-variable support to platform-config.js first.
+    // See README "Architecture Roadmap".
     // ============================================
     _buildBatchUrl: function (rpcid, sessionParams = {}) {
         const params = new URLSearchParams();
@@ -365,8 +350,44 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
     },
 
     // ============================================
-    // Make batchexecute API call
-    // Uses correct headers, URL params, and body format
+    // Retry wrapper for batchexecute calls. Mirrors the pattern in
+    // ClaudeAdapter/GrokAdapter/ChatGPTAdapter so a single transient network
+    // blip doesn't fail the whole export.
+    //   401/403   → throws immediately (auth-required, retrying won't help)
+    //   429       → exponential backoff (4s, 8s, 16s)
+    //   5xx/other → exponential backoff (1s, 2s, 4s)
+    // ============================================
+    _fetchWithRetry: async function (url, options = {}, maxRetries = 3) {
+        let lastError;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                if (response.ok) return response;
+
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error('Authentication required - please login to Gemini');
+                }
+
+                if (response.status === 429) {
+                    const waitTime = Math.pow(2, attempt + 2) * 1000;
+                    console.warn(`[Gemini] Rate limited, waiting ${waitTime}ms`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    continue;
+                }
+
+                lastError = new Error(`Gemini API error: ${response.status}`);
+            } catch (e) {
+                lastError = e;
+            }
+            if (attempt < maxRetries - 1) {
+                await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+            }
+        }
+        throw lastError;
+    },
+
+    // ============================================
+    // Make batchexecute API call (uses _fetchWithRetry for resilience).
     // ============================================
     _batchExecute: async function (rpcid, payload) {
         // Get session params from page context
@@ -378,17 +399,12 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
         try {
             console.log(`[Gemini] Calling batchexecute: rpcid=${rpcid}, bl=${sessionParams.bl || 'fallback'}`);
 
-            const response = await fetch(url, {
+            const response = await GeminiAdapter._fetchWithRetry(url, {
                 method: 'POST',
                 credentials: 'include',
                 headers: GeminiAdapter._getHeaders(),
                 body
             });
-
-            if (!response.ok) {
-                console.error(`[Gemini] API error: ${response.status} ${response.statusText}`);
-                throw new Error(`Gemini API error: ${response.status}`);
-            }
 
             const text = await response.text();
             console.log(`[Gemini] Raw response length: ${text.length} chars`);
@@ -461,6 +477,11 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
      * @returns {Promise<{threads: Array, hasMore: boolean, page: number}>}
      * @throws {Error} If no threads can be retrieved from the API or DOM
      */
+    // TODO(v6): The third arg (`cursor`) is platform-specific — Perplexity
+    // takes `spaceId` here, other adapters take nothing. Standardise to
+    // `getThreads(page, limit, options = {})` across all 6 adapters, with
+    // `options.cursor` here. See README "Architecture Roadmap" → "Standardise
+    // the getThreads() adapter signature".
     getThreads: async function (page = 1, limit = 20, cursor = null) {
         const threads = [];
 
@@ -754,9 +775,10 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
 
         } catch (error) {
             const message = error?.message || 'Unknown error';
-            console.error(`[Gemini] hNvQHb failed for ${chatId}:`, message);
             if (typeof Logger !== 'undefined') {
                 Logger.error('GeminiAdapter', 'getThreadDetail failed', { error: message, uuid });
+            } else {
+                console.error(`[Gemini] hNvQHb failed for ${chatId}:`, message);
             }
 
             // Fallback: try with WqGlee and Mklfhc as alternate RPC IDs
