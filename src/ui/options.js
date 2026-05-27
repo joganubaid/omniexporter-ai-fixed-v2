@@ -1727,22 +1727,52 @@ async function bulkSyncToNotion() {
             if (total === 0) return;
 
             const progressContainer = document.getElementById('exportProgress');
-            const progressFill = document.getElementById('progressBarFill');
-            const progressText = document.getElementById('progressText');
+            const progressFill      = document.getElementById('progressBarFill');
+            const progressText      = document.getElementById('progressText');
+            const progressBatch     = document.getElementById('progressBatch');
+            const progressEta       = document.getElementById('progressEta');
+            const progressStats     = document.getElementById('progressStats');
+            const progressTitle     = document.getElementById('progressTitle');
+
+            // Per-batch sizing: 5 items per batch is a reasonable rate-limit
+            // bucket for Notion (~3 req/sec) — keeps the UI updating every
+            // ~4s during a long sync without overwhelming the API.
+            const BATCH_SIZE = 5;
+            const batchCount = Math.ceil(total / BATCH_SIZE);
 
             progressContainer.classList.remove('hidden');
+            if (progressTitle) progressTitle.textContent = `Syncing to Notion · ${total} thread${total === 1 ? '' : 's'}`;
             exportStartTime = Date.now();
             let success = 0, failed = 0;
 
-            // Fix 17: Generate job ID for progress persistence
             const jobId = `job_${Date.now()}`;
+            log(`Starting bulk sync of ${total} threads (${batchCount} batches of ${BATCH_SIZE})...`);
 
-            log(`Starting bulk sync of ${total} threads...`);
+            const updateProgress = (i) => {
+                const pct = Math.round((i / total) * 100);
+                progressFill.style.width = `${pct}%`;
+                progressText.textContent = `${i} / ${total}`;
+                const currentBatch = Math.min(batchCount, Math.floor(i / BATCH_SIZE) + 1);
+                if (progressBatch) progressBatch.textContent = `Batch ${currentBatch}/${batchCount}`;
+                if (progressStats) {
+                    progressStats.innerHTML = `
+                        <span class="stat-ok">✓ ${success}</span>
+                        ${failed > 0 ? `<span class="stat-fail">✗ ${failed}</span>` : ''}
+                    `;
+                }
+                // ETA = elapsed / processed × remaining
+                if (i > 0 && progressEta) {
+                    const elapsedMs = Date.now() - exportStartTime;
+                    const remainingMs = Math.round(elapsedMs / i * (total - i));
+                    progressEta.textContent = formatEta(remainingMs);
+                } else if (progressEta) {
+                    progressEta.textContent = '';
+                }
+            };
+
+            updateProgress(0);
 
             for (let i = 0; i < total; i++) {
-                progressFill.style.width = `${Math.round((i / total) * 100)}%`;
-                progressText.textContent = `Syncing: ${i + 1}/${total}`;
-
                 const thread = threadData.find(t => t.uuid === uuids[i]);
                 if (thread) {
                     try {
@@ -1753,28 +1783,28 @@ async function bulkSyncToNotion() {
                         failed++;
                     }
 
-                    // Fix 17: Save progress every 5 items
-                    if (i % 5 === 0) {
+                    // Save progress to storage every BATCH_SIZE items so the
+                    // user can resume an interrupted bulk sync from the
+                    // dashboard reload.
+                    if ((i + 1) % BATCH_SIZE === 0 || i === total - 1) {
                         await ExportProgressManager.saveProgress(jobId, {
-                            current: i,
-                            total,
-                            success,
-                            failed,
-                            uuids
+                            current: i + 1, total, success, failed, uuids
                         });
                     }
 
-                    // Small adaptive delay
+                    updateProgress(i + 1);
+
+                    // Rate-limit pacing between items (Notion ~3 req/sec).
                     await new Promise(r => setTimeout(r, 800));
                 }
             }
 
             progressFill.style.width = '100%';
-            progressText.textContent = 'Completed!';
+            progressText.textContent = `${total} / ${total}`;
+            if (progressEta) progressEta.textContent = 'Done';
+            if (progressBatch) progressBatch.textContent = `Batch ${batchCount}/${batchCount}`;
 
-            // Fix 17: Clear progress on completion
             await ExportProgressManager.clearProgress(jobId);
-
             recordExportJob(total, success, failed);
 
             setTimeout(() => {
@@ -1782,12 +1812,25 @@ async function bulkSyncToNotion() {
                 selectedThreads.clear();
                 updateSelection(null, false);
                 renderThreadList(threadData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
-            }, 2000);
+            }, 2500);
         });
     } catch (e) {
         console.error("[OmniExporter] Error boundary caught bulkSyncToNotion error:", e);
         log('Bulk sync encountered an error. Progress may be saved for resume.', 'error');
     }
+}
+
+/**
+ * Format milliseconds into "12s left" / "2m 30s left" / "Done".
+ */
+function formatEta(ms) {
+    if (!ms || ms < 0) return '';
+    if (ms < 5000) return 'almost done';
+    const totalSec = Math.round(ms / 1000);
+    if (totalSec < 60) return `~${totalSec}s left`;
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `~${min}m ${sec}s left`;
 }
 
 // ============================================================================

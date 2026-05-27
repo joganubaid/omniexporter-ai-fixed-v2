@@ -159,10 +159,18 @@
           <button id="clearCacheBtn" class="bulk-btn bulk-danger">Clear Cache</button>
         </div>
 
-        <!-- Progress -->
+        <!-- Bulk-sync progress (per-batch live updates) -->
         <div id="exportProgress" class="progress-wrap hidden">
+          <div class="progress-header">
+            <span id="progressTitle" class="progress-title">Syncing to Notion…</span>
+            <span id="progressEta" class="progress-eta"></span>
+          </div>
           <div class="progress-track"><div id="progressBarFill" class="progress-fill"></div></div>
-          <div id="progressText" class="progress-text">Exporting…</div>
+          <div class="progress-meta">
+            <span id="progressText" class="progress-text">0 / 0</span>
+            <span id="progressBatch" class="progress-batch"></span>
+            <span id="progressStats" class="progress-stats"></span>
+          </div>
         </div>
 
       </section>

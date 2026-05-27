@@ -556,18 +556,34 @@ body {
 .bulk-danger:hover { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.2); }
 
 /* ══════════════════════════════════════
-   PROGRESS
+   PROGRESS — per-batch bulk sync
 ══════════════════════════════════════ */
 .progress-wrap {
-  padding: 12px 20px;
+  padding: 14px 20px;
   background: var(--bg-side);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.progress-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.progress-eta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: ui-monospace, 'SF Mono', monospace;
+}
 .progress-track {
-  height: 3px;
-  background: var(--border-hi);
-  border-radius: 2px;
+  height: 6px;
+  background: var(--bg-subtle);
+  border-radius: 3px;
   overflow: hidden;
 }
 .progress-fill {
@@ -575,14 +591,29 @@ body {
   background: var(--accent);
   width: 0%;
   transition: width .3s ease;
-  border-radius: 2px;
+  border-radius: 3px;
 }
-.progress-text {
-  margin-top: 6px;
+.progress-meta {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
   font-size: 11px;
   color: var(--text-muted);
-  text-align: center;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  flex-wrap: wrap;
 }
+.progress-text {
+  font-weight: 600;
+  color: var(--text);
+}
+.progress-batch {
+  /* "Batch 3/10" */
+}
+.progress-stats {
+  margin-left: auto;
+}
+.progress-stats .stat-ok { color: var(--success); font-weight: 600; }
+.progress-stats .stat-fail { color: var(--danger); font-weight: 600; }
 
 /* ══════════════════════════════════════
    SETTINGS TAB
