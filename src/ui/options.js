@@ -896,6 +896,9 @@ function initNavigation() {
                 activeTab.classList.remove('hidden');
                 activeTab.classList.add('active');
             }
+            // Lazy-init the Logs tab the first time it's opened, and refresh
+            // the view every time the user clicks the tab.
+            if (tabId === 'logs') initLogsTab();
         });
     });
 }
@@ -2409,4 +2412,185 @@ function downloadFile(content, name) {
     a.download = `${sanitized}.md`;
     a.click();
     URL.revokeObjectURL(url);
+}
+
+// ============================================================================
+// SECTION: LOGS TAB — viewer for the Logger storage
+//
+// Talks directly to the globally-loaded Logger object. The tab is wired on
+// first open (lazy) and rebound on subsequent opens. Live-tail polls every
+// 2s when enabled; otherwise the user clicks Refresh.
+// ============================================================================
+const LogsTab = {
+    _bound: false,
+    _liveTailInterval: null,
+    _expandedId: null,
+
+    async init() {
+        const debugToggle    = document.getElementById('logsDebugToggle');
+        const levelSelect    = document.getElementById('logsLevel');
+        const moduleSelect   = document.getElementById('logsModule');
+        const searchInput    = document.getElementById('logsSearch');
+        const liveTailToggle = document.getElementById('logsLiveTail');
+        const refreshBtn     = document.getElementById('logsRefresh');
+        const exportBtn      = document.getElementById('logsExport');
+        const clearBtn       = document.getElementById('logsClear');
+        const privacyBanner  = document.getElementById('logsPrivacyBanner');
+
+        if (!this._bound && debugToggle) {
+            // Reflect current debug state + privacy banner.
+            const { debugMode } = await chrome.storage.local.get('debugMode');
+            debugToggle.checked = !!debugMode;
+            privacyBanner.classList.toggle('hidden', !debugMode);
+
+            debugToggle.addEventListener('change', async (e) => {
+                await Logger.updateSettings({ debugMode: e.target.checked });
+                privacyBanner.classList.toggle('hidden', !e.target.checked);
+                log(e.target.checked
+                    ? '🟢 Developer mode ON — all log levels stored with full payloads.'
+                    : '⚫ Developer mode OFF — only errors stored, payloads stripped. Existing logs cleared.',
+                    'info');
+                this.render();
+            });
+
+            // Populate module list from Logger.MODULES
+            for (const mod of Object.keys(Logger.MODULES)) {
+                const opt = document.createElement('option');
+                opt.value = mod;
+                opt.textContent = `${Logger.MODULES[mod].icon} ${mod}`;
+                moduleSelect.appendChild(opt);
+            }
+
+            [levelSelect, moduleSelect].forEach(el =>
+                el.addEventListener('change', () => this.render()));
+            searchInput.addEventListener('input', debounce(() => this.render(), 250));
+            refreshBtn.addEventListener('click', () => this.render());
+            exportBtn.addEventListener('click', () => this.exportNDJSON());
+            clearBtn.addEventListener('click', () => this.clearLogs());
+            liveTailToggle.addEventListener('change', e => this.setLiveTail(e.target.checked));
+
+            this._bound = true;
+        }
+
+        await this.render();
+    },
+
+    setLiveTail(on) {
+        if (this._liveTailInterval) {
+            clearInterval(this._liveTailInterval);
+            this._liveTailInterval = null;
+        }
+        if (on) {
+            this._liveTailInterval = setInterval(() => this.render(), 2000);
+        }
+    },
+
+    async render() {
+        const level   = document.getElementById('logsLevel')?.value || '';
+        const module  = document.getElementById('logsModule')?.value || '';
+        const search  = document.getElementById('logsSearch')?.value || '';
+        const listEl  = document.getElementById('logsList');
+        if (!listEl) return;
+
+        const filter = {};
+        if (level)  filter.level = level;
+        if (module) filter.module = module;
+        if (search) filter.search = search;
+        filter.limit = 500; // Cap rendering at 500 most-recent entries.
+
+        const logs = await Logger.getLogs(filter);
+        const perf = await Logger.getPerformanceSummary(50);
+        this.renderPerfCard(perf);
+
+        if (logs.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <p>No log entries match the current filter. Toggle developer mode and trigger an export to see traces.</p>
+                </div>`;
+            return;
+        }
+
+        // Render most-recent-first.
+        const reversed = [...logs].reverse();
+        listEl.innerHTML = reversed.map(entry => this.renderRow(entry)).join('');
+
+        // Wire trace-id click → filter by that trace
+        listEl.querySelectorAll('.log-row-trace').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tid = el.dataset.traceId;
+                const searchInput = document.getElementById('logsSearch');
+                if (searchInput && tid) {
+                    searchInput.value = tid;
+                    this.render();
+                }
+            });
+        });
+
+        // Wire row click → expand/collapse data panel
+        listEl.querySelectorAll('.log-row').forEach(row => {
+            row.addEventListener('click', () => {
+                const id = row.dataset.id;
+                this._expandedId = this._expandedId === id ? null : id;
+                this.render();
+            });
+        });
+    },
+
+    renderRow(entry) {
+        const t = entry.timestamp ? entry.timestamp.split('T')[1]?.split('.')[0] || '' : '';
+        const traceShort = entry.traceId ? entry.traceId.split('-').slice(-2).join('-') : '';
+        const traceBadge = entry.traceId
+            ? `<span class="log-row-trace" data-trace-id="${escapeHtml(entry.traceId)}" title="Click to filter by trace ${escapeHtml(entry.traceId)}">⛓ ${escapeHtml(traceShort)}</span>`
+            : '';
+        const expanded = this._expandedId === entry.id;
+        const detail = expanded
+            ? `<div class="log-row-detail">${escapeHtml(JSON.stringify(entry.data || (entry._privacy || {}), null, 2))}${entry.stack ? '\n\nSTACK:\n' + escapeHtml(entry.stack) : ''}</div>`
+            : '';
+        return `
+            <div class="log-row" data-id="${escapeHtml(entry.id)}">
+                <div class="log-row-time">${t}</div>
+                <div class="log-row-level ${entry.level}">${entry.level}</div>
+                <div class="log-row-module">${entry.moduleIcon || ''} ${escapeHtml(entry.module)}</div>
+                <div class="log-row-msg">${escapeHtml(entry.message)}${traceBadge}</div>
+                ${detail}
+            </div>`;
+    },
+
+    renderPerfCard(perf) {
+        const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+        setText('logsPerfCount', perf.count ? String(perf.count) : '—');
+        setText('logsPerfAvg', perf.count ? `${perf.avgMs}ms` : '—');
+        setText('logsPerfP95', perf.count ? `${perf.p95Ms}ms` : '—');
+        if (perf.slowest) {
+            setText('logsPerfSlowest', `${perf.slowest.data.durationMs}ms · ${perf.slowest.module}: ${perf.slowest.message}`);
+        } else {
+            setText('logsPerfSlowest', '—');
+        }
+    },
+
+    async exportNDJSON() {
+        const { content, filename, mimeType } = await Logger.exportLogs('ndjson');
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        log(`Exported ${filename}`, 'success');
+    },
+
+    async clearLogs() {
+        if (!confirm('Clear all stored logs? This cannot be undone.')) return;
+        await Logger.clear();
+        this.render();
+        log('Logs cleared.', 'success');
+    }
+};
+
+async function initLogsTab() {
+    if (typeof Logger === 'undefined') return;
+    await LogsTab.init();
 }
