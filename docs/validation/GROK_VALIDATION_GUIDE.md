@@ -18,9 +18,14 @@
 
 ### 1. List Conversations
 ```
-GET /rest/app-chat/conversations?pageSize=50
-GET /rest/app-chat/conversations?pageSize=50&pageToken={cursor}  ← repeat until nextPageToken is null
+GET /rest/app-chat/conversations?pageSize=60
 ```
+**⚠ Single-page only.** HAR-verified 2026-05: the response is
+`{conversations:[...], textSearchMatches:[]}` with NO `nextPageToken`,
+`cursor`, or `hasMore` field. Grok does not expose continuation for this
+endpoint. Accounts with more than 60 conversations can only see the most
+recent 60 via this endpoint. Pagination beyond 60 is a Grok API limitation,
+not an extension bug.
 
 ### 2. Response Nodes
 ```
@@ -64,11 +69,10 @@ POST /rest/app-chat/conversations/{uuid}/load-responses
 ## Manual Testing Steps
 
 1. Open grok.com and sign in  
-2. Call list conversations with `pageSize=50`  
-3. If `nextPageToken` is present in the response, repeat with `&pageToken=<value>` until null  
-4. Pick a `conversationId` and call response-node  
-5. Call load-responses for the same conversation  
-6. Verify message content is returned and includes any media references or code blocks
+2. Call list conversations with `pageSize=60`. Expect up to 60 conversations; no continuation token.
+3. Pick a `conversationId` and call response-node
+4. Call load-responses for the same conversation
+5. Verify message content is returned and includes any media references (`webSearchResults`, `citedWebSearchResults`, `imageAttachments`, `fileAttachments`, `generatedImageUrls`)
 
 ---
 

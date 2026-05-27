@@ -1,1 +1,7 @@
-*.har filter=lfs diff=lfs merge=lfs -text
+# Default attributes for the repo.
+# (Removed the `*.har filter=lfs` line in v5.5.0 — it was a dead rule because
+# .gitignore excludes *.har entirely, so the LFS filter could never match.)
+
+# Force LF line endings for shell-executed scripts so they don't break under
+# CRLF on Windows checkouts.
+*.sh text eol=lf

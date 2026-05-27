@@ -67,7 +67,7 @@
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/rest/app-chat/conversations?pageSize=50[&pageToken=cursor]` | GET | List conversations (cursor pagination via `nextPageToken`) |
+| `/rest/app-chat/conversations?pageSize=60` | GET | List conversations — **single page only** (HAR-verified 2026-05). Response is `{conversations:[...], textSearchMatches:[]}` with NO `nextPageToken`, `cursor`, or `hasMore`. Accounts with more than 60 chats can't reach the older ones via this endpoint. |
 | `/rest/app-chat/conversations/{uuid}/response-node?includeThreads=true` | GET | Step 1 of detail fetch — get `responseNodes[].responseId` array |
 | `/rest/app-chat/conversations/{uuid}/load-responses` | POST | Step 2 of detail fetch — body: `{responseIds:[...]}` → returns messages |
 | `/rest/app-chat/conversations_v2/{uuid}?includeWorkspaces=true&includeTaskResult=true` | GET | Get conversation metadata (title, model) |

@@ -1,6 +1,6 @@
 # 🚀 OmniExporter AI - Enterprise Edition
 
-![Version](https://img.shields.io/badge/version-5.4.0-blue) ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green) ![Platforms](https://img.shields.io/badge/platforms-6-orange) ![Formats](https://img.shields.io/badge/export%20formats-2-purple)
+![Version](https://img.shields.io/badge/version-5.5.0-blue) ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green) ![Platforms](https://img.shields.io/badge/platforms-6-orange) ![Formats](https://img.shields.io/badge/export%20formats-2-purple)
 
 Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek** to **Markdown, JSON, and Notion** — with a full dashboard, auto-sync, and OAuth2 Notion integration.
 
@@ -21,12 +21,12 @@ Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepS
 ## ✨ Features
 
 ### Multi-Platform Support
-- ✅ **Perplexity** — API-based, full pagination
-- ✅ **ChatGPT** — Multiple endpoint fallbacks, DOM fallback
-- ✅ **Claude** — Organization-based access
-- ✅ **Gemini** — Multiple RPC IDs, enhanced parsing
-- ✅ **Grok** — Rate limit handling with retries
-- ✅ **DeepSeek** — Multiple auth token sources, cursor pagination
+- ✅ **Perplexity** — REST API with cursor pagination + `has_next_page` paging
+- ✅ **ChatGPT** — `backend-api/conversations` (offset-based) + tree-mapping detail parser
+- ✅ **Claude** — Organization-scoped V2 API + full-fidelity content blocks (text, thinking, tool_use, tool_result)
+- ✅ **Gemini** — `batchexecute` RPC (MaZiqc list, hNvQHb detail, limit=100)
+- ✅ **Grok** — `rest/app-chat/conversations` + two-step detail (response-node + load-responses)
+- ✅ **DeepSeek** — `chat_session/fetch_page` with cursor + fragment-based message parser (handles FILE attachments)
 
 ### Export Formats
 - 📝 **Markdown** (.md) — With YAML frontmatter metadata, sources, attachments, knowledge cards
@@ -44,12 +44,14 @@ Export AI conversations from **Perplexity, ChatGPT, Claude, Gemini, Grok & DeepS
 
 | Platform | URL | Status | Extraction Method |
 |----------|-----|--------|-------------------|
-| Perplexity | perplexity.ai | ✅ Working | API-first + DOM fallback |
-| ChatGPT | chatgpt.com | ✅ Working | API-first + DOM fallback |
-| Claude | claude.ai | ✅ Working | API-first + DOM fallback |
-| Gemini | gemini.google.com | ✅ Working | API-first (RPC) + DOM fallback |
-| Grok | grok.com / x.com | ✅ Working | API-first + DOM fallback |
-| DeepSeek | chat.deepseek.com | ✅ Working | API-first + DOM fallback |
+| Perplexity | perplexity.ai | ✅ Working | REST API + cursor pagination |
+| ChatGPT | chatgpt.com | ✅ Working | `backend-api` + tree-mapping parser |
+| Claude | claude.ai | ✅ Working | V2 API + full-fidelity content blocks |
+| Gemini | gemini.google.com | ✅ Working | `batchexecute` RPC (MaZiqc / hNvQHb) |
+| Grok | grok.com / x.com | ✅ Working | `rest/app-chat` (capped at ~60 by Grok) |
+| DeepSeek | chat.deepseek.com | ✅ Working | `api/v0/chat_session` + fragment parser |
+
+> **Note:** All adapters use real API extraction (verified against captured HAR traffic). When an API fails, the extension surfaces a clear "API unavailable, refresh the tab and retry" error rather than falling back to sidebar DOM scraping (which would silently return only the most-recent visible items and hide the rest of your history). Opportunistically-captured API responses via `NetworkInterceptor` are used as a fallback when available.
 
 ## 🔧 Installation
 
@@ -137,7 +139,7 @@ PR #2 reorganized all source files from a flat root into the `src/` directory:
 
 ```
 omniexporter-ai-fixed-v2/
-├── manifest.json                  # Extension manifest (MV3, v5.2.0)
+├── manifest.json                  # Extension manifest (MV3)
 ├── config.example.js              # Configuration template (copy to config.js)
 ├── src/
 │   ├── background.js              # Service worker (alarms, context menus, messaging)
@@ -145,17 +147,18 @@ omniexporter-ai-fixed-v2/
 │   ├── platform-config.js         # Endpoint configs, DataExtractor, VersionDetector
 │   ├── adapters/
 │   │   ├── chatgpt-adapter.js     # ChatGPT conversation adapter
-│   │   ├── claude-adapter.js      # Claude conversation adapter (Full Fidelity blocks)
+│   │   ├── claude-adapter.js      # Claude conversation adapter (full-fidelity blocks)
 │   │   ├── deepseek-adapter.js    # DeepSeek conversation adapter (fragments, R1 thinking)
 │   │   ├── gemini-adapter.js      # Gemini conversation adapter (batchexecute RPC)
-│   │   ├── gemini-inject.js       # Injected script for Gemini RPC interception
-│   │   ├── gemini-page-interceptor.js  # Page-level interceptor (web_accessible_resource)
-│   │   ├── grok-adapter.js        # Grok conversation adapter (cursor pagination)
-│   │   └── perplexity-adapter.js  # Perplexity conversation adapter (has_next_page)
+│   │   ├── gemini-inject.js       # Page-context bridge for Gemini session params
+│   │   ├── grok-adapter.js        # Grok conversation adapter
+│   │   └── perplexity-adapter.js  # Perplexity conversation adapter (cursor + has_next_page)
 │   ├── utils/
-│   │   ├── logger.js              # Enterprise logging with storage
-│   │   ├── network-interceptor.js # XHR/fetch interception utility
+│   │   ├── logger.js              # Logger with storage
+│   │   ├── network-interceptor.js # Passive XHR/fetch capture for opportunistic caching
 │   │   ├── export-manager.js      # Format conversion and file export
+│   │   ├── shared-utils.js        # Shared helpers (LoadingManager, RateLimiter, ExportedUuidStore, PlatformUrlBuilder)
+│   │   ├── notion-block-builder.js # Markdown → Notion rich block converter
 │   │   └── toast.js               # In-page notification toasts
 │   └── ui/
 │       ├── popup.html / popup.js / popup.css      # Extension popup
@@ -174,7 +177,6 @@ omniexporter-ai-fixed-v2/
     ├── icon32.png                 # 32x32 extension icon
     ├── icon48.png                 # 48x48 extension icon
     ├── icon128.png                # 128x128 extension icon
-    ├── generate-icons.py          # Script to regenerate PNG icons from SVG template
     └── logos/                     # Platform SVG logos
         ├── perplexity.svg
         ├── chatgpt.svg
@@ -206,22 +208,22 @@ omniexporter-ai-fixed-v2/
 │   │   ├── README_GEMINI_DOCS.md
 │   │   ├── README_GROK_DOCS.md
 │   │   └── README_PERPLEXITY_DOCS.md
-│   ├── DEEPSEEK_DOCUMENTATION_COMPLETE.md
-│   ├── DOCUMENTATION_COMPARISON.md
-│   ├── PLATFORM_DOCUMENTATION_COMPARISON.md
+│   ├── ARCHITECTURE.md            # High-level component map
+│   ├── HAR_ENDPOINT_INDEX.md      # HAR-verified endpoint reference
+│   ├── NOTION_EXPORT.md           # Notion export format spec
 │   └── TESTING_PLAN.md
 ```
 
 ## 🔐 Security
 
-OmniExporter AI v5.2.0 includes several security hardening measures:
+OmniExporter AI includes the following security hardening measures:
 
 - **Server-side OAuth secret** — The Notion Client Secret lives only on the Cloudflare Worker; it is never bundled in the extension
 - **Content Security Policy** — `script-src 'self'` prevents remote script execution; `connect-src` is limited to known API domains
 - **Scoped `web_accessible_resources`** — Resources are accessible only from the specific platform origins that need them (not `<all_urls>`)
 - **`postMessage` origin validation** — Listeners in `gemini-adapter.js` and `gemini-inject.js` validate `event.origin` against the expected platform domain
 - **UUID validation** — `SecurityUtils.isValidUuid()` is called at `content.js` entry points before any API calls
-- **HTML sanitization** — `SecurityUtils.sanitizeHtml()` prevents XSS in exported content
+- **HTML escaping at injection sites** — `options.js` wraps every user-controlled string in `escapeHtml()` before inserting into `innerHTML` template literals; Notion-picker entries use the same helper
 - **OAuth tokens in `chrome.storage.local`** — Stored in Chrome's persistent local storage (file-backed under your profile; encrypted at rest where the OS keyring is available — macOS Keychain, Windows DPAPI, Linux libsecret/kwallet — and plain on platforms without a keyring). In-flight OAuth artifacts (state, PKCE verifier) live in `chrome.storage.session` and are wiped on browser restart.
 
 See [SECURITY.md](SECURITY.md) for the full security policy and vulnerability reporting process.
@@ -247,7 +249,8 @@ See [SECURITY.md](SECURITY.md) for the full security policy and vulnerability re
 2. Add endpoint configuration in `src/platform-config.js`
 3. Register the adapter in `manifest.json` content scripts and in `src/content.js`
 4. Add a logo SVG to `icons/logos/`
-5. Test API extraction **and** DOM fallback paths
+5. Verify API extraction works against a real captured HAR (no DOM-scraping fallback — the sidebar is virtualized and would silently truncate exports). On API failure, surface a clear "API unavailable" error.
+6. Add the new platform to `chrome.tabs.query` URL list in `src/background.js`'s `performAutoSync` so auto-sync picks it up.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
@@ -330,6 +333,42 @@ The Cloudflare Worker for Notion OAuth is currently hosted at `omniexporter-oaut
 - Better branding for white-label deployments
 
 See [`cloudflare-worker/DEPLOY.md`](cloudflare-worker/DEPLOY.md) for deployment instructions including custom domain setup.
+
+### Consistent `platform-config.js` usage across all 6 adapters
+Three adapters (Perplexity, Claude, ChatGPT) build URLs through the central
+endpoint registry in `src/platform-config.js`. The other three (Grok, Gemini,
+DeepSeek) mostly hardcode paths via string interpolation on `this.apiBase`.
+
+**Today:** no user-visible bug — exports work. But when a platform changes
+their endpoint paths (which happens), Perplexity/Claude/ChatGPT need a one-line
+config update while Grok/Gemini/DeepSeek require grepping through the adapter
+for every literal path string.
+
+**Right time to fix:** the next time you have to touch one of the hardcoded
+adapters for a real API change. At that point, refactoring that single adapter
+to use the registry is a small marginal cost. Don't bulk-refactor all three at
+once — Gemini's `_buildBatchUrl` (with 7 dynamic query params) is genuinely
+awkward to express in a generic registry and may not benefit. See the
+`// TODO(v6):` marker in each hardcoded adapter for context.
+
+### Standardise the `getThreads()` adapter signature
+Adapter contract per `CONTRIBUTING.md` is `getThreads(page, limit)`, but three
+adapters take a divergent third parameter:
+- `PerplexityAdapter.getThreads(page, limit, spaceId)` — collection filter
+- `GeminiAdapter.getThreads(page, limit, cursor)` — cursor for cursor pagination
+- All others: 2 params
+
+**Today:** orchestration code in `content.js handleGetThreadListOffset`
+special-cases each platform with `if (adapter.name === 'X')` branches, so the
+divergent signatures don't actively bite. Latent bug if someone writes a
+generic "iterate any adapter" helper that calls `adapter.getThreads(page,
+limit, x)`.
+
+**Proposed fix:** replace the positional third arg with an options bag in all
+6 adapters: `getThreads(page, limit, options = {})`, where `options` carries
+`{ spaceId }` / `{ cursor }` / nothing as needed. Estimated cost: ~2-3 hours
+including HAR re-verification on all platforms. See `// TODO(v6):` markers on
+each `getThreads` definition.
 
 ---
 

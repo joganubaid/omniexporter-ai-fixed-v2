@@ -80,10 +80,16 @@ Grok uses cookie-based sessions. Requests require `credentials: "include"` to se
 **Calls in HAR:** 8
 
 **Query Parameters:**
-- `pageSize` (required) — use `50`; `60` was the legacy single-page maximum
-- `pageToken` (optional) — cursor from previous response for next page
-- `filterIsStarred` (optional)
+- `pageSize` (required) — Grok caps responses at 60 conversations regardless of the value asked for
+- `filterIsStarred` (optional) — when `true`, returns only starred conversations
 - `workspaceId` (optional)
+
+**⚠ No pagination available.** HAR-verified 2026-05: response is
+`{conversations:[...], textSearchMatches:[]}` with NO `nextPageToken`,
+`cursor`, or `hasMore` field. The earlier `pageToken` reference in this doc
+was speculative — the field has never been observed in any captured response.
+Accounts with more than 60 conversations cannot reach the older ones through
+this endpoint.
 
 ### 2. Response Nodes
 **Endpoint:** `GET /rest/app-chat/conversations/{uuid}/response-node`  
@@ -171,18 +177,25 @@ Grok uses cookie-based sessions. Requests require `credentials: "include"` to se
 
 ### List Conversations
 ```
-GET /rest/app-chat/conversations?pageSize=50
-GET /rest/app-chat/conversations?pageSize=50&pageToken={cursor}
+GET /rest/app-chat/conversations?pageSize=60
+GET /rest/app-chat/conversations?pageSize=60&filterIsStarred=true
 ```
 
-**Typical Fields:**
-- `conversations[]`
-- `conversationId`
-- `title`
-- `createTime`
-- `modifyTime`
-- `starred`
-- `nextPageToken` — present when more pages exist; absent/null on last page
+**Response Fields:**
+- `conversations[]` — array of conversation summaries (max 60)
+  - `conversationId`
+  - `title`
+  - `createTime`
+  - `modifyTime`
+  - `starred`
+  - `systemPromptName`
+  - `temporary`
+  - `mediaTypes[]`
+  - `workspaces[]`
+- `textSearchMatches[]` — empty unless a search query was sent
+
+**No pagination markers.** No `nextPageToken`, `cursor`, or `hasMore` in
+the response.
 
 ### Response Nodes
 ```
@@ -207,18 +220,24 @@ POST /rest/app-chat/conversations/{uuid}/load-responses
 
 ## Pagination
 
-Grok uses `pageSize` for listing conversations, with cursor-based pagination via `nextPageToken` for accounts with more than one page of conversations.
+**Grok's `/rest/app-chat/conversations` endpoint is single-page only.**
 
-**HAR-verified pagination flow:**
+HAR-verified 2026-05: the response shape is
 ```
-GET /rest/app-chat/conversations?pageSize=50
-→ Response: { conversations: [...], nextPageToken: "abc123" }
-
-GET /rest/app-chat/conversations?pageSize=50&pageToken=abc123
-→ Response: { conversations: [...], nextPageToken: null }  ← stop here
+{ "conversations": [...], "textSearchMatches": [] }
 ```
+with NO `nextPageToken`, `cursor`, `hasMore`, or any other continuation
+marker. `pageSize=60` is the maximum count Grok will return per request,
+and there is no documented mechanism to fetch page 2.
 
-The adapter loops until `nextPageToken` is absent or null, building a full in-memory thread cache. `pageSize=60` is the legacy single-request limit; the current implementation uses `pageSize=50` with full cursor pagination.
+**User impact:** accounts with more than 60 conversations can only access
+the most recent 60 via this endpoint. This is a Grok API constraint, not
+an extension limitation. If a future Grok release exposes pagination, the
+adapter's `getAllThreads` should be updated to use it.
+
+Earlier versions of this doc speculated about `nextPageToken` / `pageToken`
+cursor pagination — that was never observed in any captured HAR and has
+been removed to avoid misleading future maintainers.
 
 ---
 

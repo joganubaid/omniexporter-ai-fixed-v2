@@ -152,6 +152,14 @@ const OAUTH_SERVER_URL = 'https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev'
 
 The extension reads `OAUTH_SERVER_URL` at startup and builds the token endpoint URL automatically. Do **not** edit `auth/notion-oauth.js` directly.
 
+### CSP — no manifest edit needed for `*.workers.dev` URLs
+
+`manifest.json`'s `content_security_policy.connect-src` includes
+`https://*.workers.dev`, so any worker URL on Cloudflare's default domain is
+allowed without editing the manifest. **If you deploy your worker to a custom
+domain** (e.g. `oauth.yourdomain.com`), you'll need to add that origin to
+the `connect-src` whitelist in `manifest.json`.
+
 ---
 
 ## Troubleshooting

@@ -122,8 +122,7 @@ Session: gemini.google.com/app/ec00ff04a46f7fa6
 └── src/
     ├── adapters/
     │   ├── gemini-adapter.js      # Main implementation
-    │   ├── gemini-inject.js       # Page context script
-    │   └── gemini-page-interceptor.js
+    │   └── gemini-inject.js       # Content-script bridge (session params)
     ├── utils/
     │   ├── network-interceptor.js
     │   └── logger.js

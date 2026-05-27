@@ -5,6 +5,63 @@ All notable changes to OmniExporter AI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - 2026-05-27
+
+### 🐛 Critical Bug Fixes
+
+- **Gemini long chats no longer truncated** — `getThreadDetail` was requesting only 10 messages; bumped to 100 (matches what Gemini's own frontend asks for). Chats with more than 10 messages were silently exporting only the most recent 10.
+- **Gemini UUID extraction restored** — earlier regex tightening required a `c_` prefix in URLs, but Gemini's URLs strip the prefix while the API requires it. Extraction now accepts both forms and normalises to the API form for consistent dedup.
+- **ChatGPT GPT-5 reasoning now exported** — `thoughts` and `reasoning_recap` content types were silently dropped from the markdown. Now rendered as a blockquoted "💭 Reasoning" block.
+- **Grok citations + attachments restored** — field-name mismatches (`searchResults`/`mediaReferences`/`codeBlocks` vs the real `webSearchResults`/`imageAttachments`/`fileAttachments`/`generatedImageUrls`) had been silently dropping web-search sources, generated images, and file uploads. Prefer `citedWebSearchResults` (only sources cited inline) over the broader retrieved set.
+- **DeepSeek file attachments restored** — `FILE` fragment type wasn't handled by the extractor; user-uploaded PDFs/docs were vanishing from exports.
+- **Perplexity agentic content restored** — `supported_block_use_cases` expanded from 29 to 40 to match the frontend; missing flags were causing Perplexity to strip newer block types (Comet browser agent, workflow steps, agentic deltas) from responses.
+
+### 🔐 Authentication & Storage
+
+- **OAuth tokens persist across browser restarts** — access token moved from `chrome.storage.session` to `chrome.storage.local`. Notion tokens don't expire, so the synthetic 1-hour expiry that was forcing hourly reconnects has been removed.
+- **OAuth flow artifacts (state, code_verifier) now ephemeral** — moved to `chrome.storage.session` so abandoned flows can't leave PKCE material on disk.
+- **Background auto-sync no longer pops a login window unprompted** — expired-token errors set a 🔒 badge + `notion_reauth_required` flag; user reconnects on their own time.
+- **PKCE verifier hex → base64url** — denser entropy, matches the challenge encoding.
+
+### ⚡ Performance & Reliability
+
+- **Per-platform exported-UUID store** — `exportedUuids_<Platform>` keys with `{uuid → lastSyncedMs}` maps replace the single shared flat array. Faster per-platform reads/writes; legacy bucket auto-migrates and drains opportunistically as auto-sync runs.
+- **Notion DB schema cache (24h TTL)** — previously re-fetched on every thread sync. A 50-thread auto-sync now makes 1 schema call instead of 50.
+- **Jitter on backoff** — ±25% on `notionFetchWithBackoff` to avoid thundering-herd retries.
+- **Removed empty 60s keep-alive alarm** — didn't actually keep SW alive; just burned a wakeup per minute.
+
+### 🛡️ Cloudflare Worker
+
+- **`ALLOWED_ORIGINS` from env var** — no code edit needed per fork. Comma-separated list lets one worker serve multiple extension IDs.
+- **KV-backed rate limit** — globally shared across all worker isolates (free tier, no credit card). Falls back to per-isolate in-memory when KV is unbound.
+
+### 🎨 UI
+
+- **"✓ 2d ago" synced-time badge** on each thread in the dashboard; full timestamp on tooltip.
+- **Dashboard version sourced from manifest** — `chrome.runtime.getManifest().version` instead of a hardcoded string. No more drift.
+- **Per-platform "Clear cache" button** with escape hatch for pre-v2 legacy entries.
+
+### 🧹 Manifest & Permissions
+
+- **Dropped `tabs` permission** — `chrome.tabs.*` works fine with just `host_permissions`. Removes the scary "read browsing history" install warning.
+- **Dropped `unlimitedStorage`** — logs are auto-trimmed to 5MB; threads aren't persisted. 10MB default is plenty.
+- **Bumped `minimum_chrome_version` to 102** — `chrome.storage.session` requirement.
+- **Removed dead `web_accessible_resources` entry** for `auth/callback.html` (OAuth redirects to `chromiumapp.org`, not the worker domain).
+
+### 🗑️ Removed
+
+- **Gemini page-world XHR interceptor** — was bumping message limit 20→100; Gemini's frontend now defaults to 100, so the interceptor was a no-op. Removed.
+- **All DOM-scraping fallbacks** — ChatGPT/Gemini sidebar scraping was misleadingly capping exports to the ~20 visible items. Now surfaces a clear API error instead of silent partial results.
+
+### 📚 Documentation & Hygiene
+
+- **CHANGELOG, README, CONTRIBUTING, SECURITY** all refreshed to match current behaviour.
+- **`SecurityUtils` trimmed** — unused `sanitizeHtml`, `fetchWithTimeout`, `isValidApiResponse` removed; the actively-used `escapeHtml` in `options.js` is what defends `innerHTML` interpolations.
+- **`OmniToast` → `Toast`** in popup error handlers — class was named `Toast` all along; the popup's error toasts were dead code.
+- **Inline ticket markers stripped** (`BUG-N FIX`, `REAL-N FIX`, `SEC-N FIX`, `FIX #N`, `Phase N`) across 11 source files.
+
+---
+
 ## [5.4.0] - 2026-03-16
 
 ### ✨ New Features

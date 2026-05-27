@@ -165,15 +165,20 @@ f.req=[[["MaZiqc","[13,null,[0,null,1]]",null,"generic"]]]
 ```
 src/
 ├── adapters/
-│   ├── gemini-adapter.js           # Main adapter (717 lines)
-│   ├── gemini-inject.js            # Page context script (injected)
-│   └── gemini-page-interceptor.js  # Web accessible resource
+│   ├── gemini-adapter.js           # Main adapter
+│   └── gemini-inject.js            # Content-script bridge that extracts session params
+│                                     (SNlM0e, cfb2h, FdrFJe) from the page's inline scripts
 ├── utils/
-│   ├── network-interceptor.js      # XHR/Fetch interception
-│   └── logger.js                   # Enterprise logging
+│   ├── network-interceptor.js      # XHR/Fetch interception (opportunistic cache)
+│   └── logger.js                   # Logger
 ├── platform-config.js              # Centralized config
 └── content.js                      # Unified content script
 ```
+
+> Removed in v5.5.0: `gemini-page-interceptor.js` (web-accessible page-world
+> script). It previously rewrote Gemini's own XHRs to bump message-limit 20→100,
+> but Gemini's frontend now defaults to 100 itself, making the interceptor a
+> no-op. The adapter sends limit=100 directly via its own batchexecute call.
 
 ### Architecture Overview
 
@@ -638,50 +643,39 @@ if (!SecurityUtils.isValidUuid(uuid)) {
 }
 ```
 
-### HTML Sanitization
+### HTML Escaping (DOM injection sites)
 
-**content.js:**
-```javascript
-SecurityUtils.sanitizeHtml = (str) => {
-  if (typeof str !== 'string') return '';
-  return str.replace(/[&<>"']/g, (m) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[m]);
-};
-```
+`SecurityUtils.sanitizeHtml` was removed in v5.5.0 because it was never called
+anywhere. The actual XSS defense lives at the injection sites:
 
-### Fetch Timeout Protection
+- `src/ui/options.js`: every `${...}` interpolation that flows into `innerHTML`
+  uses `escapeHtml(value)` first (or `InputSanitizer.clean(value)` from
+  `shared-utils.js`).
+- `src/ui/notion-picker.js`: same pattern for Notion database title rendering.
 
-**content.js:**
-```javascript
-SecurityUtils.fetchWithTimeout = async (url, options = {}, timeoutMs = 30000) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    return response;
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-```
+Both helpers do the same `[&<>"']` → entity replacement. UUIDs are separately
+validated via `SecurityUtils.isValidUuid` before they reach any URL or DOM
+interpolation.
+
+### Fetch Timeout (removed)
+
+`SecurityUtils.fetchWithTimeout` was also removed in v5.5.0 (unused). Every
+adapter's `_fetchWithRetry` already implements its own retry + backoff. If
+per-call timeout becomes necessary, wire it into the adapter's retry helper
+rather than re-introducing a global wrapper.
 
 ### Web Accessible Resources Scoping
 
-**manifest.json:**
+As of v5.5.0 there is no Gemini-specific `web_accessible_resources` entry —
+the page-world XHR interceptor was removed because Gemini's frontend already
+sends `messageLimit=100` on its own. If you re-add a page-world script in the
+future, scope it explicitly to the Gemini origin:
+
 ```json
 {
   "web_accessible_resources": [
     {
-      "resources": ["src/adapters/gemini-page-interceptor.js"],
+      "resources": ["src/adapters/your-page-script.js"],
       "matches": ["https://gemini.google.com/*"]
     }
   ]

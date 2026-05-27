@@ -29,28 +29,34 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ```
 src/
-├── background.js          — Service worker (alarms, context menus, messaging)
-├── content.js             — Content script orchestration layer (adapter dispatch, message routing, re-injection guard)
+├── background.js          — Service worker (alarms, context menus, messaging, auto-sync)
+├── content.js             — Content script orchestration (adapter dispatch, message routing, re-injection guard)
 ├── platform-config.js     — Endpoint configs, DataExtractor, VersionDetector
-├── adapters/              — One file per AI platform (all 6 adapters live here)
+├── adapters/              — One file per AI platform
 │   ├── chatgpt-adapter.js
 │   ├── claude-adapter.js
 │   ├── deepseek-adapter.js
 │   ├── gemini-adapter.js
-│   ├── gemini-inject.js
-│   ├── gemini-page-interceptor.js
+│   ├── gemini-inject.js   — Page-context bridge for Gemini session params (XSRF, build id, session id)
 │   ├── grok-adapter.js
 │   └── perplexity-adapter.js
-├── utils/                 — Logger, network interceptor, export manager, toast, notion-block-builder
+├── utils/
+│   ├── logger.js
+│   ├── network-interceptor.js   — Passive XHR/fetch capture (opportunistic cache)
+│   ├── export-manager.js        — Markdown/JSON/HTML/CSV/TXT/PDF formatters
+│   ├── notion-block-builder.js  — Markdown → Notion rich-block converter
+│   ├── shared-utils.js          — LoadingManager, RateLimiter, ExportedUuidStore, PlatformUrlBuilder
+│   └── toast.js                 — In-page notification toasts
 └── ui/                    — Popup, options/dashboard, notion picker + CSS
 ```
 
 ### Key Design Patterns
 
 - **Adapter Pattern**: Each platform has an adapter with `name`, `extractUuid()`, `getThreads()`, `getThreadDetail()`, and optional `getSpaces()`
-- **API-first + DOM fallback**: All adapters try API extraction first, then fall back to DOM scraping
-- **HAR-verified endpoints**: All API endpoints are verified against real browser HAR captures
-- **Re-injection guard**: `content.js` uses `window.__omniExporterLoaded` to prevent duplicate initialization on extension reload
+- **API-only extraction**: All adapters use real API endpoints — no DOM scraping. When the API fails, surface a clean error so the user can refresh and retry. `NetworkInterceptor` may be checked for opportunistically-captured API responses as a fallback, but the sidebar HTML is never scraped (it's virtualized and would silently return only the visible threads).
+- **HAR-verified endpoints**: Every API endpoint, query parameter, and request/response shape is verified against captured real-browser HAR traffic (see `docs/HAR_ENDPOINT_INDEX.md`).
+- **Re-injection guard**: `content.js` uses `window.__omniExporterLoaded` to prevent duplicate initialization on extension reload.
+- **Per-platform dedup store** (`ExportedUuidStore` in `shared-utils.js`): `exportedUuids_<Platform>` keys with `{uuid → lastSyncedMs}` maps. No global state, no LRU eviction. Legacy bucket auto-migrates on install.
 
 ## Making Changes
 
@@ -67,9 +73,9 @@ src/
 
 ### Testing
 - Test on each supported platform after changes to shared code (`src/content.js`, `src/platform-config.js`)
-- Verify both API extraction and DOM fallback paths
-- Test with expired/invalid sessions to verify error handling
-- Test bulk export (Load All) to verify pagination
+- Test with expired/invalid sessions to verify error handling (should surface a clear "API unavailable, refresh and retry" message — not a silent partial result)
+- Test bulk export (Load All) to verify pagination — Perplexity, Claude, ChatGPT, DeepSeek, Gemini all paginate; Grok is capped at ~60 by their API
+- After any API/payload change, re-capture a HAR from the platform's frontend and verify the request/response shapes still match what the adapter expects
 
 ### Pull Request Process
 1. Create a feature branch from `master`

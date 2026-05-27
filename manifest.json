@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "OmniExporter AI - Enterprise Edition",
-    "version": "5.4.0",
+    "version": "5.5.0",
     "description": "Export conversations from Perplexity, ChatGPT, Claude, Gemini, Grok & DeepSeek to Markdown, JSON & Notion. Full dashboard with auto-sync and OAuth2 Notion integration.",
     "commands": {
         "_execute_action": {
@@ -18,7 +18,7 @@
         }
     },
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src https://api.notion.com https://www.perplexity.ai https://chatgpt.com https://claude.ai https://chat.openai.com https://*.openai.com https://gemini.google.com https://grok.com https://chat.deepseek.com https://omniexporter-oauth.jonub250383.workers.dev;"
+        "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src https://api.notion.com https://www.perplexity.ai https://chatgpt.com https://claude.ai https://chat.openai.com https://*.openai.com https://gemini.google.com https://grok.com https://chat.deepseek.com https://*.workers.dev;"
     },
     "permissions": [
         "activeTab",
