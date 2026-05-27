@@ -7,7 +7,7 @@
 // - DataExtractor (from platform-config.js)
 // - Logger (from logger.js)
 
-const ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
+var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
     name: "ChatGPT",
 
     // Cache for pagination

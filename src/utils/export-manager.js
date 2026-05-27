@@ -4,23 +4,25 @@
 
 // REAL-14 FIX: Wrap in window guard to prevent SyntaxError: 'Identifier already declared'
 // on SPA re-injection. ExportManager is injected as a content script and re-runs on navigation.
-const root = typeof window !== 'undefined' ? window : globalThis;
+var root = typeof window !== 'undefined' ? window : globalThis;
 if (!root.ExportManager) {
 root.ExportManager = class ExportManager {
     static formats = {
         markdown: {
             name: 'Markdown',
             extension: '.md',
-            mimeType: 'text/markdown',
-            icon: '📝'
+            mimeType: 'text/markdown'
         },
         json: {
             name: 'JSON',
             extension: '.json',
-            mimeType: 'application/json',
-            icon: '📊'
+            mimeType: 'application/json'
         }
     };
+
+    static _stripHtml(text) {
+        return text ? text.replace(/<[^>]+>/g, '') : '';
+    }
 
     static export(data, format = 'markdown', platform = 'Unknown') {
         const formatConfig = this.formats[format];
@@ -51,7 +53,7 @@ root.ExportManager = class ExportManager {
     }
 
     // ============================================
-    // MARKDOWN FORMAT (WITH PLATFORM LOGOS)
+    // MARKDOWN EXPORT — Linear narrative format
     // ============================================
     static toMarkdown(data, platform) {
         const entries = data.detail?.entries || [];
@@ -60,17 +62,7 @@ root.ExportManager = class ExportManager {
         const date = firstEntry.updated_datetime
             ? new Date(firstEntry.updated_datetime).toISOString().split('T')[0]
             : new Date().toISOString().split('T')[0];
-
-        // Platform emoji icons
-        const platformIcons = {
-            'Perplexity': '🧭',
-            'ChatGPT': '🤖',
-            'Claude': '🎯',
-            'Gemini': '✨',
-            'Grok': '𝕏',
-            'DeepSeek': '🔮'
-        };
-        const platformIcon = platformIcons[platform] || '💬';
+        const model = data.detail?.model || data.model || null;
 
         let md = '---\n';
         md += `title: "${title}"\n`;
@@ -78,49 +70,109 @@ root.ExportManager = class ExportManager {
         md += `platform: ${platform}\n`;
         md += `uuid: ${data.uuid || 'unknown'}\n`;
         md += `entries: ${entries.length}\n`;
+        if (model) md += `model: ${model}\n`;
         md += '---\n\n';
-        md += `# ${platformIcon} ${title}\n\n`;
-        md += `> **Platform:** ${platform} | **Conversations:** ${entries.length} | **Date:** ${date}\n\n`;
+        md += `# ${title}\n\n`;
+        md += `**Platform:** ${platform} | **Conversations:** ${entries.length} | **Date:** ${date}\n`;
+        if (model) md += `**Model:** ${model}\n`;
+        md += '\n';
 
         entries.forEach((entry, index) => {
             const query = entry.query || entry.query_str || '';
+            const meta = this._extractEntryMeta(entry);
+
+            md += `---\n\n`;
+            md += `## Turn ${index + 1}\n\n`;
+
+            // === User message ===
             if (query) {
-                md += `## 🙋 Question ${index + 1}\n\n`;
+                md += `### User\n\n`;
+                // Attachments
+                if (meta.attachments.length > 0) {
+                    meta.attachments.forEach(att => {
+                        const name = att.file_name || att.fileName || 'file';
+                        md += `> *Attachment: ${name}*`;
+                        if (att.extracted_content) md += ` (${att.extracted_content.length} chars)`;
+                        md += '\n';
+                    });
+                    md += '\n';
+                }
                 md += `${query}\n\n`;
             }
 
-            // Attachments (Claude file uploads)
-            const meta = this._extractEntryMeta(entry);
-            if (meta.attachments.length > 0) {
-                meta.attachments.forEach(att => {
-                    const name = att.file_name || att.fileName || 'file';
-                    md += `> 📎 **Attachment:** ${name}\n`;
-                });
-                md += '\n';
+            // === Assistant response ===
+            const blocks = entry.blocks || [];
+            if (blocks.length > 0) {
+                md += `### Assistant\n\n`;
+
+                for (const block of blocks) {
+                    // Thinking/reasoning
+                    if (block.thinking) {
+                        const thinkLines = block.thinking.trim().split('\n');
+                        md += thinkLines.map(l => `> *${l}*`).join('\n') + '\n\n';
+                    }
+
+                    // Tool calls (collapsible)
+                    if (block.toolCalls && block.toolCalls.length > 0) {
+                        for (const tc of block.toolCalls) {
+                            md += `<details>\n<summary><strong>Tool: ${tc.name}</strong></summary>\n\n`;
+                            md += '```json\n' + JSON.stringify(tc.input, null, 2) + '\n```\n\n';
+                            md += `</details>\n\n`;
+                        }
+                    }
+
+                    // Answer text
+                    const answer = ExportManager._stripHtml(block.markdown_block?.answer || '');
+                    if (answer.trim()) {
+                        md += `${answer.trim()}\n\n`;
+                    }
+
+                    // Tool results (collapsible)
+                    if (block.toolResults && block.toolResults.length > 0) {
+                        for (const tr of block.toolResults) {
+                            const trText = ExportManager._stripHtml(tr.text);
+                            if (trText.trim()) {
+                                const resultBody = trText.trim().split('\n').join('\n> ');
+                                if (tr.isError) {
+                                    md += `<details>\n<summary><strong>Tool error</strong></summary>\n\n> ${resultBody}\n\n</details>\n\n`;
+                                } else {
+                                    md += `<details>\n<summary><strong>Tool result</strong></summary>\n\n> ${resultBody}\n\n</details>\n\n`;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Citations (from Claude API)
+                if (entry.citations && entry.citations.length > 0) {
+                    md += '**Citations:**\n\n';
+                    const seen = {};
+                    entry.citations.forEach(c => {
+                        if (!c.url || seen[c.url]) return;
+                        seen[c.url] = true;
+                        const safeUrl = this._sanitizeUrl(c.url);
+                        if (safeUrl) md += `- [${c.title || c.url}](${safeUrl})\n`;
+                    });
+                    md += '\n';
+                }
             }
 
-            let answer = this.extractAnswer(entry);
-            if (answer.trim()) {
-                md += `### 🤖 Answer\n\n`;
-                md += `${answer.trim()}\n\n`;
-            }
-
-            // Sources (from blocks or entry-level)
+            // Sources (from blocks or entry-level, not already shown as citations)
             if (meta.sources.length > 0) {
-                md += `### 📚 Sources\n\n`;
+                md += '**Sources:**\n\n';
                 const seen = {};
                 meta.sources.forEach((source, i) => {
                     if (seen[source.url]) return;
                     seen[source.url] = true;
                     const safeUrl = this._sanitizeUrl(source.url);
-                    md += `${i + 1}. [${source.title || source.url}](${safeUrl})\n`;
+                    if (safeUrl) md += `${i + 1}. [${source.title || source.url}](${safeUrl})\n`;
                 });
                 md += '\n';
             }
 
             // Knowledge cards
             if (meta.knowledgeCards.length > 0) {
-                md += `### 📋 Knowledge Cards\n\n`;
+                md += '**Knowledge Cards:**\n\n';
                 meta.knowledgeCards.forEach(card => {
                     md += `> **${card.title}**`;
                     if (card.description) md += `: ${card.description}`;
@@ -131,7 +183,7 @@ root.ExportManager = class ExportManager {
 
             // Media items
             if (meta.media.length > 0) {
-                md += `### 🖼️ Media\n\n`;
+                md += '**Media:**\n\n';
                 meta.media.forEach(m => {
                     const safeUrl = this._sanitizeUrl(m.url);
                     if (safeUrl) md += `![${m.alt || 'Image'}](${safeUrl})\n`;
@@ -141,17 +193,15 @@ root.ExportManager = class ExportManager {
 
             // Related questions
             if (meta.relatedQuestions.length > 0) {
-                md += `### 🔗 Related Questions\n\n`;
+                md += '**Related Questions:**\n\n';
                 meta.relatedQuestions.slice(0, 5).forEach(q => {
                     if (q) md += `- ${q}\n`;
                 });
                 md += '\n';
             }
-
-            md += '---\n\n';
         });
 
-        md += `\n*Exported with OmniExporter AI on ${new Date().toLocaleString()}*\n`;
+        md += `---\n\n*Exported with OmniExporter AI on ${new Date().toISOString()}*\n`;
         return md;
     }
 
@@ -169,25 +219,36 @@ root.ExportManager = class ExportManager {
             conversation: {
                 uuid: data.uuid || null,
                 title: data.title || 'Untitled Chat',
-                spaceName: data.spaceName || null,
-                model: data.model || null,
-                createdAt: data.detail?.entries?.[0]?.created_datetime || null,
-                updatedAt: data.detail?.entries?.[0]?.updated_datetime || null
+                settings: data.detail?.settings || null,
+                project_uuid: data.detail?.project_uuid || null,
+                model: data.model || data.detail?.model || null,
+                createdAt: data.detail?.created_at || data.detail?.entries?.[0]?.created_datetime || null,
+                updatedAt: data.detail?.updated_at || data.detail?.entries?.[0]?.updated_datetime || null
             },
             entries: (data.detail?.entries || []).map((entry, index) => {
                 const entryMeta = this._extractEntryMeta(entry);
+                const answer = this.extractAnswer(entry);
+                const blocks = (entry.blocks || []).map(b => {
+                    const blockData = { answer: ExportManager._stripHtml(b.markdown_block?.answer || '') };
+                    if (b.thinking) blockData.thinking = ExportManager._stripHtml(b.thinking);
+                    if (b.toolCalls) blockData.toolCalls = b.toolCalls;
+                    if (b.toolResults) blockData.toolResults = b.toolResults;
+                    return blockData;
+                });
                 const result = {
-                    index: index + 1,
+                    turn: index + 1,
                     query: entry.query || entry.query_str || '',
-                    answer: this.extractAnswer(entry),
+                    blocks,
+                    answer,
                     sources: entryMeta.sources,
+                    citations: entry.citations || [],
                     metadata: {
                         createdAt: entry.created_datetime || null,
                         updatedAt: entry.updated_datetime || null,
                         model: entry.display_model || entry.model || null
                     }
                 };
-                // Include rich content when available
+                if (entry.artifactIds && entry.artifactIds.length > 0) result.artifactIds = entry.artifactIds;
                 if (entryMeta.attachments.length > 0) result.attachments = entryMeta.attachments;
                 if (entryMeta.media.length > 0) result.media = entryMeta.media;
                 if (entryMeta.knowledgeCards.length > 0) result.knowledgeCards = entryMeta.knowledgeCards;
@@ -215,27 +276,45 @@ root.ExportManager = class ExportManager {
     static extractAnswer(entry) {
         let answer = '';
 
-        // Handle Perplexity/Claude block-based entries
         if (entry.blocks && Array.isArray(entry.blocks)) {
             entry.blocks.forEach(block => {
-                // ask_text blocks contain the main answer markdown
-                if (block.intended_usage === 'ask_text' && block.markdown_block) {
-                    if (block.markdown_block.answer) {
-                        answer += block.markdown_block.answer + '\n\n';
-                    } else if (block.markdown_block.chunks) {
-                        answer += block.markdown_block.chunks.join('\n') + '\n\n';
+                if (block.thinking) {
+                    answer += `> *${ExportManager._stripHtml(block.thinking).trim()}*\n\n`;
+                }
+                if (block.toolCalls && block.toolCalls.length > 0) {
+                    for (const tc of block.toolCalls) {
+                        answer += `<details>\n<summary><strong>Tool: ${tc.name}</strong></summary>\n\n\`\`\`json\n${JSON.stringify(tc.input, null, 2)}\n\`\`\`\n\n</details>\n\n`;
                     }
                 }
-                // Generic markdown_block without intended_usage (some platforms)
+                if (block.markdown_block) {
+                    if (block.markdown_block.answer) {
+                        answer += ExportManager._stripHtml(block.markdown_block.answer) + '\n\n';
+                    } else if (block.markdown_block.chunks) {
+                        answer += ExportManager._stripHtml(block.markdown_block.chunks.join('\n')) + '\n\n';
+                    }
+                }
+                if (block.toolResults && block.toolResults.length > 0) {
+                    for (const tr of block.toolResults) {
+                        const text = ExportManager._stripHtml(tr.text);
+                        if (text.trim()) {
+                            const resultBody = text.trim().split('\n').join('\n> ');
+                            if (tr.isError) {
+                                answer += `<details>\n<summary><strong>Tool error</strong></summary>\n\n> ${resultBody}\n\n</details>\n\n`;
+                            } else {
+                                answer += `<details>\n<summary><strong>Tool result</strong></summary>\n\n> ${resultBody}\n\n</details>\n\n`;
+                            }
+                        }
+                    }
+                }
                 if (!block.intended_usage && block.markdown_block) {
-                    const content = block.markdown_block.answer || (block.markdown_block.chunks || []).join('\n') || '';
+                    const content = ExportManager._stripHtml(block.markdown_block.answer || (block.markdown_block.chunks || []).join('\n') || '');
                     if (content) answer += content + '\n\n';
                 }
             });
         }
 
         if (!answer.trim()) {
-            answer = entry.answer || entry.text || '';
+            answer = ExportManager._stripHtml(entry.answer || entry.text || '');
         }
 
         return answer;
@@ -258,6 +337,14 @@ root.ExportManager = class ExportManager {
             relatedQuestions: [],
             attachments: []
         };
+
+        // Citations (Claude/HAR-verified)
+        if (entry.citations && Array.isArray(entry.citations)) {
+            meta.sources = entry.citations.map(c => ({
+                url: c.url || '',
+                title: c.title || c.name || c.url || ''
+            })).filter(c => c.url);
+        }
 
         // Sources from blocks (Perplexity web_results)
         if (entry.blocks && Array.isArray(entry.blocks)) {

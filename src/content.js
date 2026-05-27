@@ -110,7 +110,11 @@ if (window.__omniExporterLoaded) {
                     return true; // Keep message channel open for async response
                 };
 
-                chrome.runtime.onMessage.addListener(this.messageHandler);
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+                    chrome.runtime.onMessage.addListener(this.messageHandler);
+                } else {
+                    console.warn('[OmniExporter] chrome.runtime unavailable, message listener not registered');
+                }
 
                 // Cleanup on visibility change (optional optimization)
                 const visibilityHandler = () => {
@@ -185,8 +189,8 @@ if (window.__omniExporterLoaded) {
             }
 
             cleanup() {
-                if (this.messageHandler) {
-                    chrome.runtime.onMessage.removeListener(this.messageHandler);
+                if (this.messageHandler && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+                    try { chrome.runtime.onMessage.removeListener(this.messageHandler); } catch (e) {}
                     this.messageHandler = null;
                 }
                 this.cleanupFunctions.forEach(fn => fn());

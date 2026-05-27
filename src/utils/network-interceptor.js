@@ -18,7 +18,7 @@ if (!window.__omniExporterInternal) {
     });
 }
 
-const NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor || {
+var NetworkInterceptor = window.NetworkInterceptor = window.NetworkInterceptor || {
     capturedEndpoints: {},
     chatListData: null,
     isInitialized: false,

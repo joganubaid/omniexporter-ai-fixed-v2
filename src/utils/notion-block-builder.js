@@ -2,7 +2,7 @@
 // Converts markdown content and structured conversation data into rich Notion API blocks.
 "use strict";
 
-const _nbbRoot = typeof window !== 'undefined' ? window : globalThis;
+var _nbbRoot = typeof window !== 'undefined' ? window : globalThis;
 if (!_nbbRoot.NotionBlockBuilder) {
 
 /**
@@ -11,18 +11,9 @@ if (!_nbbRoot.NotionBlockBuilder) {
  */
 const NOTION_TEXT_LIMIT = 2000;
 
-/**
- * Platform display icons, matching the convention in export-manager.js.
- * @const {Object<string, string>}
- */
-const PLATFORM_ICONS = {
-    'Perplexity': '🧭',
-    'ChatGPT': '🤖',
-    'Claude': '🎯',
-    'Gemini': '✨',
-    'Grok': '𝕏',
-    'DeepSeek': '🔮'
-};
+function stripHtml(text) {
+    return text ? text.replace(/<[^>]+>/g, '') : '';
+}
 
 // ============================================
 // Rich-text helpers
@@ -205,15 +196,15 @@ function dividerBlock() {
     return { type: 'divider', divider: {} };
 }
 
-function calloutBlock(text, emoji, color) {
-    return {
+function calloutBlock(text, color) {
+    const block = {
         type: 'callout',
         callout: {
-            icon: { emoji: emoji || 'ℹ️' },
             color: color || 'gray_background',
             rich_text: plainRichText(text.slice(0, NOTION_TEXT_LIMIT))
         }
     };
+    return block;
 }
 
 function bookmarkBlock(url) {
@@ -233,7 +224,7 @@ function toggleBlock(summaryText, children) {
     return {
         type: 'toggle',
         toggle: {
-            rich_text: plainRichText(summaryText.slice(0, NOTION_TEXT_LIMIT)),
+            rich_text: parseInlineMarkdown(summaryText.slice(0, NOTION_TEXT_LIMIT)),
             children: children || []
         }
     };
@@ -293,19 +284,19 @@ function markdownToBlocks(markdown) {
         if (line.startsWith('> ')) {
             const quoteContent = line.slice(2);
 
-            // Detect thinking/reasoning callout: > 💭 **Thinking:**
-            if (quoteContent.startsWith('💭')) {
+            // Detect thinking/reasoning callout
+            if (/^Thinking/i.test(quoteContent) || /^Reasoning/i.test(quoteContent)) {
                 const thinkLines = [quoteContent];
                 i++;
                 while (i < lines.length && lines[i].startsWith('> ')) {
                     thinkLines.push(lines[i].slice(2));
                     i++;
                 }
-                blocks.push(calloutBlock(thinkLines.join('\n'), '💭', 'purple_background'));
+                blocks.push(calloutBlock(thinkLines.join('\n'), 'purple_background'));
                 continue;
             }
 
-            // Detect tool result: > **Tool result:**
+            // Detect tool result
             if (/^\*\*Tool (result|error)/.test(quoteContent)) {
                 const resultLines = [quoteContent.replace(/^\*\*Tool (result|error):\*\*\s*/, '')];
                 i++;
@@ -314,7 +305,7 @@ function markdownToBlocks(markdown) {
                     i++;
                 }
                 const isError = /^\*\*Tool error/.test(quoteContent);
-                blocks.push(calloutBlock(resultLines.join('\n'), isError ? '❌' : '✅', isError ? 'red_background' : 'green_background'));
+                blocks.push(calloutBlock(resultLines.join('\n'), isError ? 'red_background' : 'green_background'));
                 continue;
             }
 
@@ -351,8 +342,8 @@ function markdownToBlocks(markdown) {
             continue;
         }
 
-        // Default: paragraph with inline markdown
-        blocks.push(paragraphBlock(parseInlineMarkdown(line)));
+            // Default: paragraph with inline markdown, strip raw HTML
+        blocks.push(paragraphBlock(parseInlineMarkdown(stripHtml(line))));
         i++;
     }
 
@@ -364,11 +355,10 @@ function markdownToBlocks(markdown) {
 // ============================================
 
 /**
- * Detect and convert tool_call fenced code blocks into toggle blocks.
- * Tool calls in the markdown are formatted as:
- *   ```tool_call:tool_name
- *   { json input }
- *   ```
+ * Detect and convert tool call fenced code blocks into toggle blocks.
+ * Handles both legacy and current formats:
+ *   legacy: ```tool_call:tool_name\n{ json }\n```
+ *   current: **Tool: name**\n\n```json\n{ json }\n```
  * This function extracts them before general markdown parsing.
  *
  * @param {string} markdown
@@ -378,17 +368,33 @@ function extractToolCallBlocks(markdown) {
     if (!markdown) return { cleaned: '', toolBlocks: [] };
 
     const toolBlocks = [];
+
     // BUG-11 FIX: Changed from greedy [\s\S]* to lazy [\s\S]*? to prevent merging multiple tool calls
-    const cleaned = markdown.replace(
+    // Legacy format: ```tool_call:tool_name ... ```
+    let cleaned = markdown.replace(
         /```tool_call:([^\n]*)\n([\s\S]*?)```/g,
         function (_, toolName, body) {
             const name = toolName.trim() || 'unknown';
             toolBlocks.push(
-                toggleBlock('🔧 Tool: ' + name, [
+                toggleBlock('Tool: ' + name, [
                     codeBlock(body.trim(), 'json')
                 ])
             );
-            return ''; // remove from markdown so it isn't double-parsed
+            return '';
+        }
+    );
+
+    // Current format: **Tool: name**\n\n```json\n{ body }\n```
+    cleaned = cleaned.replace(
+        /\*\*Tool:\s*([^*\n]+)\*\*\s*\n+```json\n([\s\S]*?)```/g,
+        function (_, toolName, body) {
+            const name = toolName.trim() || 'unknown';
+            toolBlocks.push(
+                toggleBlock('Tool: ' + name, [
+                    codeBlock(body.trim(), 'json')
+                ])
+            );
+            return '';
         }
     );
 
@@ -411,14 +417,27 @@ function extractEntryContent(entry) {
 
     if (entry.blocks && Array.isArray(entry.blocks)) {
         entry.blocks.forEach(function (block) {
-            if (block.intended_usage === 'ask_text' && block.markdown_block) {
+            if (block.thinking) {
+                answer += stripHtml(block.thinking) + '\n\n';
+            }
+            if (block.markdown_block) {
                 if (block.markdown_block.answer) {
-                    answer += block.markdown_block.answer + '\n\n';
+                    answer += stripHtml(block.markdown_block.answer) + '\n\n';
                 } else if (block.markdown_block.chunks && Array.isArray(block.markdown_block.chunks)) {
-                    answer += block.markdown_block.chunks.join('\n') + '\n\n';
+                    answer += stripHtml(block.markdown_block.chunks.join('\n')) + '\n\n';
                 }
             }
-            // Generic markdown_block without intended_usage (some platforms)
+            if (block.toolCalls && block.toolCalls.length > 0) {
+                for (var tci = 0; tci < block.toolCalls.length; tci++) {
+                    answer += '```json\n' + JSON.stringify(block.toolCalls[tci].input, null, 2) + '\n```\n\n';
+                }
+            }
+            if (block.toolResults && block.toolResults.length > 0) {
+                for (var tri = 0; tri < block.toolResults.length; tri++) {
+                    answer += (block.toolResults[tri].isError ? 'Tool error: ' : 'Tool result: ') + stripHtml(block.toolResults[tri].text) + '\n\n';
+                }
+            }
+            // Generic markdown_block without intended_usage (some platforms, e.g. Perplexity)
             if (!block.intended_usage && block.markdown_block) {
                 answer += (block.markdown_block.answer || (block.markdown_block.chunks || []).join('\n') || '') + '\n\n';
             }
@@ -437,15 +456,17 @@ function extractEntryContent(entry) {
         answer = entry.answer || entry.text || '';
     }
 
-    // Merge entry-level sources
+    // Citations (Claude) — prefer entry.citations over sources
+    if (entry.citations && Array.isArray(entry.citations) && entry.citations.length > 0) {
+        sources = entry.citations.map(function (c) {
+            return { url: c.url || '', name: c.title || c.name || c.url || '' };
+        }).filter(function (s) { return s.url; });
+    }
+
+    // Merge entry-level sources (fallback if no citations)
     if (sources.length === 0 && entry.sources && Array.isArray(entry.sources)) {
         sources = entry.sources.map(function (s) {
             return { url: s.url || '', name: s.name || s.title || s.url || '' };
-        });
-    }
-    if (sources.length === 0 && entry.citations && Array.isArray(entry.citations)) {
-        sources = entry.citations.map(function (s) {
-            return typeof s === 'string' ? { url: s, name: s } : { url: s.url || '', name: s.name || s.title || s.url || '' };
         });
     }
 
@@ -471,75 +492,115 @@ function extractEntryContent(entry) {
 function buildNotionBlocks(entries, platform, metadata) {
     var meta = metadata || {};
     var children = [];
-    var platformIcon = PLATFORM_ICONS[platform] || '💬';
     var exportDate = meta.exportDate || new Date().toISOString().split('T')[0];
     var modelLabel = meta.model ? ' | Model: ' + meta.model : '';
 
-    // ── Metadata callout ──
     children.push(calloutBlock(
-        platformIcon + ' Exported from ' + (platform || 'AI') + modelLabel + ' | ' + exportDate,
-        '🤖',
+        'Exported from ' + (platform || 'AI') + modelLabel + ' | ' + exportDate,
         'blue_background'
     ));
 
     children.push(dividerBlock());
 
-    // ── Process each entry ──
     var safeEntries = Array.isArray(entries) ? entries : [];
     safeEntries.forEach(function (entry, index) {
-        // ── Question heading ──
         var query = entry.query || entry.query_str || entry.question || entry.prompt || '';
+        var blocks = entry.blocks || [];
+
+        children.push(headingBlock(2, 'Turn ' + (index + 1)));
+
+        // ── User message ──
         if (query) {
-            children.push(headingBlock(2, '🙋 ' + query));
+            children.push(headingBlock(3, 'User'));
+
+            // Attachments
+            if (entry.attachments && Array.isArray(entry.attachments)) {
+                entry.attachments.forEach(function (att) {
+                    var fileName = att.file_name || att.fileName || 'file';
+                    var size = att.extracted_content ? ' (' + att.extracted_content.length + ' chars)' : '';
+                    var attChildren = [];
+                    if (att.extracted_content) {
+                        attChildren.push(codeBlock(att.extracted_content.slice(0, 8000), 'plain text'));
+                    }
+                    children.push(toggleBlock('Attachment: ' + fileName + size, attChildren));
+                });
+            }
+
+            children.push(paragraphBlock(parseInlineMarkdown(query)));
         }
 
-        // ── Attachments (as toggle blocks) ──
-        if (entry.attachments && Array.isArray(entry.attachments)) {
-            entry.attachments.forEach(function (att) {
-                var fileName = att.file_name || att.fileName || 'file';
-                var size = att.extracted_content ? ' (' + att.extracted_content.length + ' chars)' : '';
-                var attChildren = [];
-                if (att.extracted_content) {
-                    attChildren.push(codeBlock(att.extracted_content.slice(0, 8000), 'plain text'));
+        // ── Assistant response ──
+        if (blocks.length > 0) {
+            children.push(headingBlock(3, 'Assistant'));
+
+            for (var bi = 0; bi < blocks.length; bi++) {
+                var block = blocks[bi];
+
+                // Thinking/reasoning as callout
+                if (block.thinking) {
+                    children.push(calloutBlock(stripHtml(block.thinking), 'purple_background'));
                 }
-                children.push(toggleBlock('📎 ' + fileName + size, attChildren));
-            });
-        }
 
-        // ── Extract answer and sources ──
-        var content = extractEntryContent(entry);
-        var answer = content.answer;
-        var sources = content.sources;
+                // Tool calls as toggle with JSON
+                if (block.toolCalls && block.toolCalls.length > 0) {
+                    for (var tci = 0; tci < block.toolCalls.length; tci++) {
+                        var tc = block.toolCalls[tci];
+                        children.push(toggleBlock('Tool: ' + tc.name, [
+                            codeBlock(JSON.stringify(tc.input, null, 2), 'json')
+                        ]));
+                    }
+                }
 
-        if (answer) {
-            // ── Answer header ──
-            children.push(headingBlock(3, '🤖 Answer'));
+                // Answer text
+                var answer = stripHtml(block.markdown_block && block.markdown_block.answer || '');
+                if (answer.trim()) {
+                    var parsedBlocks = markdownToBlocks(answer.trim());
+                    for (var pi = 0; pi < parsedBlocks.length; pi++) {
+                        children.push(parsedBlocks[pi]);
+                    }
+                }
 
-            // ── Extract tool_call blocks before markdown parsing ──
-            var extracted = extractToolCallBlocks(answer);
-            var cleanedAnswer = extracted.cleaned;
-            var toolBlocks = extracted.toolBlocks;
+                // Tool results
+                if (block.toolResults && block.toolResults.length > 0) {
+                    for (var tri = 0; tri < block.toolResults.length; tri++) {
+                        var tr = block.toolResults[tri];
+                        if (tr.text && tr.text.trim()) {
+                            children.push(calloutBlock(
+                                (tr.isError ? 'Tool error: ' : 'Tool result: ') + tr.text.trim(),
+                                tr.isError ? 'red_background' : 'green_background'
+                            ));
+                        }
+                    }
+                }
+            }
 
-            // ── Parse markdown into rich Notion blocks ──
-            var answerBlocks = markdownToBlocks(cleanedAnswer);
-            answerBlocks.forEach(function (block) { children.push(block); });
-
-            // ── Append tool_call toggle blocks ──
-            toolBlocks.forEach(function (block) { children.push(block); });
+            // Citations
+            if (entry.citations && Array.isArray(entry.citations) && entry.citations.length > 0) {
+                children.push(headingBlock(3, 'Citations'));
+                var seen = {};
+                entry.citations.forEach(function (c) {
+                    if (!c.url || seen[c.url]) return;
+                    seen[c.url] = true;
+                    if (/^https?:\/\//.test(c.url)) {
+                        children.push(bookmarkBlock(c.url));
+                    } else {
+                        children.push(bulletedListItem(c.title || c.url));
+                    }
+                });
+            }
         }
 
         // ── Sources ──
+        var content = extractEntryContent(entry);
+        var sources = content.sources;
         if (sources.length > 0) {
-            children.push(headingBlock(3, '📚 Sources'));
-
-            // Deduplicate by URL
+            children.push(headingBlock(3, 'Sources'));
             var seen = {};
             var uniqueSources = sources.filter(function (s) {
                 if (!s.url || seen[s.url]) return false;
                 seen[s.url] = true;
                 return true;
             });
-
             uniqueSources.slice(0, 15).forEach(function (source) {
                 if (/^https?:\/\//.test(source.url)) {
                     children.push(bookmarkBlock(source.url));
@@ -552,7 +613,7 @@ function buildNotionBlocks(entries, platform, metadata) {
         // ── Related questions ──
         var relatedQueries = entry.related_queries || entry.related_questions || [];
         if (relatedQueries.length > 0) {
-            children.push(headingBlock(3, '🔗 Related Questions'));
+            children.push(headingBlock(3, 'Related Questions'));
             relatedQueries.slice(0, 5).forEach(function (q) {
                 var questionText = typeof q === 'string' ? q : (q.text || q.query || '');
                 if (questionText) {
@@ -561,7 +622,6 @@ function buildNotionBlocks(entries, platform, metadata) {
             });
         }
 
-        // ── Divider between entries ──
         if (index < safeEntries.length - 1) {
             children.push(dividerBlock());
         }
@@ -613,13 +673,15 @@ function flattenToggleBlocks(blocks) {
 
 _nbbRoot.NotionBlockBuilder = {
     buildNotionBlocks: buildNotionBlocks,
-    flattenToggleBlocks: flattenToggleBlocks, // BUG-2 FIX: Export flattening function
-    // Expose internals for unit testing / reuse
+    flattenToggleBlocks: flattenToggleBlocks,
     markdownToBlocks: markdownToBlocks,
     parseInlineMarkdown: parseInlineMarkdown,
     chunkText: chunkText,
     extractEntryContent: extractEntryContent,
-    extractToolCallBlocks: extractToolCallBlocks
+    extractToolCallBlocks: extractToolCallBlocks,
+    calloutBlock: calloutBlock,
+    toggleBlock: toggleBlock,
+    codeBlock: codeBlock
 };
 
 } // end window guard

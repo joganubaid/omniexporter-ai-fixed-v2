@@ -18,43 +18,20 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             endpoints: {
                 listThreads: {
                     primary: '/rest/thread/list_ask_threads', // VERIFIED: 2026-03-16
-                    fallback: '/api/threads/list', // FALLBACK
+                    fallback: '/api/threads/list',
                     params: (version) => `?version=${version}&source=default`
-                },
-                // HAR-verified 2026-03-16: recent threads (alternative to list_ask_threads)
-                listRecent: {
-                    primary: '/rest/thread/list_recent', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/rest/thread/list_recent',
-                    params: (version) => `?exclude_asi=true&version=${version}&source=default`
-                },
-                threadDetail: {
-                    primary: '/rest/thread/{uuid}', // VERIFIED: 2026-03-16
-                    fallback: '/api/threads/{uuid}', // FALLBACK
-                    params: (version) => `?with_parent_info=true&with_schematized_response=true&supported_block_use_cases=ask_text,web_results,media_items,knowledge_cards,inline_images,pending_followups&version=${version}&source=default`
                 },
                 spaces: {
                     primary: '/rest/collections/list_user_collections', // VERIFIED: 2026-03-16 by HAR (was /rest/collections/list)
-                    fallback: '/rest/collections/list', // FALLBACK
+                    fallback: '/rest/collections/list',
                     params: (version) => `?limit=30&offset=0&version=${version}&source=default`
-                },
-                // HAR-verified 2026-03-16: collection detail
-                collectionDetail: {
-                    primary: '/rest/collections/get_collection', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/rest/collections/get_collection',
-                    params: (version) => `?version=${version}&source=default`
-                },
-                // HAR-verified 2026-03-16: models configuration
-                modelsConfig: {
-                    primary: '/rest/models/config', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/rest/models/config',
-                    params: (version) => `?config_schema=v1&version=${version}&source=default`
-                },
-                // HAR-verified 2026-03-16: user settings
-                userSettings: {
-                    primary: '/rest/user/settings', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/rest/user/settings',
-                    params: (version) => `?skip_connector_picker_credentials=true&version=${version}&source=default`
                 }
+                // Archived Perplexity endpoints (HAR-verified, not currently used):
+                //   listRecent:       /rest/thread/list_recent
+                //   threadDetail:     /rest/thread/{uuid}
+                //   collectionDetail: /rest/collections/get_collection
+                //   modelsConfig:     /rest/models/config
+                //   userSettings:     /rest/user/settings
             },
             patterns: {
                 uuidExtract: [
@@ -92,44 +69,31 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                 // Response: { data: [...], has_more: bool }
                 // Usage: append &offset=N (and optionally &limit=N) to paginate.
                 // Do NOT use cursor=uuid — that returns the same page every time.
+                // HAR-verified 2026-05-26: V2 also supports starred=true for favorites
                 conversationsV2: {
                     primary: '/api/organizations/{org}/chat_conversations_v2?limit=50&consistency=eventual',
                     fallback: '/api/organizations/{org}/chat_conversations'
                 },
                 conversationDetail: {
-                    primary: '/api/organizations/{org}/chat_conversations/{uuid}?tree=true&rendering_mode=messages&render_all_tools=true&consistency=eventual', // VERIFIED: 2026-03-16 by HAR (corrected parameters)
+                    primary: '/api/organizations/{org}/chat_conversations/{uuid}?tree=True&rendering_mode=messages&render_all_tools=true&consistency=strong', // HAR-VERIFIED 2026-05-26: consistency=strong (not eventual), tree=True
                     fallback: '/api/v1/organizations/{org}/conversations/{uuid}' // FALLBACK
                 },
-                // HAR-verified 2026-03-16: project details
-                projects: {
-                    primary: '/api/organizations/{org}/projects/{uuid}', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/api/organizations/{org}/projects/{uuid}'
-                },
-                // HAR-verified 2026-03-16: shared conversations
-                shares: {
-                    primary: '/api/organizations/{org}/shares', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/api/organizations/{org}/shares'
-                },
-                // HAR-verified 2026-03-16: response style preferences
-                listStyles: {
-                    primary: '/api/organizations/{org}/list_styles', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/api/organizations/{org}/list_styles'
-                },
-                // HAR-verified 2026-03-16: artifact version listing
-                artifactVersions: {
-                    primary: '/api/organizations/{org}/artifacts/{uuid}/versions?source=w',
-                    fallback: '/api/organizations/{org}/artifacts/{uuid}/versions'
-                },
-                // HAR-verified 2026-03-16: artifact storage info
-                artifactStorageInfo: {
-                    primary: '/api/organizations/{org}/artifacts/artifact_version/{artifactId}/manage/storage/info?chat_conversation_uuid={uuid}',
-                    fallback: '/api/organizations/{org}/artifacts/artifact_version/{artifactId}/manage/storage/info'
-                },
-                // HAR-verified 2026-03-16: file preview (generated file content)
-                filePreview: {
-                    primary: '/api/{org}/files/{fileId}/preview',
-                    fallback: '/api/{org}/files/{fileId}/preview'
-                }
+                //
+                // Archived endpoints (HAR-verified, not currently used in export code):
+                // See docs/api-references/CLAUDE_API_REFERENCE.md for the full list
+                //   projects:       /api/organizations/{org}/projects[/{uuid}]
+                //   shares:         /api/organizations/{org}/shares
+                //   listStyles:     /api/organizations/{org}/list_styles
+                //   artifactVersions:  /api/organizations/{org}/artifacts/{uuid}/versions
+                //   artifactStorageInfo: /api/organizations/{org}/artifacts/{artifactId}/manage/storage/info
+                //   modelConfig:    /api/organizations/{org}/model_configs/{model}
+                //   claudeCodeSettings: /api/claude_code/organizations/{org}/user_settings
+                //   mcpBootstrap:   /api/organizations/{org}/mcp/v2/bootstrap
+                //   experiences:    /api/organizations/{org}/experiences/claude_web
+                //   conversationsV2Starred: /api/organizations/{org}/chat_conversations_v2?starred=true
+                //   projectsList:   /api/organizations/{org}/projects
+                //   filePreview:    /api/{org}/files/{fileId}/preview (always 404 — removed)
+                //
             },
             patterns: {
                 uuidExtract: [
@@ -160,28 +124,12 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                 conversationDetail: {
                     primary: '/backend-api/conversation/{uuid}', // VERIFIED: 2026-03-16 by HAR (Singular)
                     fallback: '/api/conversation/{uuid}' // FALLBACK
-                },
-                // HAR-verified 2026-03-16: model listing
-                models: {
-                    primary: '/backend-api/models', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/backend-api/models',
-                    params: () => '?iim=false&is_gizmo=false'
-                },
-                // HAR-verified 2026-03-16: create share link (POST)
-                shareCreate: {
-                    primary: '/backend-api/share/create', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/backend-api/share/create'
-                },
-                // HAR-verified 2026-03-16: conversation stream status
-                streamStatus: {
-                    primary: '/backend-api/conversation/{uuid}/stream_status', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/backend-api/conversation/{uuid}/stream_status'
-                },
-                // HAR-verified 2026-03-16: conversation text documents
-                textDocs: {
-                    primary: '/backend-api/conversation/{uuid}/textdocs', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/backend-api/conversation/{uuid}/textdocs'
                 }
+                // Archived ChatGPT endpoints (HAR-verified, not currently used):
+                //   models:       /backend-api/models
+                //   shareCreate:  /backend-api/share/create
+                //   streamStatus: /backend-api/conversation/{uuid}/stream_status
+                //   textDocs:     /backend-api/conversation/{uuid}/textdocs
             },
             patterns: {
                 uuidExtract: [
@@ -265,48 +213,24 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
                 // HAR-verified: real Grok API is under /rest/app-chat/
                 conversations: {
                     primary: '/rest/app-chat/conversations', // VERIFIED: 2026-03-16
-                    fallback: '/rest/app-chat/conversations', // FALLBACK
+                    fallback: '/rest/app-chat/conversations',
                     params: () => '?pageSize=60'
                 },
-                // HAR-verified: step 1 of detail fetch
                 responseNode: {
                     primary: '/rest/app-chat/conversations/{uuid}/response-node', // VERIFIED: 2026-03-16
-                    fallback: '/rest/app-chat/conversations/{uuid}/response-node', // FALLBACK
+                    fallback: '/rest/app-chat/conversations/{uuid}/response-node',
                     params: () => '?includeThreads=true'
                 },
-                // HAR-verified: step 2 of detail fetch (POST)
                 loadResponses: {
                     primary: '/rest/app-chat/conversations/{uuid}/load-responses', // VERIFIED: 2026-03-16
-                    fallback: '/rest/app-chat/conversations/{uuid}/load-responses' // FALLBACK
-                },
-                // Optional: metadata (returns {} for some convos but has title when available)
-                conversationMeta: {
-                    primary: '/rest/app-chat/conversations_v2/{uuid}', // VERIFIED: 2026-03-16
-                    fallback: '/rest/app-chat/conversations_v2/{uuid}', // FALLBACK
-                    params: () => '?includeWorkspaces=true&includeTaskResult=true' // HAR-verified 2026-03-16: added includeTaskResult=true
-                },
-                // HAR-verified 2026-03-16: share links for a conversation
-                shareLinks: {
-                    primary: '/rest/app-chat/share_links', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/rest/app-chat/share_links',
-                    params: () => '?pageSize=100'
-                },
-                // HAR-verified 2026-03-16: workspaces listing
-                workspaces: {
-                    primary: '/rest/workspaces', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/rest/workspaces',
-                    params: () => '?pageSize=50&orderBy=ORDER_BY_LAST_USE_TIME'
-                },
-                // HAR-verified 2026-03-16: user settings
-                userSettings: {
-                    primary: '/rest/user-settings', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/rest/user-settings'
-                },
-                // HAR-verified 2026-03-16: rate limit info
-                rateLimits: {
-                    primary: '/rest/rate-limits', // VERIFIED: 2026-03-16 by HAR (POST)
-                    fallback: '/rest/rate-limits'
+                    fallback: '/rest/app-chat/conversations/{uuid}/load-responses'
                 }
+                // Archived Grok endpoints (HAR-verified, not currently used):
+                //   conversationMeta: /rest/app-chat/conversations_v2/{uuid}
+                //   shareLinks:       /rest/app-chat/share_links
+                //   workspaces:       /rest/workspaces
+                //   userSettings:     /rest/user-settings
+                //   rateLimits:       /rest/rate-limits
             },
             patterns: {
                 uuidExtract: [
@@ -337,29 +261,18 @@ window.PLATFORM_CONFIGS = window.PLATFORM_CONFIGS || {
             endpoints: {
                 conversations: {
                     primary: '/api/v0/chat_session/fetch_page', // VERIFIED: 2026-03-16
-                    fallback: '/api/v0/chat/list', // FALLBACK
+                    fallback: '/api/v0/chat/list',
                     params: () => '?lte_cursor.pinned=false'
                 },
-                // HAR-verified: correct endpoint is flat with chat_session_id param + cache_version=2
                 conversationDetail: {
                     primary: '/api/v0/chat/history_messages', // VERIFIED: 2026-03-16
-                    fallback: '/api/v0/chat/history_messages', // FALLBACK
+                    fallback: '/api/v0/chat/history_messages',
                     params: (uuid) => `?chat_session_id=${uuid}&cache_version=2`
-                },
-                chatSession: {
-                    primary: '/api/v0/chat_session/{uuid}', // VERIFIED: 2026-03-16
-                    fallback: '/api/chat/{uuid}' // FALLBACK
-                },
-                // HAR-verified 2026-03-16: client settings with device ID
-                clientSettings: {
-                    primary: '/api/v0/client/settings', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/api/v0/client/settings'
-                },
-                // HAR-verified 2026-03-16: current user info (also returns auth token)
-                usersMe: {
-                    primary: '/api/v0/users/current', // VERIFIED: 2026-03-16 by HAR
-                    fallback: '/api/v0/users/current'
                 }
+                // Archived DeepSeek endpoints (HAR-verified, not currently used):
+                //   chatSession:    /api/v0/chat_session/{uuid}
+                //   clientSettings: /api/v0/client/settings
+                //   usersMe:        /api/v0/users/current
             },
             patterns: {
                 uuidExtract: [

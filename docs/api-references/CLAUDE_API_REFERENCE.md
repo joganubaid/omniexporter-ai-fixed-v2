@@ -260,10 +260,23 @@ _getHeaders()                           // Build request headers (incl. anthropi
 | Block type | What it is | How it's rendered |
 |---|---|---|
 | `text` | Plain answer text | Appended directly |
-| `tool_use` | Tool/function call | Fenced `` ```tool_call:name `` block with JSON input |
-| `tool_result` | Tool output | `> **Tool result:**` or `> **Tool error:**` blockquote |
+| `tool_use` | Tool/function call | `<details><summary>**Tool: name**</summary>` + ` ```json ` block (collapsible) |
+| `tool_result` | Tool output | `<details><summary>**Tool result/error**</summary>` + blockquote (collapsible) |
 | `token_budget` | Internal throttle marker | Silently skipped |
-| `local_resource` | Generated/uploaded file | `📄 [File: name]` placeholder + UUID queued for `getFilePreview()` |
+| `local_resource` | Generated/uploaded file | `[File: name]` placeholder only (preview endpoint always 404 — removed) |
+
+**Archived endpoints (HAR-verified, not currently used in export code):**
+- `projects`: `/api/organizations/{org}/projects[/{uuid}]` — project CRUD
+- `shares`: `/api/organizations/{org}/shares` — shared conversation listing
+- `listStyles`: `/api/organizations/{org}/list_styles` — response style preferences
+- `artifactVersions`: `/api/organizations/{org}/artifacts/{uuid}/versions` — artifact version history
+- `artifactStorageInfo`: `/api/organizations/{org}/artifacts/{artifactId}/manage/storage/info` — artifact storage details
+- `modelConfig`: `/api/organizations/{org}/model_configs/{model}` — model configuration lookup
+- `claudeCodeSettings`: `/api/claude_code/organizations/{org}/user_settings` — Claude Code settings
+- `mcpBootstrap`: `/api/organizations/{org}/mcp/v2/bootstrap` — MCP v2 bootstrap
+- `experiences`: `/api/organizations/{org}/experiences/claude_web` — Claude Web feature flags
+- `conversationsV2Starred`: `/api/organizations/{org}/chat_conversations_v2?starred=true` — favorites listing
+- `filePreview`: `/api/{org}/files/{fileId}/preview` — always 404, removed
 
 **Key Logic:**
 ```javascript
@@ -277,18 +290,18 @@ for (const block of contentArray) {
       parts.push(block.text);
       break;
     case 'tool_use':
-      parts.push(`\`\`\`tool_call:${block.name}\n${JSON.stringify(block.input)}\n\`\`\``);
+      parts.push(`<details><summary>**Tool: ${block.name}**</summary>\n\n\`\`\`json\n${JSON.stringify(block.input)}\n\`\`\`\n\n</details>`);
       break;
     case 'tool_result':
       // block.content is itself an array of sub-blocks (text / local_resource)
-      const prefix = block.is_error ? '❌ **Tool error:**' : '> **Tool result:**';
-      parts.push(`${prefix} ${extractedSubText}`);
+      const prefix = block.is_error ? '**Tool error**' : '**Tool result**';
+      parts.push(`<details><summary>${prefix}</summary>\n\n> ${extractedSubText}\n\n</details>`);
       break;
     case 'token_budget':
       break; // skip silently
     case 'local_resource':
       fileRefs.push({ uuid: block.uuid, name: block.name, mimeType: block.mime_type });
-      parts.push(`📄 **[File: ${block.name}]**`);
+      parts.push(`[File: ${block.name}]`);
       break;
   }
 }

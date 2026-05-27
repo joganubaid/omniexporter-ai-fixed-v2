@@ -1,31 +1,31 @@
 /**
- * OmniExporter AI — Configuration (safe defaults)
+ * OmniExporter AI — Configuration
  *
- * This file is committed with placeholder values so that the extension loads
- * correctly on a fresh install without any setup.  The script tags in
- * popup.html and options.html (../../config.js) and the importScripts call in
- * background.js (../config.js) all resolve to this file.
+ * SETUP:
+ * 1. Copy this file to 'config.js' (which is gitignored)
+ * 2. Fill in the values below
+ * 3. Reload the extension in chrome://extensions/
  *
- * TO CUSTOMISE:
- * 1. Replace the placeholder values below with your own credentials.
- * 2. To avoid accidentally committing real credentials, run:
- *      git update-index --assume-unchanged config.js
- *
- * See config.example.js and cloudflare-worker/DEPLOY.md for full instructions.
+ * IMPORTANT: After configuring this file, you MUST also:
+ * 1. Deploy cloudflare-worker/worker.js to your own Cloudflare account
+ * 2. Add your extension ID to ALLOWED_ORIGINS in the worker
+ * 3. Set OAUTH_SERVER_URL below to your deployed worker URL
+ * See cloudflare-worker/DEPLOY.md for full deployment instructions
  *
  * SECURITY:
- * - The Notion Client Secret MUST NOT be placed here — store it in your
- *   Cloudflare Worker environment variables only.
- * - Only the Client ID (public) is needed in this file.
+ * - config.js is listed in .gitignore — it will NOT be committed
+ * - The Notion Client Secret is stored on the Cloudflare Worker, NOT here
+ * - Only the Client ID (public) is needed in this file
  */
 
 // ─── Notion OAuth ────────────────────────────────────────────────
-// Replace with your Client ID from https://www.notion.so/my-integrations
-// Leave as-is to use the project's shared default integration.
-const NOTION_CLIENT_ID = "2ebd872b-594c-8001-bf30-00373781f7d9";
+// Get your Client ID from: https://www.notion.so/my-integrations
+// The Client Secret goes in your Cloudflare Worker environment variables (see cloudflare-worker/DEPLOY.md)
+const NOTION_CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
 
 // ─── OAuth Server ────────────────────────────────────────────────
-// Replace with your deployed Cloudflare Worker URL.
-// When null the extension falls back to the shared default worker
-// (https://omniexporter-oauth.jonub250383.workers.dev).
-const OAUTH_SERVER_URL = "https://omniexporter-oauth.jonub250383.workers.dev";
+// REQUIRED: Your deployed Cloudflare Worker URL (see cloudflare-worker/DEPLOY.md for deployment guide)
+// If not set, the extension falls back to the project's shared default worker.
+// For production use, deploy your own worker and set this value.
+// Default: https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev
+const OAUTH_SERVER_URL = 'https://omniexporter-oauth.YOUR_SUBDOMAIN.workers.dev';

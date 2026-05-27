@@ -7,7 +7,7 @@
 // - DataExtractor (from platform-config.js)
 // - Logger (from logger.js)
 
-const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
+var ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     name: "Claude",
     _cachedOrgId: null,
 
@@ -25,17 +25,26 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     // HAR-VERIFIED 2026-03-16: Real browser traffic includes anthropic-* headers
     // ============================================
     _getHeaders: () => {
-        return {
-            'Accept': 'application/json',
+        const headers = {
+            'Accept': '*/*',
             'Accept-Language': 'en-US,en;q=0.9',
             'Content-Type': 'application/json',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
-            // HAR-verified 2026-03-16: anthropic-* headers present on every real browser request
+            // HAR-verified 2026-05-26: all anthropic-* headers present on every real browser request
             'anthropic-client-platform': 'web_claude_ai',
-            'anthropic-client-version': '1.0.0'
+            'anthropic-client-version': '1.0.0',
+            'anthropic-client-sha': '9f94910bb319abfbb3f61a3950f57e2804cf87be',
+            'anthropic-device-id': '00000000-0000-4000-8000-000000000000',
+            'x-activity-session-id': ClaudeAdapter._sessionId || (ClaudeAdapter._sessionId = crypto.randomUUID())
         };
+        // Generate anonymous ID on first call and reuse (persistent within session)
+        if (!ClaudeAdapter._anonymousId) {
+            ClaudeAdapter._anonymousId = 'claudeai.v1.' + (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random()*16|0, v = c=='x'?r:r&0x3|0x8; return v.toString(16); }));
+        }
+        headers['anthropic-anonymous-id'] = ClaudeAdapter._anonymousId;
+        return headers;
     },
 
     // ============================================
@@ -290,9 +299,6 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
             // Extract entries with full content block handling
             const entries = transformClaudeData(data);
 
-            // Fetch file previews for local_resource references (non-critical)
-            await fetchFilePreviewsForEntries(baseUrl, orgId, uuid, entries);
-
             console.log(`[Claude] API success for ${uuid}`);
             return {
                 uuid,
@@ -319,25 +325,6 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
     },
 
     getSpaces: async () => [],
-    
-    getFilePreview: async function(fileId) {
-        try {
-            const orgId = await this.getOrgId();
-            const baseUrl = platformConfig.getBaseUrl('Claude');
-            const endpoint = platformConfig.buildEndpoint('Claude', 'filePreview', { org: orgId, fileId });
-            const url = `${baseUrl}${endpoint}`;
-            const response = await ClaudeAdapter._fetchWithRetry(url, {}, 2);
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.startsWith('text/') || contentType.includes('json')) {
-                return { content: await response.text(), contentType };
-            }
-            // For binary content (images), return metadata only
-            return { content: `[Binary file: ${contentType}]`, contentType };
-        } catch (error) {
-            console.warn('[Claude] getFilePreview failed:', error.message);
-            return null;
-        }
-    }
 };
 
 // ============================================
@@ -348,83 +335,93 @@ const ClaudeAdapter = window.ClaudeAdapter = window.ClaudeAdapter || {
 // ============================================
 function extractAllContentBlocks(contentArray) {
     if (!Array.isArray(contentArray)) {
-        return typeof contentArray === 'string' ? contentArray : '';
+        const text = typeof contentArray === 'string' ? contentArray : '';
+        return { text, thinking: '', toolCalls: [], toolResults: [] };
     }
-    const parts = [];
-    const fileRefs = [];
+    const textParts = [];
+    const thinkingParts = [];
+    const toolCalls = [];
+    const toolResults = [];
 
     for (const block of contentArray) {
         if (!block || !block.type) {
-            // Legacy: plain string in content array
             if (typeof block === 'string') {
-                parts.push(block);
+                textParts.push(block);
             }
             continue;
         }
 
         switch (block.type) {
             case 'text':
-                if (block.text) parts.push(block.text);
+                if (block.text) textParts.push(block.text);
                 break;
 
             case 'tool_use':
-                // Render tool call as a labelled fenced code block
-                parts.push(
-                    `\n\`\`\`tool_call:${block.name || 'unknown'}\n` +
-                    JSON.stringify(block.input || {}, null, 2) +
-                    '\n```\n'
-                );
+                toolCalls.push({
+                    name: block.name || 'unknown',
+                    input: block.input || {}
+                });
                 break;
 
             case 'tool_result': {
-                // Tool results may contain nested content arrays or text
-                const resultParts = [];
+                const resultTextParts = [];
                 if (Array.isArray(block.content)) {
                     for (const sub of block.content) {
                         if (!sub) continue;
                         if (sub.type === 'text' && sub.text) {
-                            resultParts.push(sub.text);
+                            resultTextParts.push(sub.text);
                         } else if (sub.type === 'local_resource') {
-                            // File generated by tool — capture UUID for preview fetching
                             const fileName = sub.name || sub.file_path || 'generated file';
-                            resultParts.push(`📄 **[File: ${fileName}]** (${sub.mime_type || 'unknown type'})`);
-                            if (sub.uuid) {
-                                fileRefs.push({ uuid: sub.uuid, name: fileName, mimeType: sub.mime_type || '' });
-                            }
+                            resultTextParts.push(`[File: ${fileName}] (${sub.mime_type || 'unknown type'})`);
                         } else if (typeof sub === 'string') {
-                            resultParts.push(sub);
+                            resultTextParts.push(sub);
                         }
                     }
                 } else if (typeof block.content === 'string') {
-                    resultParts.push(block.content);
+                    resultTextParts.push(block.content);
                 }
-                if (resultParts.length > 0) {
-                    const prefix = block.is_error ? '❌ **Tool error:**' : '> **Tool result:**';
-                    parts.push(`\n${prefix} ${resultParts.join('\n')}\n`);
-                }
+                let resultText = resultTextParts.join('\n');
+                // Strip raw HTML <functions> blocks (LLM function definitions, not user-readable)
+                resultText = resultText.replace(/<functions>[\s\S]*?<\/functions>/g, '');
+                // Strip other raw HTML tags
+                resultText = resultText.replace(/<[^>]+>/g, '');
+                toolResults.push({
+                    isError: !!block.is_error,
+                    text: resultText.trim()
+                });
                 break;
             }
 
             case 'token_budget':
-                // Internal Claude throttle marker — skip silently on export
                 break;
 
             case 'local_resource':
-                // Standalone file reference
-                if (block.uuid) {
-                    fileRefs.push({ uuid: block.uuid, name: block.name || '', mimeType: block.mime_type || '' });
+                textParts.push(`[File: ${block.name || block.file_path || 'file'}] (${block.mime_type || 'unknown'})`);
+                break;
+
+            case 'thinking':
+                if (block.thinking) {
+                    thinkingParts.push(block.thinking);
                 }
-                parts.push(`📄 **[File: ${block.name || block.file_path || 'file'}]** (${block.mime_type || 'unknown'})`);
+                if (block.summaries && Array.isArray(block.summaries)) {
+                    for (const s of block.summaries) {
+                        if (s.summary) thinkingParts.push(`Summary: ${s.summary}`);
+                    }
+                }
                 break;
 
             default:
-                // Future block types (image, thinking, etc.) — include raw text if available
-                if (block.text) parts.push(block.text);
+                if (block.text) textParts.push(block.text);
                 break;
         }
     }
 
-    return { text: parts.join(''), fileRefs };
+    return {
+        text: textParts.join('\n\n'),
+        thinking: thinkingParts.join('\n\n'),
+        toolCalls,
+        toolResults
+    };
 }
 
 // ============================================
@@ -439,15 +436,21 @@ function transformClaudeData(data) {
         let currentEntry = null;
         for (const msg of messages) {
             const extracted = extractAllContentBlocks(msg.content);
-            const text = (typeof extracted === 'string' ? extracted : extracted.text) || msg.text || '';
-            const fileRefs = (typeof extracted === 'object' && extracted.fileRefs) ? extracted.fileRefs : [];
+            const text = extracted.text || msg.text || '';
+            const thinking = extracted.thinking || '';
+            const toolCalls = extracted.toolCalls || [];
+            const toolResults = extracted.toolResults || [];
+            const citations = msg.citations || [];
 
             if (msg.sender === 'human') {
                 if (currentEntry) entries.push(currentEntry);
                 currentEntry = {
                     query_str: text,
                     blocks: [],
-                    // Include attachment content from human messages
+                    citations: citations.length > 0 ? citations.map(c => ({
+                        url: c.url || c.link || '',
+                        title: c.title || c.name || ''
+                    })) : [],
                     attachments: (msg.attachments || []).map(a => ({
                         file_name: a.file_name || a.fileName || '',
                         file_type: a.file_type || a.fileType || '',
@@ -455,30 +458,33 @@ function transformClaudeData(data) {
                         extracted_content: a.extracted_content || ''
                     })).filter(a => a.file_name || a.extracted_content)
                 };
-                // Prepend attachment context to query if available
                 if (currentEntry.attachments.length > 0) {
                     const attachmentSummary = currentEntry.attachments
-                        .map(a => `📎 ${a.file_name}${a.extracted_content ? ` (${a.extracted_content.length} chars)` : ''}`)
+                        .map(a => `[Attachment: ${a.file_name}${a.extracted_content ? ` (${a.extracted_content.length} chars)` : ''}]`)
                         .join('\n');
                     currentEntry.query_str = `${attachmentSummary}\n\n${currentEntry.query_str}`;
                 }
             } else if (msg.sender === 'assistant' && currentEntry) {
                 currentEntry.blocks.push({
                     intended_usage: 'ask_text',
-                    markdown_block: { answer: text }
+                    markdown_block: { answer: text },
+                    thinking: thinking || null,
+                    toolCalls: toolCalls.length > 0 ? toolCalls : null,
+                    toolResults: toolResults.length > 0 ? toolResults : null
                 });
-                // Capture artifact IDs from files_v2 for potential later fetching
+                if (citations.length > 0) {
+                    if (!currentEntry.citations) currentEntry.citations = [];
+                    currentEntry.citations.push(...citations.map(c => ({
+                        url: c.url || c.link || '',
+                        title: c.title || c.name || ''
+                    })));
+                }
                 if (msg.files_v2 && Array.isArray(msg.files_v2)) {
                     const artifactFiles = msg.files_v2.filter(f => f.file_kind === 'artifact');
                     if (artifactFiles.length > 0) {
                         if (!currentEntry.artifactIds) currentEntry.artifactIds = [];
                         currentEntry.artifactIds.push(...artifactFiles.map(f => f.file_uuid));
                     }
-                }
-                // Store file references from content blocks for preview fetching
-                if (fileRefs.length > 0) {
-                    if (!currentEntry.fileRefs) currentEntry.fileRefs = [];
-                    currentEntry.fileRefs.push(...fileRefs);
                 }
             }
         }
@@ -490,39 +496,6 @@ function transformClaudeData(data) {
     }
 
     return entries;
-}
-
-// ============================================
-// Fetch file preview content for local_resource references
-// Non-critical: failures are logged but don't break export
-// ============================================
-async function fetchFilePreviewsForEntries(baseUrl, orgId, convoUuid, entries) {
-    for (const entry of entries) {
-        if (!entry.fileRefs || entry.fileRefs.length === 0) continue;
-
-        for (const ref of entry.fileRefs) {
-            try {
-                const preview = await ClaudeAdapter.getFilePreview(ref.uuid);
-                if (preview && preview.content && preview.contentType) {
-                    // Append file content to the answer block.
-                    // Guard: entry.blocks may be an empty array, making [length-1] return
-                    // undefined, which would throw "Cannot read properties of undefined".
-                    const lastBlock = entry.blocks && entry.blocks.length > 0
-                        ? entry.blocks[entry.blocks.length - 1]
-                        : null;
-                    if (!lastBlock || !lastBlock.markdown_block) continue;
-                    const header = `\n\n---\n📄 **${ref.name || 'Generated File'}** (${ref.mimeType || preview.contentType}):\n`;
-                    if (preview.contentType.startsWith('text/') || preview.contentType.includes('json')) {
-                        lastBlock.markdown_block.answer += `${header}\`\`\`\n${preview.content}\n\`\`\`\n`;
-                    } else {
-                        lastBlock.markdown_block.answer += `${header}${preview.content}\n`;
-                    }
-                }
-            } catch (e) {
-                // Non-critical — skip silently
-            }
-        }
-    }
 }
 
 // ARCH-1 FIX: Standardize adapter export pattern across all adapters.
