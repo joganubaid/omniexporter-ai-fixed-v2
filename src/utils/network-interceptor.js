@@ -3,15 +3,17 @@
 // SAFE VERSION: All modifications are wrapped in try-catch to prevent page crashes
 "use strict";
 
-// Secure namespace — non-configurable to resist tampering
+// Secure namespace — non-configurable to resist tampering by page scripts.
+// (Removed: a `_token` random hex field that was generated but never read by
+// any consumer. The Object.defineProperty `writable: false, configurable: false`
+// already prevents page-script replacement of this namespace; the token was
+// belt-and-suspenders that nothing actually checked.)
 if (!window.__omniExporterInternal) {
     Object.defineProperty(window, '__omniExporterInternal', {
         value: {
             chatList: [],
             fetchIntercepted: false,
-            xhrIntercepted: false,
-            // Simple integrity token — not cryptographic, just deters casual tampering
-            _token: Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('')
+            xhrIntercepted: false
         },
         writable: false,
         configurable: false

@@ -38,7 +38,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
 
             this.handleMessage(event.data);
         });
-        console.log('[GeminiAdapter] Message bridge initialized');
+        console.log('[Gemini] Message bridge initialized');
     },
 
     handleMessage(message) {
@@ -47,7 +47,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
         switch (action) {
             case 'INJECT_READY':
                 this.isReady = true;
-                console.log('[GeminiAdapter] gemini-inject.js is ready');
+                console.log('[Gemini] gemini-inject.js is ready');
                 break;
             case 'RESPONSE':
                 const pending = this.pendingRequests.get(requestId);
@@ -66,7 +66,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
     // Send request to page context (gemini-inject.js)
     sendRequest(action, data = {}) {
         return new Promise((resolve, reject) => {
-            const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 
             this.pendingRequests.set(requestId, { resolve, reject });
 
@@ -110,7 +110,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
         }
 
         if (!this.isReady) {
-            console.warn('[GeminiAdapter] Bridge not ready, cannot get session params');
+            console.warn('[Gemini] Bridge not ready, cannot get session params');
             return { at: null, bl: null, fsid: null };
         }
 
@@ -119,7 +119,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
             if (params && params.at) {
                 this._sessionParamsCache = params;
                 this._sessionParamsCacheTime = now;
-                console.log('[GeminiAdapter] Session params acquired:', {
+                console.log('[Gemini] Session params acquired:', {
                     at: '✓',
                     bl: params.bl || '✗',
                     fsid: params.fsid || '✗'
@@ -127,7 +127,7 @@ var GeminiBridge = window.GeminiBridge = window.GeminiBridge || {
             }
             return params || { at: null, bl: null, fsid: null };
         } catch (e) {
-            console.warn('[GeminiAdapter] Failed to get session params:', e.message);
+            console.warn('[Gemini] Failed to get session params:', e.message);
             return { at: null, bl: null, fsid: null };
         }
     },
@@ -552,9 +552,9 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
             }
         } catch (e) {
             const message = e?.message || 'Unknown error';
-            console.warn('[GeminiAdapter] MaZiqc API failed:', message);
+            console.warn('[Gemini] MaZiqc API failed:', message);
             if (typeof Logger !== 'undefined') {
-                Logger.error('GeminiAdapter', 'getThreads failed', { error: message });
+                Logger.error('Gemini', 'getThreads failed', { error: message });
             }
         }
 
@@ -632,7 +632,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
      * @throws {Error} If the conversation cannot be fetched or has no content
      */
     getThreadDetail: async function (uuid) {
-        console.log(`[GeminiAdapter] Fetching thread detail for: ${uuid}`);
+        console.log(`[Gemini] Fetching thread detail for: ${uuid}`);
 
         const chatId = uuid.startsWith('c_') ? uuid : `c_${uuid}`;
         const payload = [chatId, 100, null, 1, [1], [4], null, 1];
@@ -776,7 +776,7 @@ var GeminiAdapter = window.GeminiAdapter = window.GeminiAdapter || {
         } catch (error) {
             const message = error?.message || 'Unknown error';
             if (typeof Logger !== 'undefined') {
-                Logger.error('GeminiAdapter', 'getThreadDetail failed', { error: message, uuid });
+                Logger.error('Gemini', 'getThreadDetail failed', { error: message, uuid });
             } else {
                 console.error(`[Gemini] hNvQHb failed for ${chatId}:`, message);
             }

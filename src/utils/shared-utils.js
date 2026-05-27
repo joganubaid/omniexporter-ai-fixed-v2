@@ -59,6 +59,33 @@ class LoadingManager {
 // ============================================
 // INPUT SANITIZER
 // ============================================
+/**
+ * Split text into chunks for Notion's 2000-char per-block `rich_text` limit.
+ * Notion API rejects blocks whose text content exceeds 2000 chars; this
+ * helper finds a clean break point (newline → period → space → hard cut)
+ * to avoid mid-word splits.
+ *
+ * Default maxLength is 1900 — slightly under the 2000 cap to leave room for
+ * surrounding markup the Notion API may add.
+ */
+function splitTextForNotion(text, maxLength = 1900) {
+    const chunks = [];
+    let remaining = text;
+    while (remaining.length > 0) {
+        if (remaining.length <= maxLength) {
+            chunks.push(remaining);
+            break;
+        }
+        let bp = remaining.lastIndexOf('\n', maxLength);
+        if (bp < maxLength / 2) bp = remaining.lastIndexOf('. ', maxLength);
+        if (bp < maxLength / 2) bp = remaining.lastIndexOf(' ', maxLength);
+        if (bp < maxLength / 2) bp = maxLength;
+        chunks.push(remaining.slice(0, bp + 1).trim());
+        remaining = remaining.slice(bp + 1);
+    }
+    return chunks;
+}
+
 class InputSanitizer {
     static clean(str) {
         if (typeof str !== 'string') return '';
@@ -81,10 +108,11 @@ class InputSanitizer {
         return /^secret_[a-zA-Z0-9]{43}$/.test(key) || /^ntn_[a-zA-Z0-9]{20,}$/.test(key);
     }
 
-    static validateUuid(uuid) {
-        if (!uuid || typeof uuid !== 'string') return false;
-        return /^[a-zA-Z0-9_-]{8,128}$/.test(uuid);
-    }
+    // (validateUuid removed — duplicate of SecurityUtils.isValidUuid in
+    // content.js, and had no call sites. Content-script code uses
+    // SecurityUtils.isValidUuid; popup/options code doesn't validate UUIDs
+    // because the values flow in from URL-extracted adapter responses that
+    // already passed the SecurityUtils check upstream.)
 }
 
 // ============================================

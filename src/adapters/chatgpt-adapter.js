@@ -120,11 +120,12 @@ var ChatGPTAdapter = window.ChatGPTAdapter = window.ChatGPTAdapter || {
             if (buildId) {
                 headers['OAI-Client-Version'] = `prod-${buildId}`;
             }
-            // Try to extract build number from page scripts
-            const buildNumMeta = document.querySelector('meta[name="build-number"]');
-            if (buildNumMeta) {
-                headers['OAI-Client-Build-Number'] = buildNumMeta.content;
-            }
+            // (Removed: a `<meta name="build-number">` selector for the
+            // OAI-Client-Build-Number header. ChatGPT does NOT ship that
+            // meta tag — the selector was always falsy and the header
+            // never got set. If a future ChatGPT build adds it, re-add
+            // the lookup. The header itself is optional; requests succeed
+            // without it.)
         } catch (e) {
             // Ignore extraction errors
         }

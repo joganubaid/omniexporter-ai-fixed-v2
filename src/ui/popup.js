@@ -521,24 +521,9 @@ async function syncToNotionAPI(data, apiKey, dbId) {
     return pageData;
 }
 
-// Split text for Notion's 2000 char limit
-function splitTextForNotion(text, maxLength = 1900) {
-    const chunks = [];
-    let remaining = text;
-    while (remaining.length > 0) {
-        if (remaining.length <= maxLength) {
-            chunks.push(remaining);
-            break;
-        }
-        let bp = remaining.lastIndexOf('\n', maxLength);
-        if (bp < maxLength / 2) bp = remaining.lastIndexOf('. ', maxLength);
-        if (bp < maxLength / 2) bp = remaining.lastIndexOf(' ', maxLength);
-        if (bp < maxLength / 2) bp = maxLength;
-        chunks.push(remaining.slice(0, bp + 1).trim());
-        remaining = remaining.slice(bp + 1);
-    }
-    return chunks;
-}
+// splitTextForNotion comes from shared-utils.js (loaded before this file
+// via <script> tag in popup.html). The local copy was identical to the
+// shared one; deduped in v5.5.0.
 
 
 // OPEN DASHBOARD
@@ -566,7 +551,9 @@ async function toggleAutoSync() {
         chrome.alarms.clear('autoSyncAlarm');
     }
 
-    chrome.storage.local.set({ autoSyncEnabled: newState });
+    // Await the storage write so a subsequent loadSyncStatus() can't race
+    // and read the old value.
+    await chrome.storage.local.set({ autoSyncEnabled: newState });
     updateSyncUI(newState);
 }
 

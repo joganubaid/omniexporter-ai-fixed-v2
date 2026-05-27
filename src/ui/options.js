@@ -299,11 +299,25 @@ class DuplicateDetector {
     }
 
     /**
-     * Save fingerprint after export
+     * Save fingerprint after export — LRU-capped at 10K entries to prevent
+     * unbounded growth. When over cap, drops the oldest 1K entries. The map
+     * is iteration-ordered, so spread-then-slice preserves recency.
      */
     static async saveFingerprint(uuid, fingerprint) {
         const { exportFingerprints = {} } = await chrome.storage.local.get('exportFingerprints');
+        // Delete-then-insert moves the key to the end (most-recent slot)
+        // even if it already existed.
+        delete exportFingerprints[uuid];
         exportFingerprints[uuid] = fingerprint;
+        const MAX = 10000;
+        const TRIM_TO = 9000;
+        const keys = Object.keys(exportFingerprints);
+        if (keys.length > MAX) {
+            const dropCount = keys.length - TRIM_TO;
+            for (let i = 0; i < dropCount; i++) {
+                delete exportFingerprints[keys[i]];
+            }
+        }
         await chrome.storage.local.set({ exportFingerprints });
     }
 }
@@ -1587,8 +1601,9 @@ function updateSelection(uuid, checked) {
 // ============================================================================
 
 async function syncSingleThread(thread, forceReExport = false, retryCount = 0) {
-    // Add depth limit to prevent stack overflow on repeated rate limits
-    const MAX_RETRIES = 3;
+    // Use the shared RETRY_MAX_ATTEMPTS from shared-utils.js so retry count
+    // stays consistent across all retry sites.
+    const MAX_RETRIES = RETRY_MAX_ATTEMPTS;
 
     syncStatusMap[thread.uuid] = 'syncing';
 
@@ -1856,7 +1871,7 @@ async function syncToNotion(data) {
                 }
 
                 if (answer.trim()) {
-                    const chunks = splitTextIntoChunks(answer.trim(), 1900);
+                    const chunks = splitTextForNotion(answer.trim(), 1900);
                     chunks.forEach(chunk => {
                         children.push({
                             type: "paragraph",
@@ -2014,35 +2029,8 @@ async function appendBlocksToPage(apiKey, pageId, blocks) {
 }
 
 
-// Helper: Split text into chunks for Notion's 2000 char limit
-function splitTextIntoChunks(text, maxLength = 1900) {
-    const chunks = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-        if (remaining.length <= maxLength) {
-            chunks.push(remaining);
-            break;
-        }
-
-        // Find a good break point (newline, period, space)
-        let breakPoint = remaining.lastIndexOf('\n', maxLength);
-        if (breakPoint < maxLength / 2) {
-            breakPoint = remaining.lastIndexOf('. ', maxLength);
-        }
-        if (breakPoint < maxLength / 2) {
-            breakPoint = remaining.lastIndexOf(' ', maxLength);
-        }
-        if (breakPoint < maxLength / 2) {
-            breakPoint = maxLength;
-        }
-
-        chunks.push(remaining.slice(0, breakPoint + 1).trim());
-        remaining = remaining.slice(breakPoint + 1);
-    }
-
-    return chunks;
-}
+// splitTextForNotion comes from shared-utils.js — local splitTextIntoChunks
+// was identical and has been removed (v5.5.0).
 
 async function bulkExportMarkdown() {
     const uuids = Array.from(selectedThreads);
@@ -2250,11 +2238,11 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Validate Notion Database ID
+// Validate Notion Database ID — delegates to InputSanitizer.validateDatabaseId
+// in shared-utils.js. Kept as a thin wrapper for backwards-compat with the
+// few call sites in this file that already use the local name.
 function isValidNotionDatabaseId(id) {
-    if (!id) return false;
-    const cleanId = id.replace(/-/g, '');
-    return /^[a-f0-9]{32}$/i.test(cleanId);
+    return InputSanitizer.validateDatabaseId(id);
 }
 
 // Log utility

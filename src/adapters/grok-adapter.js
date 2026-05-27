@@ -208,7 +208,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
         } catch (e) {
             const message = e?.message || 'Unknown error';
             if (typeof Logger !== 'undefined') {
-                Logger.error('GrokAdapter', 'getThreads failed', { error: message });
+                Logger.error('Grok', 'getThreads failed', { error: message });
             } else {
                 console.error('[Grok] getThreads failed:', message);
             }
@@ -404,7 +404,7 @@ var GrokAdapter = window.GrokAdapter = window.GrokAdapter || {
         } catch (error) {
             const message = error?.message || 'Unknown error';
             if (typeof Logger !== 'undefined') {
-                Logger.error('GrokAdapter', 'getThreadDetail failed', { error: message, uuid });
+                Logger.error('Grok', 'getThreadDetail failed', { error: message, uuid });
             } else {
                 console.error(`[Grok] getThreadDetail failed for ${uuid}:`, message);
             }

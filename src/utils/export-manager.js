@@ -213,7 +213,7 @@ root.ExportManager = class ExportManager {
             meta: {
                 exportedAt: new Date().toISOString(),
                 platform: platform,
-                version: (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || '5.2.0',
+                version: (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || 'unknown',
                 tool: 'OmniExporter AI'
             },
             conversation: {

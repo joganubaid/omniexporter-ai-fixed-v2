@@ -334,7 +334,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
 
             return allThreads;
         } catch (error) {
-            console.error('[DeepSeekAdapter] getAllThreads failed:', error);
+            console.error('[DeepSeek] getAllThreads failed:', error);
             throw error;
         }
     },
@@ -641,7 +641,7 @@ var DeepSeekAdapter = window.DeepSeekAdapter = window.DeepSeekAdapter || {
         // All endpoints failed
         const message = 'DeepSeek API unreachable - Check login or try refreshing';
         if (typeof Logger !== 'undefined') {
-            Logger.error('DeepSeekAdapter', 'getThreadDetail failed', { error: message, uuid });
+            Logger.error('DeepSeek', 'getThreadDetail failed', { error: message, uuid });
         } else {
             console.error(`[DeepSeek] All API endpoints failed`);
         }

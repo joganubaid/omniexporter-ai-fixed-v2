@@ -29,9 +29,6 @@
         "identity"
     ],
     "minimum_chrome_version": "102",
-    "optional_permissions": [
-        "downloads"
-    ],
     "background": {
         "service_worker": "src/background.js"
     },
